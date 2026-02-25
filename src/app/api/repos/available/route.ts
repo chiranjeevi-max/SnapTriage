@@ -1,8 +1,26 @@
+/**
+ * @module /api/repos/available
+ *
+ * Lists repositories available from the user's GitHub or GitLab account
+ * that can be connected to SnapTriage.
+ *
+ * - **Endpoint:** `/api/repos/available`
+ * - **HTTP Methods:** GET
+ * - **Auth:** Required (session-based); a valid provider token must be on file
+ * - **Query params:**
+ *   - `provider` (required) — `"github"` or `"gitlab"`
+ */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { fetchAvailableRepos } from "@/features/repos/fetch-available-repos";
 
+/**
+ * Fetches the list of repos the user has access to on the specified provider.
+ *
+ * @param req - Incoming request; query param `provider` is required
+ * @returns JSON array of available repo objects, or an error with 400/403 status
+ */
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user?.id) {

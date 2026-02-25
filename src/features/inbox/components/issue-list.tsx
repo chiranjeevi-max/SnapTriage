@@ -1,3 +1,10 @@
+/**
+ * @module inbox/components/issue-list
+ *
+ * Scrollable list of issues shown in the left pane of the inbox split view.
+ * Supports keyboard-driven selection (via parent), priority badges, labels,
+ * loading skeletons, and an empty-state message.
+ */
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -15,6 +22,7 @@ interface IssueListProps {
   isLoading: boolean;
 }
 
+/** Priority label config mapping P0-P3 to display text and color classes. */
 const priorityLabels: Record<number, { label: string; className: string }> = {
   0: { label: "P0", className: "bg-red-500/20 text-red-400 border-red-500/30" },
   1: { label: "P1", className: "bg-orange-500/20 text-orange-400 border-orange-500/30" },
@@ -22,6 +30,10 @@ const priorityLabels: Record<number, { label: string; className: string }> = {
   3: { label: "P3", className: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
 };
 
+/**
+ * Compact relative time formatter for list items (e.g., "5m", "2h", "3d").
+ * @param dateStr - ISO date string.
+ */
 function timeAgo(dateStr: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
@@ -37,6 +49,10 @@ function timeAgo(dateStr: string): string {
   return `${diffMonths}mo`;
 }
 
+/**
+ * Scrollable issue list with loading skeletons and empty state.
+ * Each row auto-scrolls into view when selected via keyboard navigation.
+ */
 export function IssueList({ issues, selectedIndex, onSelect, isLoading }: IssueListProps) {
   if (isLoading) {
     return (
@@ -82,6 +98,7 @@ export function IssueList({ issues, selectedIndex, onSelect, isLoading }: IssueL
   );
 }
 
+/** Single issue row with priority badge, title, metadata, and truncated labels. */
 function IssueRow({
   issue,
   isSelected,

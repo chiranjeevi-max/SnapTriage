@@ -1,3 +1,8 @@
+/**
+ * @module triage/components/sync-status
+ * Displays the last sync time across all repositories and provides a manual
+ * refresh button. Shows a spinner while a sync is in progress.
+ */
 "use client";
 
 import { Loader2, RefreshCw } from "lucide-react";
@@ -6,6 +11,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Kbd } from "@/features/keyboard";
 import { useSyncStatus, useSync } from "@/features/inbox/use-issues";
 
+/**
+ * Format an ISO date string into a human-readable relative time
+ * (e.g., "Just synced", "5m ago", "2h ago", "3d ago").
+ *
+ * @param isoStr - ISO 8601 date string of the last sync, or `null` if never synced.
+ * @returns A human-readable string describing how long ago the sync occurred.
+ */
 function formatSyncTime(isoStr: string | null): string {
   if (!isoStr) return "Never synced";
   const diffMs = Date.now() - new Date(isoStr).getTime();
@@ -18,6 +30,13 @@ function formatSyncTime(isoStr: string | null): string {
   return `${diffDays}d ago`;
 }
 
+/**
+ * Sync status indicator and manual refresh button.
+ * Shows the most recent sync time across all repos and triggers
+ * a full sync when clicked. Keyboard shortcut: `R`.
+ *
+ * @returns The sync status button wrapped in a tooltip.
+ */
 export function SyncStatus() {
   const { data: statuses } = useSyncStatus();
   const sync = useSync();

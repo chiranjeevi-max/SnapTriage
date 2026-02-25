@@ -1,3 +1,17 @@
+/**
+ * @module auth
+ *
+ * Main Auth.js (NextAuth v5) configuration with database adapter and providers.
+ *
+ * Combines the edge-safe config from {@link auth.config} with:
+ * - A Drizzle ORM adapter backed by the app's SQLite/Postgres database
+ * - A Credentials provider for Personal Access Token (PAT) sign-in
+ *
+ * PAT flow: validate token against GitHub/GitLab API, upsert user in DB,
+ * store the PAT in the `accessTokens` table, and return a session.
+ *
+ * Exports `handlers` (route handler), `auth` (session getter), `signIn`, `signOut`.
+ */
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
@@ -12,6 +26,8 @@ import {
 } from "@/features/auth/user-repository";
 import { authConfig } from "./auth.config";
 
+// Cast `db` to any because DrizzleAdapter's type expects a specific Drizzle flavor
+// but our `db` is a union of SQLite | Neon clients.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const adapter = DrizzleAdapter(db as any, {
   usersTable: users,

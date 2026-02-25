@@ -1,3 +1,10 @@
+/**
+ * @module proxy
+ * Auth.js (NextAuth v5) middleware proxy. Protects authenticated routes
+ * (/inbox, /settings, /repos) by redirecting unauthenticated users to /login,
+ * and redirects already-authenticated users away from auth pages (/login)
+ * back to /inbox. Exported as `proxy` and re-exported from `middleware.ts`.
+ */
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "./auth.config";

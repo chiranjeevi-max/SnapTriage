@@ -1,3 +1,9 @@
+/**
+ * @module app/(app)/error
+ * Error boundary for the authenticated app routes. Catches runtime errors
+ * within the (app) layout group, logs them to the console, and renders
+ * a user-friendly message with a "Try again" button that triggers a re-render.
+ */
 "use client";
 
 import { useEffect } from "react";

@@ -1,3 +1,16 @@
+/**
+ * @module keyboard/shortcut-registry
+ *
+ * Central registry of all keyboard shortcuts in SnapTriage.
+ *
+ * Each shortcut has an `id` (used to dispatch actions), a `key` (the physical key),
+ * an optional `shift` modifier, a human-readable `description`, and a `category`
+ * for grouping in the shortcut overlay.
+ *
+ * {@link matchShortcut} performs the key→shortcut lookup on each keydown event.
+ */
+
+/** Definition of a single keyboard shortcut. */
 export interface Shortcut {
   id: string;
   key: string;
@@ -6,6 +19,7 @@ export interface Shortcut {
   category: "navigation" | "triage" | "utility";
 }
 
+/** Complete list of registered shortcuts, ordered by category then key. */
 export const shortcuts: Shortcut[] = [
   { id: "move-down", key: "j", category: "navigation", description: "Next issue" },
   { id: "move-up", key: "k", category: "navigation", description: "Previous issue" },
@@ -37,6 +51,12 @@ export const shortcuts: Shortcut[] = [
   },
 ];
 
+/**
+ * Matches a keyboard event to a registered shortcut.
+ * Compares keys case-insensitively and checks the shift modifier.
+ * @param event - The browser KeyboardEvent to match.
+ * @returns The matched shortcut, or `null` if no match.
+ */
 export function matchShortcut(event: KeyboardEvent): Shortcut | null {
   for (const shortcut of shortcuts) {
     if (shortcut.shift && !event.shiftKey) continue;

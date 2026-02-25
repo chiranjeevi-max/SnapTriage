@@ -1,3 +1,10 @@
+/**
+ * @module triage
+ * Barrel file that re-exports all public types, action builders, hooks,
+ * and components from the triage feature. Import from `@/features/triage`
+ * rather than reaching into sub-modules directly.
+ */
+
 // Types
 export type { TriagePayload, TriageAction, PendingChanges } from "./types";
 export { mergePendingChanges, payloadToIssueUpdate } from "./types";

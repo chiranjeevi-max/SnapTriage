@@ -1,3 +1,10 @@
+/**
+ * @module repos/components/app-shell
+ *
+ * Application shell layout with sidebar navigation, connected repo list,
+ * user menu, theme toggle, and keyboard shortcut button.
+ * Wraps the main content area for all authenticated (app) routes.
+ */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeyboardStore } from "@/features/keyboard";
 
+/** Shape of a connected repo record returned by the repos API. */
 interface ConnectedRepo {
   id: string;
   provider: string;
@@ -18,12 +26,17 @@ interface ConnectedRepo {
   permission: string;
 }
 
+/** Sidebar navigation links. */
 const navItems = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/repos", label: "Repos", icon: FolderGit2 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+/**
+ * Application shell with sidebar navigation, connected repos, and user menu.
+ * Fetches connected repos on every route change to keep the sidebar current.
+ */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [repos, setRepos] = useState<ConnectedRepo[]>([]);
@@ -122,6 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Inline GitLab logo SVG. */
 function GitLabIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">

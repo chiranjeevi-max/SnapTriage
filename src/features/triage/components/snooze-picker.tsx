@@ -1,3 +1,8 @@
+/**
+ * @module triage/components/snooze-picker
+ * Dialog for snoozing (or unsnoozing) an issue. Offers preset durations
+ * (1 hour, tomorrow 9 AM, next Monday 9 AM) and a custom date-time picker.
+ */
 "use client";
 
 import { useState } from "react";
@@ -14,6 +19,14 @@ import { Input } from "@/components/ui/input";
 import { useTriageMutation } from "../use-triage-mutation";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
+/**
+ * Props for the {@link SnoozePicker} component.
+ *
+ * @property open - Whether the dialog is open.
+ * @property onOpenChange - Callback to toggle the dialog open/closed.
+ * @property issue - The issue to snooze/unsnooze, or `null` if none.
+ * @property batch - When `true`, stages the snooze change for batch push.
+ */
 interface SnoozePickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -21,6 +34,11 @@ interface SnoozePickerProps {
   batch?: boolean;
 }
 
+/**
+ * Compute the preset snooze options relative to the current time.
+ *
+ * @returns An array of `{ label, value }` objects where `value` is an ISO 8601 string.
+ */
 function getSnoozeOptions() {
   const now = new Date();
 
@@ -42,6 +60,14 @@ function getSnoozeOptions() {
   ];
 }
 
+/**
+ * Dialog component for snoozing or unsnoozing an issue.
+ * Presents preset duration buttons and an optional custom date-time input.
+ * Uses {@link useTriageMutation} to apply the snooze payload.
+ *
+ * @param props - {@link SnoozePickerProps}
+ * @returns The snooze picker dialog, or `null` if no issue is provided.
+ */
 export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerProps) {
   const triage = useTriageMutation();
   const [showCustom, setShowCustom] = useState(false);
@@ -52,6 +78,11 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
   const isSnoozed = !!issue.triage?.snoozedUntil;
   const options = getSnoozeOptions();
 
+  /**
+   * Apply a snooze with the given ISO timestamp and close the dialog.
+   *
+   * @param isoString - ISO 8601 date-time string for the snooze expiry.
+   */
   function handleSnooze(isoString: string) {
     if (!issue) return;
     triage.mutate({
@@ -65,6 +96,7 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
     setShowCustom(false);
   }
 
+  /** Remove the snooze from the issue and close the dialog. */
   function handleUnsnooze() {
     if (!issue) return;
     triage.mutate({
@@ -77,6 +109,7 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
     onOpenChange(false);
   }
 
+  /** Submit the custom date-time value as a snooze target. */
   function handleCustomSubmit() {
     if (!customDate) return;
     handleSnooze(new Date(customDate).toISOString());

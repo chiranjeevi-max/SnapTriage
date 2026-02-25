@@ -1,9 +1,19 @@
+/**
+ * @module components/theme-toggle
+ * A small icon button that toggles between dark and light themes.
+ * Uses animated Sun/Moon icons that cross-fade via CSS transforms.
+ */
 "use client";
 
 import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+/**
+ * Theme toggle button component. Clicking cycles between "dark" and "light"
+ * themes via `next-themes`. The Sun icon is visible in light mode and the
+ * Moon icon in dark mode, with smooth rotation/scale transitions.
+ */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
 

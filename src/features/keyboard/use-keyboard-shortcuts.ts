@@ -1,3 +1,14 @@
+/**
+ * @module keyboard/use-keyboard-shortcuts
+ *
+ * Global keydown listener that matches keyboard events to registered shortcuts
+ * and dispatches the corresponding action.
+ *
+ * Guards:
+ * - Ignores events when focus is in an editable element (input, textarea, contenteditable)
+ * - Ignores events when any picker dialog is open
+ * - When the shortcut overlay is open, only "?" and Escape pass through
+ */
 "use client";
 
 import { useEffect } from "react";
@@ -6,6 +17,10 @@ import { matchShortcut } from "./shortcut-registry";
 import { useKeyboardActions } from "./use-keyboard-actions";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
+/**
+ * Checks whether the event target is an editable form element.
+ * Prevents shortcut firing when the user is typing in inputs.
+ */
 function isEditableElement(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
   const tag = el.tagName;
@@ -14,6 +29,11 @@ function isEditableElement(el: EventTarget | null): boolean {
   return false;
 }
 
+/**
+ * Attaches a global keydown listener that dispatches matched shortcuts.
+ * Must be called once in the inbox view with the current issue list.
+ * @param issues - Current issue list (forwarded to action dispatch).
+ */
 export function useKeyboardShortcuts(issues: IssueWithTriage[]) {
   const overlayOpen = useKeyboardStore((s) => s.overlayOpen);
   const isAnyPickerOpen = useKeyboardStore((s) => s.isAnyPickerOpen);

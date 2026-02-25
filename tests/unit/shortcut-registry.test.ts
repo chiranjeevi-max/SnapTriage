@@ -1,6 +1,21 @@
+/**
+ * @module tests/unit/shortcut-registry
+ *
+ * Unit tests for the keyboard shortcut registry.
+ * Covers:
+ * - Shortcut array integrity (unique IDs, expected categories)
+ * - Key matching for navigation, triage, and utility shortcuts
+ * - Case insensitivity for letter keys
+ * - Shift modifier handling (Shift+P for batch push, Shift+? for overlay)
+ * - Unbound key rejection
+ */
 import { describe, it, expect } from "vitest";
 import { matchShortcut, shortcuts } from "@/features/keyboard/shortcut-registry";
 
+/**
+ * Creates a minimal mock KeyboardEvent for testing shortcut matching
+ * without requiring a full DOM environment.
+ */
 function makeKeyboardEvent(
   key: string,
   options: { shiftKey?: boolean } = {}

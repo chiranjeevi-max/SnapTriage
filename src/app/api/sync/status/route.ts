@@ -1,9 +1,24 @@
+/**
+ * @module /api/sync/status
+ *
+ * Returns the last-synced timestamp for each of the user's connected repos.
+ * Used by the UI to display sync freshness indicators.
+ *
+ * - **Endpoint:** `/api/sync/status`
+ * - **HTTP Methods:** GET
+ * - **Auth:** Required (session-based)
+ */
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { repos } from "@/lib/db/schema";
 
+/**
+ * Fetches sync status for all of the authenticated user's repos.
+ *
+ * @returns JSON array of `{ repoId, fullName, lastSyncedAt }` objects
+ */
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) {

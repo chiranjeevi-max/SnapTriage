@@ -1,3 +1,10 @@
+/**
+ * @module tests/unit/triage-actions
+ *
+ * Unit tests for the triage action builder functions.
+ * Verifies that each builder returns the correct payload shape
+ * for priority, labels, assignees, snooze, and dismiss operations.
+ */
 import { describe, it, expect } from "vitest";
 import {
   setPriority,

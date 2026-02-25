@@ -1,3 +1,9 @@
+/**
+ * @module sync/sync-engine
+ * Server-side sync engine responsible for fetching issues from upstream providers
+ * (GitHub/GitLab), upserting them into the local database, and pushing pending
+ * batch changes back to the provider. This module runs exclusively on the server.
+ */
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { issues, repos, syncLog, triageState } from "@/lib/db/schema";
@@ -5,6 +11,14 @@ import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { payloadToIssueUpdate, type PendingChanges } from "@/features/triage/types";
 
+/**
+ * Result of syncing a single repository.
+ *
+ * @property repoId - The ID of the repository that was synced.
+ * @property status - Whether the sync completed or failed.
+ * @property issuesFetched - Number of issues fetched from the provider.
+ * @property error - Error message, present only when `status` is `"failed"`.
+ */
 interface SyncResult {
   repoId: string;
   status: "completed" | "failed";
@@ -12,7 +26,14 @@ interface SyncResult {
   error?: string;
 }
 
-/** Sync a single repo: fetch issues from provider, upsert into DB */
+/**
+ * Sync a single repository: fetch issues from the upstream provider since the
+ * last sync time, upsert them into the local database, and log the sync result.
+ *
+ * @param repoId - The internal ID of the repository to sync.
+ * @param userId - The ID of the authenticated user who owns the repo.
+ * @returns A {@link SyncResult} indicating success/failure and the number of issues fetched.
+ */
 export async function syncRepo(repoId: string, userId: string): Promise<SyncResult> {
   const logId = crypto.randomUUID();
 
@@ -115,7 +136,13 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
   }
 }
 
-/** Sync all enabled repos for a user */
+/**
+ * Sync all enabled repositories for a given user. Iterates through each
+ * repo with `syncEnabled = true` and calls {@link syncRepo} sequentially.
+ *
+ * @param userId - The ID of the authenticated user.
+ * @returns An array of {@link SyncResult} objects, one per repository.
+ */
 export async function syncAllRepos(userId: string): Promise<SyncResult[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const userRepos = await (db as any)
@@ -132,7 +159,15 @@ export async function syncAllRepos(userId: string): Promise<SyncResult[]> {
   return results;
 }
 
-/** Push all pending batch changes for a user to their providers */
+/**
+ * Push all pending batch changes for a user to their upstream providers.
+ * For each pending triage row, converts the staged changes to a provider
+ * update, writes it back via the provider API, updates the local issues
+ * table, and clears the batch-pending flag.
+ *
+ * @param userId - The ID of the authenticated user whose batch changes should be pushed.
+ * @returns An object with `pushed` (successfully written) and `failed` counts.
+ */
 export async function pushBatchChanges(
   userId: string
 ): Promise<{ pushed: number; failed: number }> {

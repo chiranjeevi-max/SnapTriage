@@ -1,3 +1,10 @@
+/**
+ * @module repos/components/repo-manager
+ *
+ * Repository management page component. Shows two cards:
+ * 1. **Connected Repositories** — list of tracked repos with disconnect buttons
+ * 2. **Add Repository** — tabbed browser (GitHub/GitLab) to discover and connect new repos
+ */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AvailableRepo } from "../fetch-available-repos";
 
+/** Shape of a connected repo record from the repos API. */
 interface ConnectedRepo {
   id: string;
   provider: string;
@@ -19,6 +27,10 @@ interface ConnectedRepo {
   syncEnabled: boolean;
 }
 
+/**
+ * Full repo management UI with connected list and provider-tabbed browser.
+ * Handles connect/disconnect operations with optimistic UI updates.
+ */
 export function RepoManager() {
   const [connected, setConnected] = useState<ConnectedRepo[]>([]);
   const [available, setAvailable] = useState<AvailableRepo[]>([]);
@@ -212,6 +224,7 @@ export function RepoManager() {
   );
 }
 
+/** Color-coded badge showing repo permission level (admin/write/read). */
 function PermissionBadge({ permission }: { permission: string }) {
   const variant =
     permission === "admin" ? "default" : permission === "write" ? "secondary" : "outline";
@@ -222,11 +235,13 @@ function PermissionBadge({ permission }: { permission: string }) {
   );
 }
 
+/** Renders the GitHub or GitLab icon based on provider name. */
 function ProviderIcon({ provider }: { provider: string }) {
   if (provider === "github") return <Github className="h-4 w-4 shrink-0" />;
   return <GitLabIcon className="h-4 w-4 shrink-0" />;
 }
 
+/** Inline GitLab logo SVG. */
 function GitLabIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">

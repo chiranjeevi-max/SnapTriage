@@ -1,9 +1,29 @@
+/**
+ * @module /api/issues
+ *
+ * Lists issues for the authenticated user, with optional repo and state filters.
+ * Each issue is returned with its associated triage state (priority, snooze, dismissed).
+ *
+ * - **Endpoint:** `/api/issues`
+ * - **HTTP Methods:** GET
+ * - **Auth:** Required (session-based)
+ * - **Query params:**
+ *   - `repoId` (optional) — filter issues to a specific repo
+ *   - `state` (optional, default `"open"`) — issue state filter
+ */
 import { NextResponse } from "next/server";
 import { eq, and, desc } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { issues, repos, triageState } from "@/lib/db/schema";
 
+/**
+ * Fetches issues belonging to the current user's connected repos.
+ * Attaches each issue's triage state and orders results by most recently updated.
+ *
+ * @param req - Incoming request; query params `repoId` and `state` are read from the URL
+ * @returns JSON array of issue objects, each augmented with a `triage` property (or `null`)
+ */
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user?.id) {

@@ -1,3 +1,15 @@
+/**
+ * @module /api/issues/[id]
+ *
+ * Handles triage operations on a single issue identified by its database ID.
+ * Supports updating local triage state (priority, snooze, dismiss) and
+ * provider-side changes (labels, assignees, open/close state) in either
+ * live or batch sync mode.
+ *
+ * - **Endpoint:** `/api/issues/:id`
+ * - **HTTP Methods:** PATCH
+ * - **Auth:** Required (session-based); the issue must belong to one of the user's repos
+ */
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/auth";
@@ -7,6 +19,19 @@ import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { mergePendingChanges, type PendingChanges } from "@/features/triage/types";
 
+/**
+ * Applies triage updates to a single issue.
+ *
+ * Local-only fields (priority, snoozedUntil, dismissed) are persisted directly
+ * in the `triageState` table. Provider-side fields (labels, assignees, state)
+ * are either written back immediately (live mode) or staged in `pendingChanges`
+ * (batch mode) depending on the repo's `syncMode` or the request's `batch` flag.
+ *
+ * @param req - Request with JSON body containing any combination of:
+ *   `{ priority?, snoozedUntil?, dismissed?, labels?, assignees?, state?, batch? }`
+ * @param params - Dynamic route params containing `id` (the issue's DB primary key)
+ * @returns JSON `{ ok: true }` on success, or an error with 401/403/404 status
+ */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user?.id) {

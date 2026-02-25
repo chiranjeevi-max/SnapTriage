@@ -1,3 +1,9 @@
+/**
+ * @module app/not-found
+ * Custom 404 page for SnapTriage. Displays a large "404" heading, a brief
+ * explanation, and a button linking back to the inbox so users can recover
+ * from mistyped or stale URLs.
+ */
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 

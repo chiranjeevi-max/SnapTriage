@@ -1,3 +1,9 @@
+/**
+ * @module triage/components/assignee-picker
+ * Command-palette dialog for searching, viewing, and toggling assignees on an issue.
+ * Renders a searchable list of repository collaborators with avatar thumbnails
+ * and check marks indicating who is currently assigned.
+ */
 "use client";
 
 import { Check } from "lucide-react";
@@ -14,6 +20,14 @@ import { useRepoCollaborators } from "../use-repo-collaborators";
 import { useTriageMutation } from "../use-triage-mutation";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
+/**
+ * Props for the {@link AssigneePicker} component.
+ *
+ * @property open - Whether the command dialog is open.
+ * @property onOpenChange - Callback to toggle the dialog open/closed.
+ * @property issue - The issue whose assignees are being edited, or `null` if none.
+ * @property batch - When `true`, stages the assignee change for batch push.
+ */
 interface AssigneePickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -21,6 +35,14 @@ interface AssigneePickerProps {
   batch?: boolean;
 }
 
+/**
+ * Searchable command dialog for toggling assignees on an issue.
+ * Fetches collaborators from the repo and uses {@link useTriageMutation}
+ * to assign or unassign users. Supports both live and batch modes.
+ *
+ * @param props - {@link AssigneePickerProps}
+ * @returns The assignee picker dialog, or `null` if no issue is provided.
+ */
 export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePickerProps) {
   const { data: collaborators, isLoading } = useRepoCollaborators(issue?.repoId);
   const triage = useTriageMutation();
@@ -29,6 +51,11 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
 
   const currentAssignees = new Set(issue.assignees);
 
+  /**
+   * Toggle an assignee on or off for the current issue.
+   *
+   * @param username - The username of the collaborator to toggle.
+   */
   function toggleAssignee(username: string) {
     if (!issue) return;
     const isAssigned = currentAssignees.has(username);
