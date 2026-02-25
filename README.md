@@ -1,36 +1,121 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SnapTriage
 
-## Getting Started
+[![CI](https://github.com/your-org/snaptriage/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/snaptriage/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-First, run the development server:
+**Keyboard-driven inbox for triaging GitHub & GitLab issues at speed.** Think "Superhuman for issue triage."
+
+## Quick Start
 
 ```bash
+# Clone and install
+git clone https://github.com/your-org/snaptriage.git
+cd snaptriage
+npm install
+
+# Configure environment
+cp .env.example .env.local
+# Edit .env.local with your GitHub/GitLab OAuth credentials
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Keyboard-first** — Navigate and triage issues entirely from the keyboard
+- **Multi-provider** — Connect GitHub and GitLab repos in one unified inbox
+- **Optimistic UI** — Actions feel instant with automatic rollback on failure
+- **Undo** — Every action has a 5-second undo window
+- **Two sync modes** — Live (instant writeback) or Batch (stage changes, push when ready)
+- **Label & assignee pickers** — Searchable command palettes for quick editing
+- **Snooze** — Hide issues until a specific time
+- **Dark mode** — Dark theme by default, light and system themes available
+- **Self-hostable** — SQLite by default, Postgres optional. Docker Compose included.
 
-## Learn More
+## Keyboard Shortcuts
 
-To learn more about Next.js, take a look at the following resources:
+| Key | Action |
+|-----|--------|
+| `J` / `K` | Navigate down / up |
+| `Enter` / `Escape` | Open / close detail |
+| `1` - `4` | Set priority P0-P3 |
+| `D` | Dismiss / undismiss |
+| `L` | Edit labels |
+| `A` | Edit assignees |
+| `S` | Snooze issue |
+| `Z` | Undo last action |
+| `R` | Sync issues |
+| `Shift+P` | Push batch changes |
+| `?` | Show all shortcuts |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Tech Stack
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Layer | Choice |
+|-------|--------|
+| Framework | Next.js 15 (App Router) + TypeScript |
+| Styling | Tailwind CSS 4 + shadcn/ui |
+| Database | SQLite (default) + Postgres via Drizzle ORM |
+| Auth | Auth.js — GitHub/GitLab OAuth + PAT fallback |
+| State | TanStack Query + Zustand |
+| Testing | Vitest + Playwright |
 
-## Deploy on Vercel
+## Scripts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server |
+| `npm run build` | Production build |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | TypeScript type check |
+| `npm test` | Run unit tests |
+| `npm run test:e2e` | Run E2E tests |
+| `npm run format` | Format with Prettier |
+| `npm run db:generate` | Generate Drizzle migrations |
+| `npm run db:migrate` | Run migrations |
+| `npm run db:studio` | Open Drizzle Studio |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploy
+
+### Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyour-org%2Fsnaptriage&env=AUTH_SECRET,AUTH_GITHUB_ID,AUTH_GITHUB_SECRET&envDescription=Required%20environment%20variables&project-name=snaptriage)
+
+### Docker
+
+```bash
+docker compose -f docker/docker-compose.yml up
+```
+
+SQLite data is persisted in a Docker volume. See `.env.example` for all configuration options.
+
+## Environment Variables
+
+See [`.env.example`](.env.example) for the full list. Required variables:
+
+| Variable | Description |
+|----------|-------------|
+| `AUTH_SECRET` | Random secret for Auth.js session encryption |
+| `AUTH_GITHUB_ID` | GitHub OAuth App client ID |
+| `AUTH_GITHUB_SECRET` | GitHub OAuth App client secret |
+
+Optional:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | Postgres connection string | (uses SQLite) |
+| `SQLITE_PATH` | SQLite database file path | `./data/snaptriage.db` |
+| `AUTH_GITLAB_ID` | GitLab OAuth App ID | |
+| `AUTH_GITLAB_SECRET` | GitLab OAuth App secret | |
+| `AUTH_GITLAB_URL` | Self-hosted GitLab URL | `https://gitlab.com` |
+| `SYNC_INTERVAL_MS` | Auto-sync interval | `300000` (5 min) |
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
+## License
+
+[MIT](LICENSE)
