@@ -1,3 +1,14 @@
+/**
+ * @module repos/fetch-available-repos
+ *
+ * Fetches the list of repositories accessible to a user from GitHub or GitLab.
+ * Used by the "Add Repository" UI to let users browse and connect repos.
+ *
+ * Each provider-specific function paginates through all accessible repos
+ * and normalizes them into the {@link AvailableRepo} shape.
+ */
+
+/** Normalized repository data returned by the provider-specific fetch functions. */
 export interface AvailableRepo {
   provider: "github" | "gitlab";
   owner: string;
@@ -8,6 +19,12 @@ export interface AvailableRepo {
   isPrivate: boolean;
 }
 
+/**
+ * Fetches all repositories accessible to the user from GitHub.
+ * Maps GitHub's `permissions.admin/push` flags to "admin"/"write"/"read".
+ * @param token - GitHub auth token.
+ * @returns Normalized list of available repos.
+ */
 export async function fetchGitHubRepos(token: string): Promise<AvailableRepo[]> {
   const repos: AvailableRepo[] = [];
   let page = 1;
@@ -51,6 +68,12 @@ export async function fetchGitHubRepos(token: string): Promise<AvailableRepo[]> 
   return repos;
 }
 
+/**
+ * Fetches all projects accessible to the user from GitLab.
+ * Maps GitLab's numeric access levels to "admin"/"write"/"read".
+ * @param token - GitLab auth token.
+ * @returns Normalized list of available repos.
+ */
 export async function fetchGitLabRepos(token: string): Promise<AvailableRepo[]> {
   const baseUrl = process.env.AUTH_GITLAB_URL || "https://gitlab.com";
   const repos: AvailableRepo[] = [];
@@ -97,6 +120,12 @@ export async function fetchGitLabRepos(token: string): Promise<AvailableRepo[]> 
   return repos;
 }
 
+/**
+ * Dispatches to the correct provider-specific repo fetcher.
+ * @param token - Auth token for the provider.
+ * @param provider - Which provider to fetch from.
+ * @returns Normalized list of available repos.
+ */
 export async function fetchAvailableRepos(
   token: string,
   provider: "github" | "gitlab"

@@ -1,3 +1,9 @@
+/**
+ * @module triage/components/batch-status-bar
+ * Sticky status bar shown at the bottom of the inbox when there are pending
+ * batch changes. Displays the count of staged changes and a "Push" button
+ * (with keyboard shortcut hint) to write them back to the provider.
+ */
 "use client";
 
 import { Upload } from "lucide-react";
@@ -5,6 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/features/keyboard";
 import { usePendingBatchCount, useBatchPush } from "../use-batch";
 
+/**
+ * Bottom status bar for batch mode. Renders the number of pending changes
+ * and a push button. Hidden when there are no pending changes.
+ *
+ * @returns The batch status bar element, or `null` when there are no pending changes.
+ */
 export function BatchStatusBar() {
   const { data: count } = usePendingBatchCount();
   const batchPush = useBatchPush();

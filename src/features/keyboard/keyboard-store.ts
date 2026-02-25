@@ -1,5 +1,19 @@
+/**
+ * @module keyboard/keyboard-store
+ *
+ * Zustand store for keyboard-driven UI state.
+ *
+ * Holds the selected issue index, issue count, overlay toggle, and picker
+ * open/close flags. The store is consumed by the inbox view, keyboard shortcut
+ * hooks, and triage picker components.
+ */
 import { create } from "zustand";
 
+/**
+ * Shape of the keyboard store state and actions.
+ * State is intentionally flat for performance — Zustand selectors
+ * re-render components only when their selected slice changes.
+ */
 interface KeyboardState {
   selectedIndex: number;
   issueCount: number;
@@ -19,6 +33,7 @@ interface KeyboardState {
   reset: () => void;
 }
 
+/** Global keyboard/UI state store. */
 export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   selectedIndex: 0,
   issueCount: 0,

@@ -1,10 +1,24 @@
+/**
+ * @module auth/get-provider-token
+ *
+ * Resolves the best available API token for a user+provider pair.
+ *
+ * Token lookup order:
+ * 1. OAuth `access_token` from the `accounts` table (set during OAuth sign-in)
+ * 2. Personal Access Token from the `accessTokens` table (set during PAT sign-in)
+ *
+ * Returns `null` if neither source has a token for the given provider.
+ */
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { accounts, accessTokens } from "@/lib/db/schema";
 
 /**
- * Get the user's access token for a given provider.
- * Checks OAuth accounts first, then falls back to PATs.
+ * Retrieves the user's access token for the specified provider.
+ * Prefers OAuth tokens over PATs since OAuth tokens may have broader scopes.
+ * @param userId - The authenticated user's ID.
+ * @param provider - The Git provider to fetch a token for.
+ * @returns The token string, or `null` if none is available.
  */
 export async function getProviderToken(
   userId: string,

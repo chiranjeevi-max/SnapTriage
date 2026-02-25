@@ -1,3 +1,10 @@
+/**
+ * @module auth/components/user-menu
+ *
+ * Avatar dropdown menu shown in the app header.
+ * Displays the authenticated user's avatar and name, with links to
+ * settings and a sign-out action.
+ */
 "use client";
 
 import { useSession, signOut } from "next-auth/react";
@@ -13,6 +20,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 
+/**
+ * Authenticated user menu with avatar trigger and dropdown actions.
+ * Returns `null` when no session is active (unauthenticated state).
+ */
 export function UserMenu() {
   const { data: session } = useSession();
 

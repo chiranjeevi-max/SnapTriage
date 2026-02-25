@@ -1,3 +1,14 @@
+/**
+ * @module inbox/components/inbox-view
+ *
+ * Main inbox layout component. Combines the issue list, detail pane, triage pickers,
+ * batch status bar, and keyboard shortcut overlay into a resizable split-pane view.
+ *
+ * State flow:
+ * - Issues are fetched via {@link useIssues} (auto-polling)
+ * - Selection index lives in the global keyboard store (Zustand)
+ * - Picker dialogs (labels, assignees, snooze) are toggled via keyboard store flags
+ */
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
@@ -14,6 +25,10 @@ import {
   SyncStatus,
 } from "@/features/triage";
 
+/**
+ * Top-level inbox view with resizable issue list + detail split pane.
+ * Wires keyboard shortcuts, picker dialogs, and sync status together.
+ */
 export function InboxView() {
   const { data: issues, isLoading } = useIssues();
   const {

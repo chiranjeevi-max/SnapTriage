@@ -1,3 +1,10 @@
+/**
+ * @module app/global-error
+ * Global error boundary for the entire SnapTriage application. This is the
+ * last-resort error handler that catches errors escaping the root layout.
+ * It renders its own minimal `<html>` / `<body>` shell with an error message
+ * and a "Try again" button because the root layout may itself be broken.
+ */
 "use client";
 
 import { useEffect } from "react";

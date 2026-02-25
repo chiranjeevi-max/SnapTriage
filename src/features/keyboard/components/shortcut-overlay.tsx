@@ -1,3 +1,9 @@
+/**
+ * @module keyboard/components/shortcut-overlay
+ *
+ * Modal dialog listing all registered keyboard shortcuts, grouped by category.
+ * Toggled by pressing "?" or clicking the keyboard icon in the sidebar.
+ */
 "use client";
 
 import {
@@ -11,14 +17,17 @@ import { useKeyboardStore } from "../keyboard-store";
 import { shortcuts, type Shortcut } from "../shortcut-registry";
 import { Kbd } from "./kbd";
 
+/** Human-readable labels for shortcut categories. */
 const categoryLabels: Record<Shortcut["category"], string> = {
   navigation: "Navigation",
   triage: "Triage",
   utility: "Utility",
 };
 
+/** Display order for shortcut categories in the overlay. */
 const categoryOrder: Shortcut["category"][] = ["navigation", "triage", "utility"];
 
+/** Modal dialog showing all keyboard shortcuts grouped by category. */
 export function ShortcutOverlay() {
   const { overlayOpen, toggleOverlay } = useKeyboardStore();
 
@@ -61,6 +70,10 @@ export function ShortcutOverlay() {
   );
 }
 
+/**
+ * Formats a shortcut key for display (e.g., Enter → "↵", Escape → "Esc").
+ * @param shortcut - The shortcut definition.
+ */
 function formatKey(shortcut: Shortcut): string {
   if (shortcut.key === "Enter") return "\u21B5";
   if (shortcut.key === "Escape") return "Esc";

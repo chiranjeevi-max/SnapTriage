@@ -1,3 +1,16 @@
+/**
+ * @module gitlab/client
+ *
+ * GitLab REST API v4 implementation of the {@link IssueProvider} interface.
+ *
+ * Supports both gitlab.com and self-hosted instances via the `AUTH_GITLAB_URL`
+ * environment variable. Uses `PRIVATE-TOKEN` header authentication.
+ *
+ * Key GitLab-specific behaviors:
+ * - Labels are replaced in full (not added/removed individually)
+ * - Assignees require user ID resolution from usernames
+ * - Access levels are numeric (30 = Developer/write, 40 = Maintainer/admin)
+ */
 import type {
   IssueProvider,
   ProviderIssue,
@@ -5,20 +18,44 @@ import type {
   ProviderCollaborator,
 } from "@/lib/provider-interface";
 
+/**
+ * Returns the GitLab instance base URL.
+ * Defaults to `https://gitlab.com`; override with `AUTH_GITLAB_URL` for self-hosted.
+ */
 function getBaseUrl() {
   return process.env.AUTH_GITLAB_URL || "https://gitlab.com";
 }
 
+/**
+ * Builds GitLab authentication headers using Private Token auth.
+ * @param token - GitLab personal access token.
+ */
 function headers(token: string) {
   return { "PRIVATE-TOKEN": token };
 }
 
-/** Encode owner/repo as GitLab project path */
+/**
+ * URL-encodes a GitLab project path ("owner/repo") for use in API URLs.
+ * @param owner - Project namespace (user or group).
+ * @param repo - Project name.
+ * @returns Encoded project path string.
+ */
 function projectPath(owner: string, repo: string) {
   return encodeURIComponent(`${owner}/${repo}`);
 }
 
+/** GitLab implementation of the {@link IssueProvider} interface. */
 export const gitlabProvider: IssueProvider = {
+  /**
+   * Fetches all issues from a GitLab project.
+   * Note: GitLab uses `iid` (internal ID) as the user-visible issue number,
+   * and `state: "opened"` rather than `"open"`.
+   * @param owner - Project namespace.
+   * @param repo - Project name.
+   * @param token - GitLab auth token.
+   * @param since - Optional date to filter issues updated after.
+   * @returns Array of normalized provider issues.
+   */
   async fetchIssues(owner, repo, token, since) {
     const baseUrl = getBaseUrl();
     const project = projectPath(owner, repo);
@@ -68,6 +105,16 @@ export const gitlabProvider: IssueProvider = {
     return issues;
   },
 
+  /**
+   * Applies triage changes to a GitLab issue.
+   * Unlike GitHub, GitLab requires full label replacement and user ID resolution
+   * for assignees, so this method fetches current issue state before updating.
+   * @param owner - Project namespace.
+   * @param repo - Project name.
+   * @param issueNumber - The issue IID on GitLab.
+   * @param token - GitLab auth token.
+   * @param changes - The set of changes to apply.
+   */
   async updateIssue(owner, repo, issueNumber, token, changes) {
     const baseUrl = getBaseUrl();
     const project = projectPath(owner, repo);
@@ -137,6 +184,15 @@ export const gitlabProvider: IssueProvider = {
     }
   },
 
+  /**
+   * Resolves the authenticated user's permission level on a GitLab project.
+   * Uses the maximum of project-level and group-level access.
+   * GitLab access levels: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
+   * @param owner - Project namespace.
+   * @param repo - Project name.
+   * @param token - GitLab auth token.
+   * @returns The user's permission: "admin" (>=40), "write" (>=30), or "read".
+   */
   async getRepoPermission(owner, repo, token) {
     const baseUrl = getBaseUrl();
     const project = projectPath(owner, repo);
@@ -157,6 +213,14 @@ export const gitlabProvider: IssueProvider = {
     return "read";
   },
 
+  /**
+   * Fetches all labels defined on a GitLab project.
+   * Strips the leading `#` from color values for consistency with GitHub.
+   * @param owner - Project namespace.
+   * @param repo - Project name.
+   * @param token - GitLab auth token.
+   * @returns Array of labels with name, color (hex without #), and description.
+   */
   async fetchLabels(owner, repo, token): Promise<ProviderLabel[]> {
     const baseUrl = getBaseUrl();
     const project = projectPath(owner, repo);
@@ -188,6 +252,14 @@ export const gitlabProvider: IssueProvider = {
     return labels;
   },
 
+  /**
+   * Fetches all members (including inherited) of a GitLab project.
+   * Uses the `/members/all` endpoint to include group-inherited members.
+   * @param owner - Project namespace.
+   * @param repo - Project name.
+   * @param token - GitLab auth token.
+   * @returns Array of collaborators with username, avatar, and permission.
+   */
   async fetchCollaborators(owner, repo, token): Promise<ProviderCollaborator[]> {
     const baseUrl = getBaseUrl();
     const project = projectPath(owner, repo);

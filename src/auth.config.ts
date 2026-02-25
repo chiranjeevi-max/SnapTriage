@@ -1,3 +1,15 @@
+/**
+ * @module auth.config
+ *
+ * Edge-safe Auth.js configuration (no Node.js-only imports).
+ *
+ * This config is shared between the full NextAuth setup ({@link auth.ts}) and
+ * the Edge middleware/proxy. It defines:
+ * - OAuth providers (GitHub, GitLab)
+ * - JWT session strategy (required for Credentials provider compatibility)
+ * - Custom sign-in page redirect
+ * - JWT/session callbacks that attach `user.id` to the token and session
+ */
 import GitHub from "next-auth/providers/github";
 import GitLab from "next-auth/providers/gitlab";
 import type { NextAuthConfig } from "next-auth";

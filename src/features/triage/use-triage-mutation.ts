@@ -1,3 +1,10 @@
+/**
+ * @module triage/use-triage-mutation
+ * Provides the primary mutation hook for applying triage actions to issues.
+ * Supports both live mode (immediate writeback with undo toast) and batch mode
+ * (stage changes locally with undo stack). Includes optimistic cache updates
+ * via TanStack Query and automatic rollback on failure.
+ */
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -6,6 +13,15 @@ import type { TriagePayload } from "./types";
 import { showUndoToast, useUndoStore } from "./use-undo";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
+/**
+ * Input shape for the triage mutation.
+ *
+ * @property issueId - ID of the issue to update.
+ * @property payload - The triage changes to apply.
+ * @property previousPayload - Inverse payload used for undo.
+ * @property description - Human-readable summary of the action.
+ * @property batch - When `true`, stages the change for batch push instead of live writeback.
+ */
 interface TriageMutationInput {
   issueId: string;
   payload: TriagePayload;
@@ -14,6 +30,14 @@ interface TriageMutationInput {
   batch?: boolean;
 }
 
+/**
+ * React hook that returns a TanStack Query mutation for triaging issues.
+ * Handles optimistic updates, error rollback, undo (both live and batch),
+ * and cache invalidation.
+ *
+ * @returns A TanStack `UseMutationResult` whose `mutate`/`mutateAsync` accept
+ *          a {@link TriageMutationInput}.
+ */
 export function useTriageMutation() {
   const queryClient = useQueryClient();
   const pushUndo = useUndoStore((s) => s.push);
@@ -103,7 +127,15 @@ export function useTriageMutation() {
   });
 }
 
-/** Apply a TriagePayload to an issue for optimistic updates */
+/**
+ * Apply a {@link TriagePayload} to an {@link IssueWithTriage} for optimistic
+ * cache updates. Merges label/assignee additions and removals into the
+ * issue's current sets and updates local triage metadata.
+ *
+ * @param issue - The current issue object from the query cache.
+ * @param payload - The triage payload to apply.
+ * @returns A new {@link IssueWithTriage} with the payload applied.
+ */
 function applyPayloadToIssue(issue: IssueWithTriage, payload: TriagePayload): IssueWithTriage {
   const triage = issue.triage ?? {
     id: "",

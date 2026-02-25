@@ -1,3 +1,12 @@
+/**
+ * @module github/client
+ *
+ * GitHub REST API v3 implementation of the {@link IssueProvider} interface.
+ *
+ * All requests go through {@link ghFetch}, which handles authentication headers
+ * and automatic retry on rate-limit 403 responses. Pagination follows GitHub's
+ * per_page=100 convention with sequential page fetching.
+ */
 import type {
   IssueProvider,
   ProviderIssue,
@@ -5,8 +14,14 @@ import type {
   ProviderCollaborator,
 } from "@/lib/provider-interface";
 
+/** GitHub REST API base URL. */
 const GITHUB_API = "https://api.github.com";
 
+/**
+ * Builds standard GitHub API headers with Bearer auth and API versioning.
+ * @param token - GitHub personal access token or OAuth token.
+ * @returns Headers object ready for fetch().
+ */
 function headers(token: string) {
   return {
     Authorization: `Bearer ${token}`,
@@ -20,7 +35,15 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Fetch with rate limit awareness — retries once on 403 rate limit */
+/**
+ * Fetch wrapper with GitHub rate-limit awareness.
+ * On a 403 with `x-ratelimit-remaining: 0`, waits until the reset window
+ * (capped at 60 seconds) and retries once.
+ * @param url - Fully-qualified GitHub API URL.
+ * @param token - Authentication token.
+ * @param init - Optional fetch RequestInit overrides.
+ * @returns The fetch Response (original or retried).
+ */
 async function ghFetch(url: string, token: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(url, { ...init, headers: { ...headers(token), ...init?.headers } });
 
@@ -39,7 +62,17 @@ async function ghFetch(url: string, token: string, init?: RequestInit): Promise<
   return res;
 }
 
+/** GitHub implementation of the {@link IssueProvider} interface. */
 export const githubProvider: IssueProvider = {
+  /**
+   * Fetches all issues (excluding PRs) from a GitHub repository.
+   * Paginates through all pages, sorted by most-recently-updated first.
+   * @param owner - Repository owner (user or org).
+   * @param repo - Repository name.
+   * @param token - GitHub auth token.
+   * @param since - Optional date to filter issues updated after.
+   * @returns Array of normalized provider issues.
+   */
   async fetchIssues(owner, repo, token, since) {
     const issues: ProviderIssue[] = [];
     let page = 1;
@@ -88,6 +121,16 @@ export const githubProvider: IssueProvider = {
     return issues;
   },
 
+  /**
+   * Applies triage changes (state, labels, assignees) to a GitHub issue.
+   * Each change type is sent as a separate API call because GitHub's
+   * issues endpoint requires different HTTP methods per operation.
+   * @param owner - Repository owner.
+   * @param repo - Repository name.
+   * @param issueNumber - The issue number on GitHub.
+   * @param token - GitHub auth token.
+   * @param changes - The set of changes to apply.
+   */
   async updateIssue(owner, repo, issueNumber, token, changes) {
     // Build the update payload
     if (changes.state) {
@@ -129,6 +172,15 @@ export const githubProvider: IssueProvider = {
     }
   },
 
+  /**
+   * Resolves the authenticated user's permission level on a repository.
+   * Falls back to "read" if the API call fails (e.g., token lacks scope).
+   * Maps GitHub's "maintain" role to "write" for simplicity.
+   * @param owner - Repository owner.
+   * @param repo - Repository name.
+   * @param token - GitHub auth token.
+   * @returns The user's permission: "admin", "write", or "read".
+   */
   async getRepoPermission(owner, repo, token) {
     // Get authenticated user first
     const userRes = await ghFetch(`${GITHUB_API}/user`, token);
@@ -150,6 +202,14 @@ export const githubProvider: IssueProvider = {
     return "read";
   },
 
+  /**
+   * Fetches all labels defined on a GitHub repository.
+   * Paginates through all pages (100 per page).
+   * @param owner - Repository owner.
+   * @param repo - Repository name.
+   * @param token - GitHub auth token.
+   * @returns Array of labels with name, color, and description.
+   */
   async fetchLabels(owner, repo, token): Promise<ProviderLabel[]> {
     const labels: ProviderLabel[] = [];
     let page = 1;
@@ -177,6 +237,14 @@ export const githubProvider: IssueProvider = {
     return labels;
   },
 
+  /**
+   * Fetches all collaborators on a GitHub repository.
+   * Maps GitHub's `role_name` to the simplified "admin" | "write" | "read" scale.
+   * @param owner - Repository owner.
+   * @param repo - Repository name.
+   * @param token - GitHub auth token.
+   * @returns Array of collaborators with username, avatar, and permission.
+   */
   async fetchCollaborators(owner, repo, token): Promise<ProviderCollaborator[]> {
     const collaborators: ProviderCollaborator[] = [];
     let page = 1;

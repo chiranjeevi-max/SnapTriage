@@ -1,9 +1,25 @@
+/**
+ * @module /api/settings/accounts
+ *
+ * Returns the list of connected accounts (OAuth and PAT) for the authenticated user.
+ * Used by the settings UI to show which providers are linked.
+ *
+ * - **Endpoint:** `/api/settings/accounts`
+ * - **HTTP Methods:** GET
+ * - **Auth:** Required (session-based)
+ */
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { accounts, accessTokens } from "@/lib/db/schema";
 
+/**
+ * Retrieves all connected accounts (OAuth + PAT) for the current user.
+ * OAuth accounts come from the `accounts` table; PAT entries come from `accessTokens`.
+ *
+ * @returns JSON array of `{ provider, providerAccountId, type }` objects
+ */
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) {

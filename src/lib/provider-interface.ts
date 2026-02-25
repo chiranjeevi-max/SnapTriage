@@ -1,4 +1,13 @@
-/** Raw issue data fetched from a provider API */
+/**
+ * @module provider-interface
+ *
+ * Defines the unified provider abstraction that decouples SnapTriage's core
+ * logic from any specific Git hosting platform. Both the GitHub and GitLab
+ * clients implement {@link IssueProvider} so the rest of the app can treat
+ * them interchangeably.
+ */
+
+/** Raw issue data fetched from a provider API. */
 export interface ProviderIssue {
   providerIssueId: string;
   number: number;

@@ -1,8 +1,25 @@
+/**
+ * @module db/schema
+ *
+ * Drizzle ORM schema definitions for the SnapTriage SQLite database.
+ *
+ * Tables are organized into three groups:
+ * 1. **Auth.js tables** — `users`, `accounts`, `sessions`, `verificationTokens`
+ *    (required by NextAuth / Auth.js adapter)
+ * 2. **Application tables** — `accessTokens`, `repos`, `issues`
+ *    (PAT storage, tracked repositories, cached issue data)
+ * 3. **Triage tables** — `triageState`, `syncLog`
+ *    (per-user triage decisions and sync audit trail)
+ */
 import { sqliteTable, text, integer, primaryKey, index } from "drizzle-orm/sqlite-core";
 import type { AdapterAccountType } from "@auth/core/adapters";
 
 // ─── Auth.js tables ───────────────────────────────────────
 
+/**
+ * Core user table managed by Auth.js.
+ * Each OAuth login or PAT sign-in creates a row here.
+ */
 export const users = sqliteTable("user", {
   id: text("id")
     .primaryKey()
@@ -13,6 +30,11 @@ export const users = sqliteTable("user", {
   image: text("image"),
 });
 
+/**
+ * OAuth account link table managed by Auth.js.
+ * Stores provider tokens (access_token, refresh_token) for each linked account.
+ * Composite primary key: (provider, providerAccountId).
+ */
 export const accounts = sqliteTable(
   "account",
   {
@@ -33,6 +55,7 @@ export const accounts = sqliteTable(
   (account) => [primaryKey({ columns: [account.provider, account.providerAccountId] })]
 );
 
+/** Active session table managed by Auth.js (database strategy). */
 export const sessions = sqliteTable("session", {
   sessionToken: text("sessionToken").primaryKey(),
   userId: text("userId")
@@ -41,6 +64,7 @@ export const sessions = sqliteTable("session", {
   expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
 });
 
+/** Email verification tokens managed by Auth.js. */
 export const verificationTokens = sqliteTable(
   "verificationToken",
   {
@@ -53,6 +77,10 @@ export const verificationTokens = sqliteTable(
 
 // ─── Custom: Access Tokens ────────────────────────────────
 
+/**
+ * Personal Access Tokens (PATs) stored by users as an alternative to OAuth.
+ * Each token is scoped to a single provider ("github" | "gitlab").
+ */
 export const accessTokens = sqliteTable("access_token", {
   id: text("id")
     .primaryKey()
@@ -70,6 +98,11 @@ export const accessTokens = sqliteTable("access_token", {
 
 // ─── Repos ────────────────────────────────────────────────
 
+/**
+ * Tracked repositories that a user has opted-in for triage.
+ * `syncMode` controls whether changes are written back immediately ("live")
+ * or staged for manual push ("batch").
+ */
 export const repos = sqliteTable(
   "repo",
   {
@@ -99,6 +132,11 @@ export const repos = sqliteTable(
 
 // ─── Issues ───────────────────────────────────────────────
 
+/**
+ * Cached issues fetched from GitHub/GitLab during sync.
+ * `providerIssueId` is the provider's unique ID, separate from SnapTriage's own `id`.
+ * Indices cover common query patterns: by repo, by state, and by provider+issueId.
+ */
 export const issues = sqliteTable(
   "issue",
   {
@@ -134,6 +172,12 @@ export const issues = sqliteTable(
 
 // ─── Triage State ─────────────────────────────────────────
 
+/**
+ * Per-user triage decisions for each issue.
+ * Stores priority, snooze, dismiss state, and pending batch changes.
+ * `pendingChanges` is a JSON blob holding label/assignee/state diffs
+ * that haven't been pushed to the provider yet (batch mode).
+ */
 export const triageState = sqliteTable(
   "triage_state",
   {
@@ -165,6 +209,10 @@ export const triageState = sqliteTable(
 
 // ─── Sync Log ─────────────────────────────────────────────
 
+/**
+ * Audit trail for sync operations. Each row tracks a single repo sync attempt,
+ * recording status ("started" | "completed" | "failed"), issue count, and timing.
+ */
 export const syncLog = sqliteTable(
   "sync_log",
   {

@@ -1,3 +1,4 @@
+/** Playwright E2E test configuration -- runs tests/e2e/ against localhost:3000 with Chromium. */
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({

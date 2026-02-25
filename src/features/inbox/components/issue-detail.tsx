@@ -1,3 +1,11 @@
+/**
+ * @module inbox/components/issue-detail
+ *
+ * Right-pane component that renders the full details of the currently selected issue.
+ * Includes: header with state/number/snooze badge, priority buttons, triage action
+ * buttons (dismiss, labels, assignees, snooze), label/assignee chips, and the
+ * rendered Markdown body.
+ */
 "use client";
 
 import Markdown from "react-markdown";
@@ -18,6 +26,7 @@ interface IssueDetailProps {
   onClose: () => void;
 }
 
+/** Priority button options mapping P0-P3 to colors and keyboard shortcut keys. */
 const priorityOptions = [
   {
     value: 0,
@@ -45,6 +54,10 @@ const priorityOptions = [
   },
 ];
 
+/**
+ * Formats a date string into a human-readable relative time (e.g., "5m ago", "2d ago").
+ * @param dateStr - ISO date string.
+ */
 function timeAgo(dateStr: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
@@ -60,6 +73,10 @@ function timeAgo(dateStr: string): string {
   return `${diffMonths}mo ago`;
 }
 
+/**
+ * Formats a snooze expiry into remaining time (e.g., "3h", "2d").
+ * @param isoStr - ISO date string for the snooze-until timestamp.
+ */
 function snoozeTimeLeft(isoStr: string): string {
   const diffMs = new Date(isoStr).getTime() - Date.now();
   if (diffMs <= 0) return "expired";
@@ -71,6 +88,10 @@ function snoozeTimeLeft(isoStr: string): string {
   return `${diffDays}d`;
 }
 
+/**
+ * Renders the full detail view for a single issue including triage controls.
+ * Shows an empty-state prompt when no issue is selected.
+ */
 export function IssueDetail({ issue, onClose }: IssueDetailProps) {
   const triage = useTriageMutation();
   const { setLabelPickerOpen, setAssigneePickerOpen, setSnoozePickerOpen } = useKeyboardStore();

@@ -1,3 +1,9 @@
+/**
+ * @module app/(app)/repos/page
+ * Repository management page. Displays a heading and description, then renders
+ * the {@link RepoManager} component where users can connect, disconnect, and
+ * configure GitHub and GitLab repositories for issue syncing.
+ */
 import { RepoManager } from "@/features/repos/components/repo-manager";
 
 export default function ReposPage() {

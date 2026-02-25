@@ -1,3 +1,9 @@
+/**
+ * @module app/layout
+ * Root layout for the SnapTriage application. Configures global fonts (Geist Sans
+ * and Geist Mono), sets base metadata/OpenGraph tags, provides a skip-to-content
+ * accessibility link, and wraps all pages in the client {@link Providers} stack.
+ */
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";

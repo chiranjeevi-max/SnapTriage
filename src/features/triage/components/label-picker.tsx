@@ -1,3 +1,9 @@
+/**
+ * @module triage/components/label-picker
+ * Command-palette dialog for searching, viewing, and toggling labels on an issue.
+ * Renders a searchable list of all labels available on the issue's repository,
+ * with check marks indicating which labels are currently applied.
+ */
 "use client";
 
 import { Check } from "lucide-react";
@@ -14,6 +20,14 @@ import { useRepoLabels } from "../use-repo-labels";
 import { useTriageMutation } from "../use-triage-mutation";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
+/**
+ * Props for the {@link LabelPicker} component.
+ *
+ * @property open - Whether the command dialog is open.
+ * @property onOpenChange - Callback to toggle the dialog open/closed.
+ * @property issue - The issue whose labels are being edited, or `null` if none.
+ * @property batch - When `true`, stages the label change for batch push.
+ */
 interface LabelPickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -21,6 +35,14 @@ interface LabelPickerProps {
   batch?: boolean;
 }
 
+/**
+ * Searchable command dialog for toggling labels on an issue.
+ * Fetches available labels from the repo and uses {@link useTriageMutation}
+ * to apply or remove labels. Supports both live and batch modes.
+ *
+ * @param props - {@link LabelPickerProps}
+ * @returns The label picker dialog, or `null` if no issue is provided.
+ */
 export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerProps) {
   const { data: labels, isLoading } = useRepoLabels(issue?.repoId);
   const triage = useTriageMutation();
@@ -29,6 +51,11 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
 
   const currentLabels = new Set(issue.labels);
 
+  /**
+   * Toggle a label on or off for the current issue.
+   *
+   * @param labelName - The name of the label to toggle.
+   */
   function toggleLabel(labelName: string) {
     if (!issue) return;
     const isApplied = currentLabels.has(labelName);

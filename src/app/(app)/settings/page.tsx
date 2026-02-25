@@ -1,3 +1,10 @@
+/**
+ * @module app/(app)/settings/page
+ * Settings page for SnapTriage. Provides UI sections for theme selection
+ * (light/dark/system), per-repository sync configuration (auto-sync toggle
+ * and live vs. batch sync mode), connected OAuth/PAT accounts overview,
+ * and a keyboard shortcuts reference card.
+ */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -25,6 +32,11 @@ interface ConnectedAccount {
   type: string;
 }
 
+/**
+ * Settings page component that fetches connected repos and accounts on mount,
+ * and allows the user to configure appearance, sync behaviour, and view
+ * connected accounts and keyboard shortcuts.
+ */
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [repos, setRepos] = useState<ConnectedRepo[]>([]);

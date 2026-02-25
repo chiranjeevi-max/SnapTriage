@@ -1,5 +1,15 @@
+/**
+ * @module keyboard/components/kbd
+ *
+ * Styled `<kbd>` element for displaying keyboard shortcut keys.
+ * Used in tooltips and the shortcut overlay.
+ */
 import { cn } from "@/lib/utils";
 
+/**
+ * Inline keyboard key badge (e.g., displays "J", "?", "Enter").
+ * Renders as a bordered, monospace chip matching shadcn/ui theme tokens.
+ */
 export function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <kbd

@@ -1,6 +1,21 @@
+/**
+ * @module /api/auth/token
+ *
+ * Validates a Personal Access Token (PAT) against GitHub or GitLab.
+ *
+ * - **Endpoint:** `/api/auth/token`
+ * - **HTTP Methods:** POST
+ * - **Auth:** Public — used during PAT-based sign-in flow
+ */
 import { NextResponse } from "next/server";
 import { validateToken, type TokenProvider } from "@/features/auth/validate-token";
 
+/**
+ * Validates a provider PAT and returns the associated user info.
+ *
+ * @param req - Request with JSON body `{ token: string; provider: "github" | "gitlab" }`
+ * @returns JSON `{ valid: true, user }` on success, or an error with 400/401 status
+ */
 export async function POST(req: Request) {
   try {
     const body = await req.json();

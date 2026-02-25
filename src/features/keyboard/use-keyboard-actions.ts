@@ -1,3 +1,12 @@
+/**
+ * @module keyboard/use-keyboard-actions
+ *
+ * Maps shortcut IDs to concrete triage and navigation actions.
+ *
+ * Returns a memoized callback `(shortcutId: string) => void` that dispatches
+ * to the appropriate store action, triage mutation, or sync trigger based
+ * on the matched shortcut.
+ */
 "use client";
 
 import { useCallback } from "react";

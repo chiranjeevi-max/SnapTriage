@@ -1,5 +1,15 @@
+/**
+ * @module inbox/use-issues
+ *
+ * TanStack Query hooks for fetching and managing issue data from the API.
+ *
+ * - {@link useIssues} — Polls `/api/issues` every 5 minutes with optional repo/state filters
+ * - {@link useSync} — Triggers a manual sync and invalidates issue + status queries on success
+ * - {@link useSyncStatus} — Polls `/api/sync/status` every minute for last-sync timestamps
+ */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
+/** Issue record joined with its per-user triage state (nullable when untriaged). */
 export interface IssueWithTriage {
   id: string;
   repoId: string;
@@ -25,8 +35,15 @@ export interface IssueWithTriage {
   } | null;
 }
 
+/** Default polling interval for issue refetching (5 minutes). */
 const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Fetches issues from the API with automatic 5-minute polling.
+ * @param repoId - Optional repo filter; omit for all connected repos.
+ * @param state - Issue state filter (default "open").
+ * @returns TanStack Query result containing the issue list.
+ */
 export function useIssues(repoId?: string, state: string = "open") {
   const params = new URLSearchParams({ state });
   if (repoId) params.set("repoId", repoId);
@@ -42,6 +59,11 @@ export function useIssues(repoId?: string, state: string = "open") {
   });
 }
 
+/**
+ * Mutation hook that triggers a manual sync via `POST /api/sync`.
+ * Invalidates both issue and sync-status queries on success so the UI refreshes.
+ * @returns TanStack Mutation with `mutate(repoId?)`.
+ */
 export function useSync() {
   const queryClient = useQueryClient();
 
@@ -62,12 +84,17 @@ export function useSync() {
   });
 }
 
+/** Per-repo sync status entry returned by the sync status API. */
 interface SyncStatusEntry {
   repoId: string;
   fullName: string;
   lastSyncedAt: string | null;
 }
 
+/**
+ * Polls sync status for all connected repos (1-minute interval).
+ * Used by {@link SyncStatus} to show last-synced timestamps in the UI.
+ */
 export function useSyncStatus() {
   return useQuery<SyncStatusEntry[]>({
     queryKey: ["sync-status"],

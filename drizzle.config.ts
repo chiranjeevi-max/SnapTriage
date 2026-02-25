@@ -1,3 +1,4 @@
+/** Drizzle Kit configuration -- selects SQLite (default) or PostgreSQL based on DATABASE_URL. */
 import { defineConfig } from "drizzle-kit";
 
 const isSqlite = !process.env.DATABASE_URL;

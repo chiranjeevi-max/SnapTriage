@@ -1,3 +1,15 @@
+/**
+ * @module tests/unit/pending-changes
+ *
+ * Unit tests for {@link mergePendingChanges}.
+ * Validates correct merging of triage payloads including:
+ * - Priority set/clear/override
+ * - Label add/remove with cancellation of conflicting operations
+ * - Multi-step label change sequences
+ * - Assignee add/remove with cancellation
+ * - Dismissed and snoozedUntil flags
+ * - Preservation of unrelated fields during merge
+ */
 import { describe, it, expect } from "vitest";
 import { mergePendingChanges, type PendingChanges } from "@/features/triage/types";
 

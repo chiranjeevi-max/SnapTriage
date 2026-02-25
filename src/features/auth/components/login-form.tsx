@@ -1,3 +1,13 @@
+/**
+ * @module auth/components/login-form
+ *
+ * Login page component providing two authentication paths:
+ * 1. **OAuth** — One-click buttons for GitHub and GitLab
+ * 2. **PAT** — Manual Personal Access Token entry with provider toggle
+ *
+ * The PAT flow validates the token server-side via `/api/auth/token`
+ * before initiating a Credentials sign-in.
+ */
 "use client";
 
 import { useState } from "react";
@@ -9,12 +19,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 
+/**
+ * Full-page login form with OAuth and PAT sign-in options.
+ * Manages its own loading/error state for the PAT validation flow.
+ */
 export function LoginForm() {
   const [token, setToken] = useState("");
   const [provider, setProvider] = useState<"github" | "gitlab">("github");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** Validates the PAT server-side, then initiates a Credentials sign-in. */
   async function handleTokenSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!token.trim()) return;
@@ -127,6 +142,7 @@ export function LoginForm() {
   );
 }
 
+/** Inline GitLab logo SVG (lucide-react doesn't include a GitLab icon). */
 function GitLabIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
