@@ -13,6 +13,8 @@ import type {
   ProviderLabel,
   ProviderCollaborator,
 } from "@/lib/provider-interface";
+import { ProviderApiError } from "@/lib/provider-error";
+import { providerLogger } from "@/lib/logger";
 
 /** GitHub REST API base URL. */
 const GITHUB_API = "https://api.github.com";
@@ -89,7 +91,19 @@ export const githubProvider: IssueProvider = {
 
       const res = await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/issues?${params}`, token);
 
-      if (!res.ok) break;
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        providerLogger.warn(
+          { status: res.status, owner, repo, page },
+          "GitHub fetchIssues page failed"
+        );
+        throw new ProviderApiError(res.status, body, {
+          provider: "github",
+          operation: "fetchIssues",
+          owner,
+          repo,
+        });
+      }
 
       const data = await res.json();
       if (data.length === 0) break;

@@ -14,6 +14,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import type { AvailableRepo } from "../fetch-available-repos";
 
@@ -123,9 +134,28 @@ export function RepoManager() {
                       <PermissionBadge permission={repo.permission} />
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => handleDisconnect(repo.id)}>
-                    <Trash2 className="h-4 w-4 text-muted-foreground" />
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Disconnect {repo.fullName}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will remove all cached issues and triage state for this
+                          repository. You can reconnect it later, but triage data will be lost.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDisconnect(repo.id)}>
+                          Disconnect
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               ))}
             </div>
