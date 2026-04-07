@@ -5,9 +5,10 @@
  *
  * Token lookup order:
  * 1. OAuth `access_token` from the `accounts` table (set during OAuth sign-in)
+ *    — skipped if the token has expired (checked via `expires_at`)
  * 2. Personal Access Token from the `accessTokens` table (set during PAT sign-in)
  *
- * Returns `null` if neither source has a token for the given provider.
+ * Returns `null` if neither source has a valid token for the given provider.
  */
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -15,7 +16,9 @@ import { accounts, accessTokens } from "@/lib/db/schema";
 
 /**
  * Retrieves the user's access token for the specified provider.
- * Prefers OAuth tokens over PATs since OAuth tokens may have broader scopes.
+ * Prefers OAuth tokens over PATs since OAuth tokens may have broader scopes,
+ * but skips OAuth tokens that have expired.
+ *
  * @param userId - The authenticated user's ID.
  * @param provider - The Git provider to fetch a token for.
  * @returns The token string, or `null` if none is available.
@@ -32,7 +35,22 @@ export async function getProviderToken(
     .where(and(eq(accounts.userId, userId), eq(accounts.provider, provider)));
 
   if (oauthAccounts.length > 0 && oauthAccounts[0].access_token) {
-    return oauthAccounts[0].access_token;
+    const account = oauthAccounts[0];
+
+    // Check if the OAuth token has expired
+    if (account.expires_at) {
+      const expiresAtMs = account.expires_at * 1000; // expires_at is in seconds
+      const now = Date.now();
+      const bufferMs = 5 * 60 * 1000; // 5-minute buffer to avoid edge-case expiry
+
+      if (now < expiresAtMs - bufferMs) {
+        return account.access_token;
+      }
+      // Token expired — fall through to PAT
+    } else {
+      // No expiration set — token is long-lived (e.g., GitHub classic tokens)
+      return account.access_token;
+    }
   }
 
   // Fall back to PAT

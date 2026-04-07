@@ -10,25 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/features/keyboard";
 import { useSyncStatus, useSync } from "@/features/inbox/use-issues";
+import { formatRelativeTime } from "@/lib/utils";
 
-/**
- * Format an ISO date string into a human-readable relative time
- * (e.g., "Just synced", "5m ago", "2h ago", "3d ago").
- *
- * @param isoStr - ISO 8601 date string of the last sync, or `null` if never synced.
- * @returns A human-readable string describing how long ago the sync occurred.
- */
-function formatSyncTime(isoStr: string | null): string {
-  if (!isoStr) return "Never synced";
-  const diffMs = Date.now() - new Date(isoStr).getTime();
-  const diffMins = Math.floor(diffMs / 60_000);
-  if (diffMins < 1) return "Just synced";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-}
+/** Formats last sync time using the shared utility, with sync-specific labels. */
+const formatSyncTime = (isoStr: string | null) =>
+  formatRelativeTime(isoStr, { suffix: true, nowLabel: "Just synced" });
 
 /**
  * Sync status indicator and manual refresh button.

@@ -10,18 +10,20 @@
  * - **Query params:**
  *   - `repoId` (optional) — filter issues to a specific repo
  *   - `state` (optional, default `"open"`) — issue state filter
+ *   - `hideDismissed` (optional) — hide dismissed issues when `"true"`
  */
 import { NextResponse } from "next/server";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { issues, repos, triageState } from "@/lib/db/schema";
 
 /**
  * Fetches issues belonging to the current user's connected repos.
- * Attaches each issue's triage state and orders results by most recently updated.
+ * Uses a targeted triage lookup (filtered by matching issue IDs)
+ * instead of scanning the entire triage table.
  *
- * @param req - Incoming request; query params `repoId` and `state` are read from the URL
+ * @param req - Incoming request; query params `repoId`, `state`, `hideDismissed` are read from the URL
  * @returns JSON array of issue objects, each augmented with a `triage` property (or `null`)
  */
 export async function GET(req: Request) {
@@ -33,6 +35,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const repoId = searchParams.get("repoId");
   const state = searchParams.get("state") ?? "open";
+  const hideDismissed = searchParams.get("hideDismissed") === "true";
 
   // Get user's connected repo IDs
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,16 +44,19 @@ export async function GET(req: Request) {
     .from(repos)
     .where(eq(repos.userId, session.user.id));
 
-  const repoIds = new Set(userRepos.map((r: { id: string }) => r.id));
-  if (repoIds.size === 0) {
+  const repoIds: string[] = userRepos.map((r: { id: string }) => r.id);
+  if (repoIds.length === 0) {
     return NextResponse.json([]);
   }
 
-  // Fetch issues — filter by repo if specified
-  let conditions = eq(issues.state, state);
-  if (repoId && repoIds.has(repoId)) {
-    conditions = and(conditions, eq(issues.repoId, repoId))!;
-  }
+  // Build conditions — always filter by state and user's repos
+  const repoIdSet = new Set(repoIds);
+  let conditions = and(
+    eq(issues.state, state),
+    repoId && repoIdSet.has(repoId)
+      ? eq(issues.repoId, repoId)
+      : inArray(issues.repoId, repoIds)
+  )!;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const issueRows = await (db as any)
@@ -59,28 +65,40 @@ export async function GET(req: Request) {
     .where(conditions)
     .orderBy(desc(issues.updatedAt));
 
-  // Filter to only user's repos (security check)
-  const filtered = issueRows.filter((i: { repoId: string }) => repoIds.has(i.repoId));
+  if (issueRows.length === 0) {
+    return NextResponse.json([]);
+  }
 
-  // Attach triage state for each issue
-  const issueIds = filtered.map((i: { id: string }) => i.id);
+  // Fetch triage state only for the matching issue IDs (not entire table)
+  const issueIds: string[] = issueRows.map((i: { id: string }) => i.id);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const triageRows = await (db as any)
     .select()
     .from(triageState)
-    .where(eq(triageState.userId, session.user.id));
+    .where(
+      and(
+        eq(triageState.userId, session.user.id),
+        inArray(triageState.issueId, issueIds)
+      )
+    );
 
   const triageMap = new Map<string, (typeof triageRows)[0]>();
   for (const t of triageRows) {
-    if (issueIds.includes(t.issueId)) {
-      triageMap.set(t.issueId, t);
-    }
+    triageMap.set(t.issueId, t);
   }
 
-  const result = filtered.map((issue: Record<string, unknown>) => ({
+  let result = issueRows.map((issue: Record<string, unknown>) => ({
     ...issue,
     triage: triageMap.get(issue.id as string) ?? null,
   }));
+
+  // Filter out dismissed issues if requested
+  if (hideDismissed) {
+    result = result.filter(
+      (r: { triage: { dismissed: boolean } | null }) => !r.triage?.dismissed
+    );
+  }
 
   return NextResponse.json(result);
 }

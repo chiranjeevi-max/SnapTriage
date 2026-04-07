@@ -18,6 +18,7 @@ import { issues, repos, triageState } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { mergePendingChanges, type PendingChanges } from "@/features/triage/types";
+import { triagePatchSchema, parseBody } from "@/lib/validations";
 
 /**
  * Applies triage updates to a single issue.
@@ -30,7 +31,7 @@ import { mergePendingChanges, type PendingChanges } from "@/features/triage/type
  * @param req - Request with JSON body containing any combination of:
  *   `{ priority?, snoozedUntil?, dismissed?, labels?, assignees?, state?, batch? }`
  * @param params - Dynamic route params containing `id` (the issue's DB primary key)
- * @returns JSON `{ ok: true }` on success, or an error with 401/403/404 status
+ * @returns JSON `{ ok: true }` on success, or an error with 400/401/403/404 status
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -39,8 +40,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const { id } = await params;
-  const body = await req.json();
-  const { priority, snoozedUntil, dismissed, labels, assignees, state, batch } = body;
+  const rawBody = await req.json();
+  const parsed = parseBody(triagePatchSchema, rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+  const { priority, snoozedUntil, dismissed, labels, assignees, state, batch } = parsed.data;
 
   // Verify issue belongs to user's repo
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

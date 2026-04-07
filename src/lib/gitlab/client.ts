@@ -109,6 +109,7 @@ export const gitlabProvider: IssueProvider = {
    * Applies triage changes to a GitLab issue.
    * Unlike GitHub, GitLab requires full label replacement and user ID resolution
    * for assignees, so this method fetches current issue state before updating.
+   * Fetches the issue only once even when both labels and assignees change.
    * @param owner - Project namespace.
    * @param repo - Project name.
    * @param issueNumber - The issue IID on GitLab.
@@ -124,52 +125,50 @@ export const gitlabProvider: IssueProvider = {
       params.state_event = changes.state === "open" ? "reopen" : "close";
     }
 
-    // GitLab sets labels as a full replacement, so we need to fetch current labels first
-    if (changes.labels?.add?.length || changes.labels?.remove?.length) {
+    const needsLabels = !!(changes.labels?.add?.length || changes.labels?.remove?.length);
+    const needsAssignees = !!(changes.assignees?.add?.length || changes.assignees?.remove?.length);
+
+    // Fetch current issue state once if needed for labels or assignees
+    let currentIssue: Record<string, unknown> | null = null;
+    if (needsLabels || needsAssignees) {
       const issueRes = await fetch(`${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}`, {
         headers: headers(token),
       });
-
       if (issueRes.ok) {
-        const issue = await issueRes.json();
-        const currentLabels: string[] = issue.labels ?? [];
-        const newLabels = new Set(currentLabels);
-        for (const l of changes.labels?.add ?? []) newLabels.add(l);
-        for (const l of changes.labels?.remove ?? []) newLabels.delete(l);
-        params.labels = Array.from(newLabels).join(",");
+        currentIssue = await issueRes.json();
       }
     }
 
-    if (changes.assignees?.add?.length || changes.assignees?.remove?.length) {
-      // GitLab uses user IDs for assignees — for simplicity, we fetch user IDs by username
-      // This is a simplified approach; a full implementation would cache user IDs
+    // GitLab sets labels as a full replacement
+    if (needsLabels && currentIssue) {
+      const currentLabels: string[] = (currentIssue.labels as string[]) ?? [];
+      const newLabels = new Set(currentLabels);
+      for (const l of changes.labels?.add ?? []) newLabels.add(l);
+      for (const l of changes.labels?.remove ?? []) newLabels.delete(l);
+      params.labels = Array.from(newLabels).join(",");
+    }
+
+    if (needsAssignees && currentIssue) {
+      // GitLab uses user IDs for assignees — resolve usernames to IDs
+      const existingAssignees = new Set<string>(
+        ((currentIssue.assignees as Array<{ username: string }>) ?? []).map((a) => a.username)
+      );
+      for (const u of changes.assignees?.remove ?? []) existingAssignees.delete(u);
+      for (const u of changes.assignees?.add ?? []) existingAssignees.add(u);
+
+      // Resolve usernames to IDs
       const currentAssigneeIds: number[] = [];
-
-      const issueRes = await fetch(`${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}`, {
-        headers: headers(token),
-      });
-
-      if (issueRes.ok) {
-        const issue = await issueRes.json();
-        const existingAssignees = new Set<string>(
-          (issue.assignees ?? []).map((a: { username: string }) => a.username)
+      for (const username of existingAssignees) {
+        const userRes = await fetch(
+          `${baseUrl}/api/v4/users?username=${encodeURIComponent(username)}`,
+          { headers: headers(token) }
         );
-        for (const u of changes.assignees?.remove ?? []) existingAssignees.delete(u);
-        for (const u of changes.assignees?.add ?? []) existingAssignees.add(u);
-
-        // Resolve usernames to IDs
-        for (const username of existingAssignees) {
-          const userRes = await fetch(
-            `${baseUrl}/api/v4/users?username=${encodeURIComponent(username)}`,
-            { headers: headers(token) }
-          );
-          if (userRes.ok) {
-            const users = await userRes.json();
-            if (users.length > 0) currentAssigneeIds.push(users[0].id);
-          }
+        if (userRes.ok) {
+          const users = await userRes.json();
+          if (users.length > 0) currentAssigneeIds.push(users[0].id);
         }
-        params.assignee_ids = currentAssigneeIds.join(",");
       }
+      params.assignee_ids = currentAssigneeIds.join(",");
     }
 
     if (Object.keys(params).length > 0) {
