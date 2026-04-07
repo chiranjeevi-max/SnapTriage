@@ -8,7 +8,7 @@
  * client (cast to `any` to satisfy the SQLite/Neon union type).
  */
 import { eq, and } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { typedDb } from "@/lib/db/query";
 import { users, accessTokens } from "@/lib/db/schema";
 import { encrypt } from "@/lib/crypto";
 
@@ -18,8 +18,7 @@ import { encrypt } from "@/lib/crypto";
  * @returns The user record, or `null` if not found.
  */
 export async function findUserByEmail(email: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const results = await (db as any).select().from(users).where(eq(users.email, email));
+    const results = await typedDb.select().from(users).where(eq(users.email, email));
   return results[0] ?? null;
 }
 
@@ -33,8 +32,7 @@ export async function createUser(data: {
   email: string | null;
   image: string | null;
 }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).insert(users).values(data);
+    await typedDb.insert(users).values(data);
 }
 
 /**
@@ -43,8 +41,7 @@ export async function createUser(data: {
  * @param data - Fields to update (name, image).
  */
 export async function updateUser(id: string, data: { name: string; image: string | null }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).update(users).set(data).where(eq(users.id, id));
+    await typedDb.update(users).set(data).where(eq(users.id, id));
 }
 
 /**
@@ -61,15 +58,13 @@ export async function storeAccessToken(data: {
   label: string;
 }) {
   // Remove existing token for this user+provider pair (upsert)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any)
+    await typedDb
     .delete(accessTokens)
     .where(
       and(eq(accessTokens.userId, data.userId), eq(accessTokens.provider, data.provider))
     );
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).insert(accessTokens).values({
+    await typedDb.insert(accessTokens).values({
     ...data,
     token: encrypt(data.token),
   });

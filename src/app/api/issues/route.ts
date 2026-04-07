@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
+import { typedDb } from "@/lib/db/query";
 import { issues, repos, triageState } from "@/lib/db/schema";
 
 /**
@@ -38,8 +38,7 @@ export async function GET(req: Request) {
   const hideDismissed = searchParams.get("hideDismissed") === "true";
 
   // Get user's connected repo IDs
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const userRepos = await (db as any)
+    const userRepos = await typedDb
     .select({ id: repos.id })
     .from(repos)
     .where(eq(repos.userId, session.user.id));
@@ -58,8 +57,7 @@ export async function GET(req: Request) {
       : inArray(issues.repoId, repoIds)
   )!;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const issueRows = await (db as any)
+    const issueRows = await typedDb
     .select()
     .from(issues)
     .where(conditions)
@@ -72,8 +70,7 @@ export async function GET(req: Request) {
   // Fetch triage state only for the matching issue IDs (not entire table)
   const issueIds: string[] = issueRows.map((i: { id: string }) => i.id);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const triageRows = await (db as any)
+    const triageRows = await typedDb
     .select()
     .from(triageState)
     .where(

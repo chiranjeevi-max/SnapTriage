@@ -5,7 +5,7 @@
  * batch changes back to the provider. This module runs exclusively on the server.
  */
 import { eq, and } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { typedDb } from "@/lib/db/query";
 import { issues, repos, syncLog, triageState } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
@@ -41,8 +41,7 @@ interface SyncResult {
 export async function syncRepo(repoId: string, userId: string): Promise<SyncResult> {
   const logId = crypto.randomUUID();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const repoRows = await (db as any)
+    const repoRows = await typedDb
     .select()
     .from(repos)
     .where(and(eq(repos.id, repoId), eq(repos.userId, userId)));
@@ -53,25 +52,23 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
   syncLogger.info({ repoId, fullName: repo.fullName, provider: repo.provider }, "Sync started");
 
   // Log sync start
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).insert(syncLog).values({
+    await typedDb.insert(syncLog).values({
     id: logId,
     repoId,
     status: "started",
   });
 
   try {
-    const token = await getProviderToken(userId, repo.provider);
+    const token = await getProviderToken(userId, repo.provider as "github" | "gitlab");
     if (!token) throw new Error(`No ${repo.provider} token found`);
 
-    const provider = getProvider(repo.provider);
+    const provider = getProvider(repo.provider as "github" | "gitlab");
     const since = repo.lastSyncedAt ? new Date(repo.lastSyncedAt) : undefined;
     const fetched = await provider.fetchIssues(repo.owner, repo.name, token, since);
 
     // Upsert issues — batch approach to avoid N+1 queries
     // Pre-fetch all existing issues for this repo in one query
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const existingIssues = await (db as any)
+        const existingIssues = await typedDb
       .select({ id: issues.id, providerIssueId: issues.providerIssueId })
       .from(issues)
       .where(eq(issues.repoId, repoId));
@@ -111,15 +108,13 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
         createdAt: issue.createdAt,
         updatedAt: issue.updatedAt,
       }));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (db as any).insert(issues).values(insertValues);
+            await typedDb.insert(issues).values(insertValues);
     }
 
     // Update existing issues (still sequential because Drizzle doesn't support
     // batch UPDATE with different values per row, but this is typically a smaller set)
     for (const { existingId, issue } of toUpdate) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (db as any)
+            await typedDb
         .update(issues)
         .set({
           title: issue.title,
@@ -137,12 +132,10 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
     }
 
     // Update repo lastSyncedAt
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db as any).update(repos).set({ lastSyncedAt: new Date() }).where(eq(repos.id, repoId));
+        await typedDb.update(repos).set({ lastSyncedAt: new Date() }).where(eq(repos.id, repoId));
 
     // Log sync completion
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db as any)
+        await typedDb
       .update(syncLog)
       .set({ status: "completed", issuesFetched: fetched.length, completedAt: new Date() })
       .where(eq(syncLog.id, logId));
@@ -158,8 +151,7 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
 
     syncLogger.error({ repoId, fullName: repo.fullName, error: errorMsg }, "Sync failed");
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db as any)
+        await typedDb
       .update(syncLog)
       .set({ status: "failed", error: errorMsg, completedAt: new Date() })
       .where(eq(syncLog.id, logId));
@@ -179,8 +171,7 @@ export async function syncAllRepos(userId: string): Promise<SyncResult[]> {
   const { default: pLimit } = await import("p-limit");
   const limit = pLimit(SYNC_CONCURRENCY);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const userRepos = await (db as any)
+    const userRepos = await typedDb
     .select()
     .from(repos)
     .where(and(eq(repos.userId, userId), eq(repos.syncEnabled, true)));
@@ -213,8 +204,7 @@ export async function pushBatchChanges(
   userId: string
 ): Promise<{ pushed: number; failed: number }> {
   // Find all batch-pending triage rows for this user
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pendingRows = await (db as any)
+    const pendingRows = await typedDb
     .select()
     .from(triageState)
     .where(and(eq(triageState.userId, userId), eq(triageState.batchPending, true)));
@@ -230,8 +220,7 @@ export async function pushBatchChanges(
       // Skip if no provider changes to push
       if (Object.keys(issueUpdate).length === 0) {
         // Just clear the batch pending flag
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (db as any)
+                await typedDb
           .update(triageState)
           .set({ batchPending: false, pendingChanges: {}, updatedAt: new Date() })
           .where(eq(triageState.id, row.id));
@@ -240,29 +229,27 @@ export async function pushBatchChanges(
       }
 
       // Get the issue and repo
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const issueRows = await (db as any).select().from(issues).where(eq(issues.id, row.issueId));
+            const issueRows = await typedDb.select().from(issues).where(eq(issues.id, row.issueId));
       const issue = issueRows[0];
       if (!issue) {
         failed++;
         continue;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const repoRows = await (db as any).select().from(repos).where(eq(repos.id, issue.repoId));
+            const repoRows = await typedDb.select().from(repos).where(eq(repos.id, issue.repoId));
       const repo = repoRows[0];
       if (!repo) {
         failed++;
         continue;
       }
 
-      const token = await getProviderToken(userId, repo.provider);
+      const token = await getProviderToken(userId, repo.provider as "github" | "gitlab");
       if (!token) {
         failed++;
         continue;
       }
 
-      const provider = getProvider(repo.provider);
+      const provider = getProvider(repo.provider as "github" | "gitlab");
       await provider.updateIssue(repo.owner, repo.name, issue.number, token, issueUpdate);
 
       // Update local issues table
@@ -283,13 +270,11 @@ export async function pushBatchChanges(
         localUpdate.state = changes.state;
       }
       if (Object.keys(localUpdate).length > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (db as any).update(issues).set(localUpdate).where(eq(issues.id, row.issueId));
+                await typedDb.update(issues).set(localUpdate).where(eq(issues.id, row.issueId));
       }
 
       // Clear batch pending
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (db as any)
+            await typedDb
         .update(triageState)
         .set({ batchPending: false, pendingChanges: {}, updatedAt: new Date() })
         .where(eq(triageState.id, row.id));

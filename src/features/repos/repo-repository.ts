@@ -5,7 +5,7 @@
  * All functions scope queries to a specific `userId` for multi-tenant safety.
  */
 import { eq, and } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { typedDb } from "@/lib/db/query";
 import { repos } from "@/lib/db/schema";
 
 /**
@@ -14,8 +14,7 @@ import { repos } from "@/lib/db/schema";
  * @returns Array of repo records.
  */
 export async function getConnectedRepos(userId: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (db as any).select().from(repos).where(eq(repos.userId, userId));
+    return typedDb.select().from(repos).where(eq(repos.userId, userId));
 }
 
 /**
@@ -32,8 +31,7 @@ export async function connectRepo(data: {
   permission: string;
 }) {
   const id = crypto.randomUUID();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).insert(repos).values({ id, ...data });
+    await typedDb.insert(repos).values({ id, ...data });
   return id;
 }
 
@@ -43,8 +41,7 @@ export async function connectRepo(data: {
  * @param userId - The user's ID (ownership guard).
  */
 export async function disconnectRepo(id: string, userId: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).delete(repos).where(and(eq(repos.id, id), eq(repos.userId, userId)));
+    await typedDb.delete(repos).where(and(eq(repos.id, id), eq(repos.userId, userId)));
 }
 
 /**
@@ -56,8 +53,7 @@ export async function disconnectRepo(id: string, userId: string) {
  * @returns The repo record, or `null` if not found.
  */
 export async function findConnectedRepo(userId: string, provider: string, fullName: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const results = await (db as any)
+    const results = await typedDb
     .select()
     .from(repos)
     .where(
@@ -77,8 +73,7 @@ export async function updateRepo(
   userId: string,
   data: { syncMode?: string; syncEnabled?: boolean }
 ) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any)
+    await typedDb
     .update(repos)
     .set(data)
     .where(and(eq(repos.id, id), eq(repos.userId, userId)));

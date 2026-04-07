@@ -11,7 +11,7 @@
  * Returns `null` if neither source has a valid token for the given provider.
  */
 import { eq, and } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { typedDb } from "@/lib/db/query";
 import { accounts, accessTokens } from "@/lib/db/schema";
 import { decrypt } from "@/lib/crypto";
 
@@ -29,8 +29,7 @@ export async function getProviderToken(
   provider: "github" | "gitlab"
 ): Promise<string | null> {
   // Check OAuth account first
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const oauthAccounts = await (db as any)
+    const oauthAccounts = await typedDb
     .select()
     .from(accounts)
     .where(and(eq(accounts.userId, userId), eq(accounts.provider, provider)));
@@ -55,8 +54,7 @@ export async function getProviderToken(
   }
 
   // Fall back to PAT
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pats = await (db as any)
+    const pats = await typedDb
     .select()
     .from(accessTokens)
     .where(and(eq(accessTokens.userId, userId), eq(accessTokens.provider, provider)));

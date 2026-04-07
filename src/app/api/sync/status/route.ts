@@ -11,7 +11,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
+import { typedDb } from "@/lib/db/query";
 import { repos } from "@/lib/db/schema";
 
 /**
@@ -25,8 +25,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const userRepos = await (db as any)
+    const userRepos = await typedDb
     .select({
       id: repos.id,
       fullName: repos.fullName,
