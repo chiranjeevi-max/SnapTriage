@@ -17,6 +17,8 @@ import type {
   ProviderLabel,
   ProviderCollaborator,
 } from "@/lib/provider-interface";
+import { ProviderApiError } from "@/lib/provider-error";
+import { providerLogger } from "@/lib/logger";
 
 /**
  * Returns the GitLab instance base URL.
@@ -76,7 +78,19 @@ export const gitlabProvider: IssueProvider = {
         headers: headers(token),
       });
 
-      if (!res.ok) break;
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        providerLogger.warn(
+          { status: res.status, owner, repo, page },
+          "GitLab fetchIssues page failed"
+        );
+        throw new ProviderApiError(res.status, body, {
+          provider: "gitlab",
+          operation: "fetchIssues",
+          owner,
+          repo,
+        });
+      }
 
       const data = await res.json();
       if (data.length === 0) break;

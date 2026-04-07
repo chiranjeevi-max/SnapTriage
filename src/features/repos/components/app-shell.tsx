@@ -7,9 +7,9 @@
  */
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Inbox, FolderGit2, Settings, Github, Keyboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "@/features/auth/components/user-menu";
@@ -36,24 +36,17 @@ const navItems = [
 
 /**
  * Application shell with sidebar navigation, connected repos, and user menu.
- * Fetches connected repos on every route change to keep the sidebar current.
+ * Uses TanStack Query to cache connected repos for efficient sidebar rendering.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [repos, setRepos] = useState<ConnectedRepo[]>([]);
   const toggleOverlay = useKeyboardStore((s) => s.toggleOverlay);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/repos")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
-        if (!cancelled) setRepos(data);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname]);
+  const { data: repos = [] } = useQuery<ConnectedRepo[]>({
+    queryKey: ["connected-repos"],
+    queryFn: () => fetch("/api/repos").then((res) => (res.ok ? res.json() : [])),
+    staleTime: 60_000,
+  });
 
   return (
     <div className="flex h-screen overflow-hidden">

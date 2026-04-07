@@ -10,6 +10,7 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, accessTokens } from "@/lib/db/schema";
+import { encrypt } from "@/lib/crypto";
 
 /**
  * Finds a user by their email address.
@@ -68,5 +69,8 @@ export async function storeAccessToken(data: {
     );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).insert(accessTokens).values(data);
+  await (db as any).insert(accessTokens).values({
+    ...data,
+    token: encrypt(data.token),
+  });
 }

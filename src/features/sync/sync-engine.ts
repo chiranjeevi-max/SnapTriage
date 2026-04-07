@@ -10,6 +10,10 @@ import { issues, repos, syncLog, triageState } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { payloadToIssueUpdate, type PendingChanges } from "@/features/triage/types";
+import { syncLogger } from "@/lib/logger";
+
+/** Maximum number of repos to sync in parallel. */
+const SYNC_CONCURRENCY = 3;
 
 /**
  * Result of syncing a single repository.
@@ -45,6 +49,8 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
 
   const repo = repoRows[0];
   if (!repo) return { repoId, status: "failed", issuesFetched: 0, error: "Repo not found" };
+
+  syncLogger.info({ repoId, fullName: repo.fullName, provider: repo.provider }, "Sync started");
 
   // Log sync start
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -141,9 +147,16 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
       .set({ status: "completed", issuesFetched: fetched.length, completedAt: new Date() })
       .where(eq(syncLog.id, logId));
 
+    syncLogger.info(
+      { repoId, fullName: repo.fullName, inserted: toInsert.length, updated: toUpdate.length, total: fetched.length },
+      "Sync completed"
+    );
+
     return { repoId, status: "completed", issuesFetched: fetched.length };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
+
+    syncLogger.error({ repoId, fullName: repo.fullName, error: errorMsg }, "Sync failed");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as any)
@@ -156,26 +169,35 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
 }
 
 /**
- * Sync all enabled repositories for a given user. Iterates through each
- * repo with `syncEnabled = true` and calls {@link syncRepo} sequentially.
+ * Sync all enabled repositories for a given user. Runs up to
+ * {@link SYNC_CONCURRENCY} repos in parallel using `p-limit`.
  *
  * @param userId - The ID of the authenticated user.
  * @returns An array of {@link SyncResult} objects, one per repository.
  */
 export async function syncAllRepos(userId: string): Promise<SyncResult[]> {
+  const { default: pLimit } = await import("p-limit");
+  const limit = pLimit(SYNC_CONCURRENCY);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const userRepos = await (db as any)
     .select()
     .from(repos)
     .where(and(eq(repos.userId, userId), eq(repos.syncEnabled, true)));
 
-  const results: SyncResult[] = [];
-  for (const repo of userRepos) {
-    const result = await syncRepo(repo.id, userId);
-    results.push(result);
-  }
+  syncLogger.info({ userId, repoCount: userRepos.length }, "Syncing all repos");
 
-  return results;
+  const results = await Promise.allSettled(
+    userRepos.map((repo: { id: string }) =>
+      limit(() => syncRepo(repo.id, userId))
+    )
+  );
+
+  return results.map((r) =>
+    r.status === "fulfilled"
+      ? r.value
+      : { repoId: "unknown", status: "failed" as const, issuesFetched: 0, error: String(r.reason) }
+  );
 }
 
 /**

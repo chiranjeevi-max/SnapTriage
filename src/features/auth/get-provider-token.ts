@@ -13,6 +13,7 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { accounts, accessTokens } from "@/lib/db/schema";
+import { decrypt } from "@/lib/crypto";
 
 /**
  * Retrieves the user's access token for the specified provider.
@@ -61,7 +62,7 @@ export async function getProviderToken(
     .where(and(eq(accessTokens.userId, userId), eq(accessTokens.provider, provider)));
 
   if (pats.length > 0) {
-    return pats[0].token;
+    return decrypt(pats[0].token);
   }
 
   return null;
