@@ -12,7 +12,7 @@ import { CircleDot, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { cn, formatRelativeTime } from "@/lib/utils";
 import type { IssueWithTriage } from "../use-issues";
 
 interface IssueListProps {
@@ -34,20 +34,8 @@ const priorityLabels: Record<number, { label: string; className: string }> = {
  * Compact relative time formatter for list items (e.g., "5m", "2h", "3d").
  * @param dateStr - ISO date string.
  */
-function timeAgo(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
-  const diffMins = Math.floor(diffMs / 60_000);
-  if (diffMins < 1) return "now";
-  if (diffMins < 60) return `${diffMins}m`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}d`;
-  const diffMonths = Math.floor(diffDays / 30);
-  return `${diffMonths}mo`;
-}
+/** @deprecated Use formatRelativeTime from @/lib/utils instead — kept as alias for readability. */
+const timeAgo = (dateStr: string) => formatRelativeTime(dateStr);
 
 /**
  * Scrollable issue list with loading skeletons and empty state.

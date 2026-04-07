@@ -7,7 +7,7 @@
  * and persist their tokens. All queries use Drizzle ORM with the shared `db`
  * client (cast to `any` to satisfy the SQLite/Neon union type).
  */
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, accessTokens } from "@/lib/db/schema";
 
@@ -48,6 +48,9 @@ export async function updateUser(id: string, data: { name: string; image: string
 
 /**
  * Stores a Personal Access Token for a user+provider pair.
+ * Upserts by removing any existing token for the same user+provider
+ * combination before inserting the new one, preventing duplicate accumulation.
+ *
  * @param data - Token details: userId, provider, token string, and display label.
  */
 export async function storeAccessToken(data: {
@@ -56,6 +59,14 @@ export async function storeAccessToken(data: {
   token: string;
   label: string;
 }) {
+  // Remove existing token for this user+provider pair (upsert)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (db as any)
+    .delete(accessTokens)
+    .where(
+      and(eq(accessTokens.userId, data.userId), eq(accessTokens.provider, data.provider))
+    );
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (db as any).insert(accessTokens).values(data);
 }

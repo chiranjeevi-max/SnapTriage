@@ -14,6 +14,7 @@ import {
   connectRepo,
   findConnectedRepo,
 } from "@/features/repos/repo-repository";
+import { connectRepoSchema, parseBody } from "@/lib/validations";
 
 /**
  * Lists all repositories the current user has connected to SnapTriage.
@@ -42,12 +43,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json();
-  const { provider, owner, name, fullName, permission } = body;
-
-  if (!provider || !owner || !name || !fullName) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  const rawBody = await req.json();
+  const parsed = parseBody(connectRepoSchema, rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
+  const { provider, owner, name, fullName, permission } = parsed.data;
 
   // Check if already connected
   const existing = await findConnectedRepo(session.user.id, provider, fullName);

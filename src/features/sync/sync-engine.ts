@@ -62,40 +62,60 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
     const since = repo.lastSyncedAt ? new Date(repo.lastSyncedAt) : undefined;
     const fetched = await provider.fetchIssues(repo.owner, repo.name, token, since);
 
-    // Upsert issues
-    for (const issue of fetched) {
-      // Check if issue already exists
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existing = await (db as any)
-        .select()
-        .from(issues)
-        .where(and(eq(issues.repoId, repoId), eq(issues.providerIssueId, issue.providerIssueId)));
+    // Upsert issues — batch approach to avoid N+1 queries
+    // Pre-fetch all existing issues for this repo in one query
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existingIssues = await (db as any)
+      .select({ id: issues.id, providerIssueId: issues.providerIssueId })
+      .from(issues)
+      .where(eq(issues.repoId, repoId));
 
-      if (existing.length > 0) {
-        // Update
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (db as any)
-          .update(issues)
-          .set({
-            title: issue.title,
-            body: issue.body,
-            author: issue.author,
-            authorAvatar: issue.authorAvatar,
-            state: issue.state,
-            labels: issue.labels,
-            assignees: issue.assignees,
-            url: issue.url,
-            updatedAt: issue.updatedAt,
-            fetchedAt: new Date(),
-          })
-          .where(eq(issues.id, existing[0].id));
+    const existingMap = new Map<string, string>();
+    for (const e of existingIssues) {
+      existingMap.set(e.providerIssueId, e.id);
+    }
+
+    const toInsert = [];
+    const toUpdate = [];
+
+    for (const issue of fetched) {
+      const existingId = existingMap.get(issue.providerIssueId);
+      if (existingId) {
+        toUpdate.push({ existingId, issue });
       } else {
-        // Insert
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (db as any).insert(issues).values({
-          repoId,
-          provider: repo.provider,
-          number: issue.number,
+        toInsert.push(issue);
+      }
+    }
+
+    // Batch insert new issues
+    if (toInsert.length > 0) {
+      const insertValues = toInsert.map((issue) => ({
+        repoId,
+        provider: repo.provider,
+        number: issue.number,
+        title: issue.title,
+        body: issue.body,
+        author: issue.author,
+        authorAvatar: issue.authorAvatar,
+        state: issue.state,
+        labels: issue.labels,
+        assignees: issue.assignees,
+        url: issue.url,
+        providerIssueId: issue.providerIssueId,
+        createdAt: issue.createdAt,
+        updatedAt: issue.updatedAt,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any).insert(issues).values(insertValues);
+    }
+
+    // Update existing issues (still sequential because Drizzle doesn't support
+    // batch UPDATE with different values per row, but this is typically a smaller set)
+    for (const { existingId, issue } of toUpdate) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any)
+        .update(issues)
+        .set({
           title: issue.title,
           body: issue.body,
           author: issue.author,
@@ -104,11 +124,10 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
           labels: issue.labels,
           assignees: issue.assignees,
           url: issue.url,
-          providerIssueId: issue.providerIssueId,
-          createdAt: issue.createdAt,
           updatedAt: issue.updatedAt,
-        });
-      }
+          fetchedAt: new Date(),
+        })
+        .where(eq(issues.id, existingId));
     }
 
     // Update repo lastSyncedAt

@@ -17,6 +17,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeyboardStore } from "@/features/keyboard";
+import { GitLabIcon } from "@/components/icons/gitlab-icon";
 
 /** Shape of a connected repo record returned by the repos API. */
 interface ConnectedRepo {
@@ -132,14 +133,5 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
     </div>
-  );
-}
-
-/** Inline GitLab logo SVG. */
-function GitLabIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M22.65 14.39 12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z" />
-    </svg>
   );
 }

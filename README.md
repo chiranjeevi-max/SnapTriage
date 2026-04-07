@@ -87,7 +87,7 @@ SQLite data is persisted in a Docker volume. See `.env.example` for all configur
 
 | Layer | Choice |
 |-------|--------|
-| Framework | Next.js 15 (App Router) + TypeScript |
+| Framework | Next.js 16 (App Router) + TypeScript |
 | Styling | Tailwind CSS 4 + shadcn/ui |
 | Database | SQLite (default) + Postgres via Drizzle ORM |
 | Auth | Auth.js — GitHub/GitLab OAuth + PAT fallback |

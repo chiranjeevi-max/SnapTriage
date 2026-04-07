@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, formatRelativeTime } from "@/lib/utils";
 import type { IssueWithTriage } from "../use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { useKeyboardStore, Kbd } from "@/features/keyboard";
@@ -58,20 +58,8 @@ const priorityOptions = [
  * Formats a date string into a human-readable relative time (e.g., "5m ago", "2d ago").
  * @param dateStr - ISO date string.
  */
-function timeAgo(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
-  const diffMins = Math.floor(diffMs / 60_000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}d ago`;
-  const diffMonths = Math.floor(diffDays / 30);
-  return `${diffMonths}mo ago`;
-}
+/** Formats an ISO date string into a compact relative time with "ago" suffix. */
+const timeAgo = (dateStr: string) => formatRelativeTime(dateStr, { suffix: true, nowLabel: "just now" });
 
 /**
  * Formats a snooze expiry into remaining time (e.g., "3h", "2d").

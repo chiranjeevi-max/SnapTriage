@@ -6,10 +6,13 @@
  * Returns a memoized callback `(shortcutId: string) => void` that dispatches
  * to the appropriate store action, triage mutation, or sync trigger based
  * on the matched shortcut.
+ *
+ * Uses refs for unstable dependencies (mutation objects) to avoid
+ * re-creating the callback on every render.
  */
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useKeyboardStore } from "./keyboard-store";
 import { useSync, type IssueWithTriage } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
@@ -31,9 +34,21 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
   const batchPush = useBatchPush();
   const popUndo = useUndoStore((s) => s.pop);
 
+  // Use refs for unstable dependencies (mutation objects that change identity each render)
+  const triageRef = useRef(triage);
+  triageRef.current = triage;
+  const syncRef = useRef(sync);
+  syncRef.current = sync;
+  const batchPushRef = useRef(batchPush);
+  batchPushRef.current = batchPush;
+  const issuesRef = useRef(issues);
+  issuesRef.current = issues;
+  const selectedIndexRef = useRef(selectedIndex);
+  selectedIndexRef.current = selectedIndex;
+
   return useCallback(
     (id: string) => {
-      const currentIssue = issues[selectedIndex] ?? null;
+      const currentIssue = issuesRef.current[selectedIndexRef.current] ?? null;
 
       switch (id) {
         case "move-down":
@@ -43,7 +58,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           moveSelection(-1);
           break;
         case "open-detail":
-          if (selectedIndex < 0 && issues.length > 0) {
+          if (selectedIndexRef.current < 0 && issuesRef.current.length > 0) {
             setSelectedIndex(0);
           }
           break;
@@ -58,7 +73,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           const priority = parseInt(id.split("-")[1]);
           const newPriority = currentIssue.triage?.priority === priority ? null : priority;
           const prevPriority = currentIssue.triage?.priority ?? null;
-          triage.mutate({
+          triageRef.current.mutate({
             issueId: currentIssue.id,
             payload: { priority: newPriority },
             previousPayload: { priority: prevPriority },
@@ -70,7 +85,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
         case "dismiss": {
           if (!currentIssue) break;
           const newDismissed = !currentIssue.triage?.dismissed;
-          triage.mutate({
+          triageRef.current.mutate({
             issueId: currentIssue.id,
             payload: { dismissed: newDismissed },
             previousPayload: { dismissed: !newDismissed },
@@ -93,7 +108,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
         case "undo": {
           const action = popUndo();
           if (action) {
-            triage.mutate({
+            triageRef.current.mutate({
               issueId: action.issueId,
               payload: action.previousPayload,
               previousPayload: action.payload,
@@ -103,10 +118,10 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           break;
         }
         case "batch-push":
-          batchPush.mutate();
+          batchPushRef.current.mutate();
           break;
         case "refresh":
-          sync.mutate(undefined);
+          syncRef.current.mutate(undefined);
           break;
         case "toggle-overlay":
           toggleOverlay();
@@ -114,17 +129,12 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
       }
     },
     [
-      issues,
-      selectedIndex,
       moveSelection,
       toggleOverlay,
       setSelectedIndex,
       setLabelPickerOpen,
       setAssigneePickerOpen,
       setSnoozePickerOpen,
-      triage,
-      sync,
-      batchPush,
       popUndo,
     ]
   );
