@@ -1,6 +1,6 @@
 # SnapTriage
 
-[![CI](https://github.com/your-org/snaptriage/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/snaptriage/actions/workflows/ci.yml)
+[![CI](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml/badge.svg)](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Keyboard-driven inbox for triaging GitHub & GitLab issues at speed.** Think "Superhuman for issue triage."
@@ -53,8 +53,8 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 ## Quick Start
 
 ```bash
-git clone https://github.com/your-org/snaptriage.git
-cd snaptriage
+git clone https://github.com/chiranjeevi-max/SnapTriage.git
+cd SnapTriage
 npm install
 cp .env.example .env.local
 # Edit .env.local with your GitHub/GitLab OAuth credentials
@@ -71,7 +71,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Requires a Postgres database (e.g. [Neon](https://neon.tech)) since SQLite is not compatible with serverless environments. Set `DATABASE_URL` in your environment variables.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyour-org%2Fsnaptriage&env=AUTH_SECRET,AUTH_GITHUB_ID,AUTH_GITHUB_SECRET&envDescription=Required%20environment%20variables&project-name=snaptriage)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fchiranjeevi-max%2Fsnaptriage&env=AUTH_SECRET,AUTH_GITHUB_ID,AUTH_GITHUB_SECRET&envDescription=Required%20environment%20variables&project-name=snaptriage)
 
 ### Docker
 

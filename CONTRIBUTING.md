@@ -7,8 +7,8 @@ Thanks for your interest in contributing to SnapTriage! This document provides g
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/your-username/snaptriage.git
-   cd snaptriage
+   git clone https://github.com/chiranjeevi-max/snaptriage.git
+   cd SnapTriage
    ```
 
 2. **Install dependencies**
