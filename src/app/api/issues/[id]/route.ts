@@ -13,7 +13,7 @@
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
+import { typedDb } from "@/lib/db/query";
 import { issues, repos, triageState } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
@@ -48,15 +48,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { priority, snoozedUntil, dismissed, labels, assignees, state, batch } = parsed.data;
 
   // Verify issue belongs to user's repo
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const issueRows = await (db as any).select().from(issues).where(eq(issues.id, id));
+    const issueRows = await typedDb.select().from(issues).where(eq(issues.id, id));
   const issue = issueRows[0];
   if (!issue) {
     return NextResponse.json({ error: "Issue not found" }, { status: 404 });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const repoRows = await (db as any)
+    const repoRows = await typedDb
     .select()
     .from(repos)
     .where(and(eq(repos.id, issue.repoId), eq(repos.userId, session.user.id)));
@@ -69,8 +67,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const isBatchMode = batch === true || repo.syncMode === "batch";
 
   // Get or create triage state
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const existingTriage = await (db as any)
+    const existingTriage = await typedDb
     .select()
     .from(triageState)
     .where(and(eq(triageState.issueId, id), eq(triageState.userId, session.user.id)));
@@ -86,11 +83,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (dismissed !== undefined) triageData.dismissed = dismissed;
 
     if (triageRow) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (db as any).update(triageState).set(triageData).where(eq(triageState.id, triageRow.id));
+            await typedDb.update(triageState).set(triageData).where(eq(triageState.id, triageRow.id));
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (db as any).insert(triageState).values({
+            await typedDb.insert(triageState).values({
         issueId: id,
         userId: session.user.id,
         ...triageData,
@@ -107,19 +102,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
       const batchData = {
         batchPending: true,
-        pendingChanges: merged,
+        pendingChanges: merged as Record<string, unknown>,
         updatedAt: new Date(),
       };
 
       if (triageRow) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (db as any)
+                await typedDb
           .update(triageState)
           .set(batchData)
           .where(eq(triageState.id, triageRow.id));
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (db as any).insert(triageState).values({
+                await typedDb.insert(triageState).values({
           issueId: id,
           userId: session.user.id,
           ...batchData,
@@ -127,9 +120,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     } else {
       // Live mode: write changes to provider immediately
-      const token = await getProviderToken(session.user.id, repo.provider);
+      const token = await getProviderToken(session.user.id, repo.provider as "github" | "gitlab");
       if (token) {
-        const provider = getProvider(repo.provider);
+        const provider = getProvider(repo.provider as "github" | "gitlab");
         await provider.updateIssue(repo.owner, repo.name, issue.number, token, {
           labels,
           assignees,
@@ -154,8 +147,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           issueUpdate.state = state;
         }
         if (Object.keys(issueUpdate).length > 0) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (db as any).update(issues).set(issueUpdate).where(eq(issues.id, id));
+                    await typedDb.update(issues).set(issueUpdate).where(eq(issues.id, id));
         }
       }
     }

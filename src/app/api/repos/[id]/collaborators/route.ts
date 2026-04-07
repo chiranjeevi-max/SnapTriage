@@ -10,7 +10,7 @@
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
+import { typedDb } from "@/lib/db/query";
 import { repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
@@ -31,8 +31,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const repoRows = await (db as any)
+    const repoRows = await typedDb
     .select()
     .from(repos)
     .where(and(eq(repos.id, id), eq(repos.userId, session.user.id)));
@@ -42,12 +41,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   const repo = repoRows[0];
-  const token = await getProviderToken(session.user.id, repo.provider);
+  const token = await getProviderToken(session.user.id, repo.provider as "github" | "gitlab");
   if (!token) {
     return NextResponse.json({ error: "No token" }, { status: 401 });
   }
 
-  const provider = getProvider(repo.provider);
+  const provider = getProvider(repo.provider as "github" | "gitlab");
   if (!provider.fetchCollaborators) {
     return NextResponse.json([]);
   }

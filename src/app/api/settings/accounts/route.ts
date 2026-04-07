@@ -11,7 +11,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
+import { typedDb } from "@/lib/db/query";
 import { accounts, accessTokens } from "@/lib/db/schema";
 
 /**
@@ -26,8 +26,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const oauthAccounts = await (db as any)
+    const oauthAccounts = await typedDb
     .select({
       provider: accounts.provider,
       providerAccountId: accounts.providerAccountId,
@@ -36,8 +35,7 @@ export async function GET() {
     .from(accounts)
     .where(eq(accounts.userId, session.user.id));
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pats = await (db as any)
+    const pats = await typedDb
     .select({
       provider: accessTokens.provider,
       label: accessTokens.label,
