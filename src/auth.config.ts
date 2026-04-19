@@ -26,7 +26,7 @@ export const authConfig = {
       clientSecret: process.env.AUTH_GITLAB_SECRET,
     }),
   ],
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 24 * 60 * 60 },
   pages: {
     signIn: "/login",
   },

@@ -18,6 +18,7 @@ import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/lib/db";
 import { accounts, sessions, users, verificationTokens } from "@/lib/db/schema";
 import { validateToken, type TokenProvider } from "@/features/auth/validate-token";
+import { encrypt } from "@/lib/crypto";
 import {
   findUserByEmail,
   createUser,
@@ -29,16 +30,30 @@ import { authConfig } from "./auth.config";
 // Cast `db` to any because DrizzleAdapter's type expects a specific Drizzle flavor
 // but our `db` is a union of SQLite | Neon clients.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const adapter = DrizzleAdapter(db as any, {
+const nativeAdapter = DrizzleAdapter(db as any, {
   usersTable: users,
   accountsTable: accounts,
   sessionsTable: sessions,
   verificationTokensTable: verificationTokens,
 });
 
+// Wrap native DrizzleAdapter to ensure standard OAuth tokens are encrypted at rest
+const adapter = {
+  ...nativeAdapter,
+  async linkAccount(account: any) {
+    if (account.access_token) {
+      account.access_token = encrypt(account.access_token);
+    }
+    if (account.refresh_token) {
+      account.refresh_token = encrypt(account.refresh_token);
+    }
+    return nativeAdapter.linkAccount!(account);
+  },
+};
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  adapter,
+  adapter: adapter as any,
   providers: [
     ...authConfig.providers,
     Credentials({
@@ -49,10 +64,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         provider: { label: "Provider", type: "text" },
       },
       async authorize(credentials) {
-        const token = credentials.token as string;
+        if (
+          !credentials?.token ||
+          typeof credentials.token !== "string" ||
+          credentials.token.length > 255 ||
+          !credentials.token.trim()
+        ) {
+          return null;
+        }
+
+        const token = credentials.token.trim();
         const provider = credentials.provider as TokenProvider;
 
-        if (!token || !provider) return null;
+        if (provider !== "github" && provider !== "gitlab") {
+          return null;
+        }
 
         try {
           const validatedUser = await validateToken(token, provider);
@@ -92,7 +118,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             email: validatedUser.email,
             image: validatedUser.image,
           };
-        } catch {
+        } catch (error) {
+          const errMessage = error instanceof Error ? error.message : "Unknown error";
+          console.error(`[Auth_Security] Failed PAT Auth for provider ${provider}: ${errMessage}`);
           return null;
         }
       },

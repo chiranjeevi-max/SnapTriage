@@ -44,12 +44,12 @@ export async function getProviderToken(
       const bufferMs = 5 * 60 * 1000; // 5-minute buffer to avoid edge-case expiry
 
       if (now < expiresAtMs - bufferMs) {
-        return account.access_token;
+        return decrypt(account.access_token as string);
       }
       // Token expired — fall through to PAT
     } else {
       // No expiration set — token is long-lived (e.g., GitHub classic tokens)
-      return account.access_token;
+      return decrypt(account.access_token as string);
     }
   }
 
