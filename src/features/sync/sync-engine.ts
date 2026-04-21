@@ -4,7 +4,7 @@
  * (GitHub/GitLab), upserting them into the local database, and pushing pending
  * batch changes back to the provider. This module runs exclusively on the server.
  */
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { issues, repos, syncLog, triageState } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
@@ -78,8 +78,8 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
       existingMap.set(e.providerIssueId, e.id);
     }
 
-    const toInsert = [];
-    const toUpdate = [];
+    const toInsert: any[] = [];
+    const toUpdate: { existingId: string; issue: any }[] = [];
 
     for (const issue of fetched) {
       const existingId = existingMap.get(issue.providerIssueId);
@@ -112,23 +112,27 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
     }
 
     // Update existing issues (still sequential because Drizzle doesn't support
-    // batch UPDATE with different values per row, but this is typically a smaller set)
-    for (const { existingId, issue } of toUpdate) {
-            await typedDb
-        .update(issues)
-        .set({
-          title: issue.title,
-          body: issue.body,
-          author: issue.author,
-          authorAvatar: issue.authorAvatar,
-          state: issue.state,
-          labels: issue.labels,
-          assignees: issue.assignees,
-          url: issue.url,
-          updatedAt: issue.updatedAt,
-          fetchedAt: new Date(),
-        })
-        .where(eq(issues.id, existingId));
+    // batch UPDATE with different values per row, but grouping them in a transaction is faster)
+    if (toUpdate.length > 0) {
+      await typedDb.transaction(async (tx) => {
+        for (const { existingId, issue } of toUpdate) {
+          await tx
+            .update(issues)
+            .set({
+              title: issue.title,
+              body: issue.body,
+              author: issue.author,
+              authorAvatar: issue.authorAvatar,
+              state: issue.state,
+              labels: issue.labels,
+              assignees: issue.assignees,
+              url: issue.url,
+              updatedAt: issue.updatedAt,
+              fetchedAt: new Date(),
+            })
+            .where(eq(issues.id, existingId));
+        }
+      });
     }
 
     // Update repo lastSyncedAt
@@ -204,86 +208,108 @@ export async function pushBatchChanges(
   userId: string
 ): Promise<{ pushed: number; failed: number }> {
   // Find all batch-pending triage rows for this user
-    const pendingRows = await typedDb
+  const pendingRows = await typedDb
     .select()
     .from(triageState)
     .where(and(eq(triageState.userId, userId), eq(triageState.batchPending, true)));
 
+  if (pendingRows.length === 0) return { pushed: 0, failed: 0 };
+
   let pushed = 0;
   let failed = 0;
 
-  for (const row of pendingRows) {
-    try {
-      const changes = (row.pendingChanges ?? {}) as PendingChanges;
-      const issueUpdate = payloadToIssueUpdate(changes);
+  // Pre-fetch related issues and repos to eliminate N+1 queries
+  const issueIds = pendingRows.map(r => r.issueId);
+  const fetchedIssues = await typedDb.select().from(issues).where(inArray(issues.id, issueIds));
+  const issueMap = new Map((fetchedIssues as any[]).map(i => [i.id, i]));
 
-      // Skip if no provider changes to push
-      if (Object.keys(issueUpdate).length === 0) {
-        // Just clear the batch pending flag
-                await typedDb
+  const repoIds = [...new Set(fetchedIssues.map((i: any) => i.repoId))];
+  const fetchedRepos = repoIds.length > 0 
+    ? await typedDb.select().from(repos).where(inArray(repos.id, repoIds)) 
+    : [];
+  const repoMap = new Map((fetchedRepos as any[]).map(r => [r.id, r]));
+
+  // Cache tokens per provider to avoid querying the DB for every row
+  const tokenCache = new Map<string, string | null>();
+
+  // Transaction for batch DB updates
+  await typedDb.transaction(async (tx) => {
+    for (const row of pendingRows) {
+      try {
+        const changes = (row.pendingChanges ?? {}) as PendingChanges;
+        const issueUpdate = payloadToIssueUpdate(changes);
+
+        // Skip if no provider changes to push
+        if (Object.keys(issueUpdate).length === 0) {
+          // Just clear the batch pending flag
+          await tx
+            .update(triageState)
+            .set({ batchPending: false, pendingChanges: {}, updatedAt: new Date() })
+            .where(eq(triageState.id, row.id));
+          pushed++;
+          continue;
+        }
+
+        // Get the issue and repo from memory maps
+        const issue = issueMap.get(row.issueId);
+        if (!issue) {
+          failed++;
+          continue;
+        }
+
+        const repo = repoMap.get(issue.repoId);
+        if (!repo) {
+          failed++;
+          continue;
+        }
+
+        let token = tokenCache.get(repo.provider);
+        if (token === undefined) {
+          token = await getProviderToken(userId, repo.provider as "github" | "gitlab");
+          tokenCache.set(repo.provider, token);
+        }
+        
+        if (!token) {
+          failed++;
+          continue;
+        }
+
+        const provider = getProvider(repo.provider as "github" | "gitlab");
+        await provider.updateIssue(repo.owner, repo.name, issue.number, token, issueUpdate);
+
+        // Update local issues table
+        const localUpdate: Record<string, unknown> = {};
+        if (changes.labels) {
+          const currentLabels = new Set<string>(issue.labels ?? []);
+          for (const l of changes.labels.add ?? []) currentLabels.add(l);
+          for (const l of changes.labels.remove ?? []) currentLabels.delete(l);
+          localUpdate.labels = [...currentLabels];
+        }
+        if (changes.assignees) {
+          const currentAssignees = new Set<string>(issue.assignees ?? []);
+          for (const a of changes.assignees.add ?? []) currentAssignees.add(a);
+          for (const a of changes.assignees.remove ?? []) currentAssignees.delete(a);
+          localUpdate.assignees = [...currentAssignees];
+        }
+        if (changes.state) {
+          localUpdate.state = changes.state;
+        }
+        if (Object.keys(localUpdate).length > 0) {
+          await tx.update(issues).set(localUpdate).where(eq(issues.id, row.issueId));
+        }
+
+        // Clear batch pending
+        await tx
           .update(triageState)
           .set({ batchPending: false, pendingChanges: {}, updatedAt: new Date() })
           .where(eq(triageState.id, row.id));
+
         pushed++;
-        continue;
-      }
-
-      // Get the issue and repo
-            const issueRows = await typedDb.select().from(issues).where(eq(issues.id, row.issueId));
-      const issue = issueRows[0];
-      if (!issue) {
+      } catch (err) {
         failed++;
-        continue;
       }
-
-            const repoRows = await typedDb.select().from(repos).where(eq(repos.id, issue.repoId));
-      const repo = repoRows[0];
-      if (!repo) {
-        failed++;
-        continue;
-      }
-
-      const token = await getProviderToken(userId, repo.provider as "github" | "gitlab");
-      if (!token) {
-        failed++;
-        continue;
-      }
-
-      const provider = getProvider(repo.provider as "github" | "gitlab");
-      await provider.updateIssue(repo.owner, repo.name, issue.number, token, issueUpdate);
-
-      // Update local issues table
-      const localUpdate: Record<string, unknown> = {};
-      if (changes.labels) {
-        const currentLabels = new Set<string>(issue.labels ?? []);
-        for (const l of changes.labels.add ?? []) currentLabels.add(l);
-        for (const l of changes.labels.remove ?? []) currentLabels.delete(l);
-        localUpdate.labels = [...currentLabels];
-      }
-      if (changes.assignees) {
-        const currentAssignees = new Set<string>(issue.assignees ?? []);
-        for (const a of changes.assignees.add ?? []) currentAssignees.add(a);
-        for (const a of changes.assignees.remove ?? []) currentAssignees.delete(a);
-        localUpdate.assignees = [...currentAssignees];
-      }
-      if (changes.state) {
-        localUpdate.state = changes.state;
-      }
-      if (Object.keys(localUpdate).length > 0) {
-                await typedDb.update(issues).set(localUpdate).where(eq(issues.id, row.issueId));
-      }
-
-      // Clear batch pending
-            await typedDb
-        .update(triageState)
-        .set({ batchPending: false, pendingChanges: {}, updatedAt: new Date() })
-        .where(eq(triageState.id, row.id));
-
-      pushed++;
-    } catch {
-      failed++;
     }
-  }
+  });
 
   return { pushed, failed };
 }

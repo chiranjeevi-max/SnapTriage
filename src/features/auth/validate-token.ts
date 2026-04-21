@@ -25,21 +25,31 @@ interface ValidatedUser {
  * @throws If the token is invalid or the API call fails.
  */
 export async function validateGitHubToken(token: string): Promise<ValidatedUser> {
-  const res = await fetch("https://api.github.com/user", {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-  if (!res.ok) {
-    throw new Error("Invalid GitHub token");
+  try {
+    const res = await fetch("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error("Invalid GitHub token");
+    }
+
+    const data = await res.json();
+    return {
+      id: String(data.id),
+      name: data.name || data.login,
+      email: data.email,
+      image: data.avatar_url,
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
   }
-
-  const data = await res.json();
-  return {
-    id: String(data.id),
-    name: data.name || data.login,
-    email: data.email,
-    image: data.avatar_url,
-  };
 }
 
 /**
@@ -51,21 +61,32 @@ export async function validateGitHubToken(token: string): Promise<ValidatedUser>
  */
 export async function validateGitLabToken(token: string): Promise<ValidatedUser> {
   const baseUrl = process.env.AUTH_GITLAB_URL || "https://gitlab.com";
-  const res = await fetch(`${baseUrl}/api/v4/user`, {
-    headers: { "PRIVATE-TOKEN": token },
-  });
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-  if (!res.ok) {
-    throw new Error("Invalid GitLab token");
+  try {
+    const res = await fetch(`${baseUrl}/api/v4/user`, {
+      headers: { "PRIVATE-TOKEN": token },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error("Invalid GitLab token");
+    }
+
+    const data = await res.json();
+    return {
+      id: String(data.id),
+      name: data.name || data.username,
+      email: data.email,
+      image: data.avatar_url,
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
   }
-
-  const data = await res.json();
-  return {
-    id: String(data.id),
-    name: data.name || data.username,
-    email: data.email,
-    image: data.avatar_url,
-  };
 }
 
 /**

@@ -11,8 +11,10 @@
  */
 import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from "crypto";
 
-/** Fixed application salt — combined with AUTH_SECRET to derive the encryption key. */
-const APP_SALT = "snaptriage-token-encryption-v1";
+/** Application salt — combined with AUTH_SECRET to derive the encryption key. 
+ * Allows configuring AUTH_SALT for improved security, falling back to legacy salt.
+ */
+const APP_SALT = process.env.AUTH_SALT || "snaptriage-token-encryption-v1";
 
 /**
  * Derives a 256-bit encryption key from AUTH_SECRET using PBKDF2.
