@@ -10,6 +10,8 @@
  *
  * WAL mode is enabled on SQLite for concurrent read performance.
  */
+import { mkdirSync, existsSync } from "fs";
+import { dirname, resolve } from "path";
 import Database from "better-sqlite3";
 import { drizzle as drizzleSqlite, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { drizzle as drizzleNeon, type NeonHttpDatabase } from "drizzle-orm/neon-http";
@@ -34,6 +36,9 @@ function createDb(): DbClient {
 
   // Local SQLite — used in development and Docker self-host
   const sqlitePath = process.env.SQLITE_PATH ?? "./data/snaptriage.db";
+  // Ensure the parent directory exists (e.g. ./data/) before SQLite tries to open the file.
+  // This is needed both on first run and during Next.js build-time static analysis.
+  mkdirSync(resolve(dirname(sqlitePath)), { recursive: true });
   const sqlite = new Database(sqlitePath);
   sqlite.pragma("journal_mode = WAL");
   return drizzleSqlite(sqlite, { schema });

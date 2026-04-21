@@ -1,9 +1,13 @@
 /**
- * @module proxy
- * Auth.js (NextAuth v5) middleware proxy. Protects authenticated routes
- * (/inbox, /settings, /repos) by redirecting unauthenticated users to /login,
- * and redirects already-authenticated users away from auth pages (/login)
- * back to /inbox. Exported as `proxy` and re-exported from `middleware.ts`.
+ * @module middleware
+ *
+ * Next.js middleware entry point. Protects authenticated routes (/inbox,
+ * /settings, /repos) by redirecting unauthenticated users to /login, and
+ * redirects already-authenticated users away from auth pages (/login) back
+ * to /inbox.
+ *
+ * Auth.js v5 `auth()` wraps the handler so session data is available on
+ * every matched request via `req.auth`.
  */
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
@@ -14,10 +18,11 @@ const { auth } = NextAuth(authConfig);
 const protectedRoutes = ["/inbox", "/settings", "/repos"];
 const authRoutes = ["/login"];
 
-// Removed in-memory rate limiting map as it is ineffective in Edge/Serverless.
-// Rate limiting should be handled via a Redis store (e.g. Upstash) or WAF.
+// Note: In-memory rate limiting is not used here because it is ineffective in
+// Edge/Serverless environments. Use a Redis store (e.g. Upstash) or WAF for
+// production rate limiting.
 
-export const proxy = auth((req) => {
+export default auth((req) => {
   const { pathname } = req.nextUrl;
   const isAuthenticated = !!req.auth;
 
@@ -37,6 +42,6 @@ export const proxy = auth((req) => {
 export const config = {
   matcher: [
     "/((?!api|_next/static|_next/image|favicon.ico).*)",
-    "/api/auth/callback/credentials"
+    "/api/auth/callback/credentials",
   ],
 };

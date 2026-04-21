@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 /**
  * @module /api/repos/[id]/collaborators
  *
