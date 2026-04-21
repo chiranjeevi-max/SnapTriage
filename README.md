@@ -31,6 +31,7 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 - **Two sync modes** — Live (instant writeback) or Batch (stage changes, push when ready)
 - **Label & assignee pickers** — Searchable command palettes for quick editing
 - **Snooze** — Hide issues until a specific time
+- **Secure By Default** — Personal Access Tokens and sensitive credentials are AES-256 encrypted at rest
 - **Dark mode** — Dark theme by default, light and system themes available
 - **Self-hostable** — SQLite by default, Postgres optional. Docker Compose included.
 
@@ -90,8 +91,9 @@ SQLite data is persisted in a Docker volume. See `.env.example` for all configur
 | Framework | Next.js 16 (App Router) + TypeScript |
 | Styling | Tailwind CSS 4 + shadcn/ui |
 | Database | SQLite (default) + Postgres via Drizzle ORM |
-| Auth | Auth.js — GitHub/GitLab OAuth + PAT fallback |
+| Auth | Auth.js — GitHub/GitLab OAuth + PAT fallback (Encrypted) |
 | State | TanStack Query + Zustand |
+| Logging | Pino (structured JSON logger) |
 | Testing | Vitest + Playwright |
 
 ## Roadmap
@@ -132,7 +134,7 @@ See [`.env.example`](.env.example) for the full list. Required:
 
 | Variable | Description |
 |----------|-------------|
-| `AUTH_SECRET` | Random secret for Auth.js session encryption |
+| `AUTH_SECRET` | Secret for Auth.js session and AES key derivation |
 | `AUTH_GITHUB_ID` | GitHub OAuth App client ID |
 | `AUTH_GITHUB_SECRET` | GitHub OAuth App client secret |
 
@@ -141,6 +143,7 @@ Optional:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AUTH_URL` | Base URL for Auth.js callbacks | `http://localhost:3000` |
+| `AUTH_SALT` | Cryptographic salt for AES encryption | (Defaults to internal) |
 | `DATABASE_URL` | Postgres connection string | (uses SQLite) |
 | `SQLITE_PATH` | SQLite database file path | `./data/snaptriage.db` |
 | `AUTH_GITLAB_ID` | GitLab OAuth App ID | |
