@@ -25,7 +25,11 @@ import {
   updateUser,
   storeAccessToken,
 } from "@/features/auth/user-repository";
+import { authLogger } from "@/lib/logger";
 import { authConfig } from "./auth.config";
+
+// In-memory rate limiting map for basic protection against brute-force
+const rateLimitMap = new Map<string, { count: number; timestamp: number }>();
 
 // Cast `db` to any because DrizzleAdapter's type expects a specific Drizzle flavor
 // but our `db` is a union of SQLite | Neon clients.
@@ -63,7 +67,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token: { label: "Token", type: "password" },
         provider: { label: "Provider", type: "text" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
+        // Rate Limiting Logic
+        const ip = request.headers?.get("x-forwarded-for") || "unknown";
+        const now = Date.now();
+        const windowMs = 15 * 60 * 1000; // 15 minutes window
+
+        // Clean up old entries
+        for (const [key, value] of rateLimitMap.entries()) {
+          if (now - value.timestamp > windowMs) rateLimitMap.delete(key);
+        }
+
+        const record = rateLimitMap.get(ip) || { count: 0, timestamp: now };
+        record.count++;
+
+        if (record.count > 5) {
+          authLogger.warn({ip}, "Rate limit exceeded for PAT authentication");
+          throw new Error("Too Many Requests. Please try again later.");
+        }
+
+        rateLimitMap.set(ip, record);
+
         if (
           !credentials?.token ||
           typeof credentials.token !== "string" ||
@@ -120,7 +144,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           };
         } catch (error) {
           const errMessage = error instanceof Error ? error.message : "Unknown error";
-          console.error(`[Auth_Security] Failed PAT Auth for provider ${provider}: ${errMessage}`);
+          authLogger.error({ provider, error: errMessage }, "Failed PAT Auth");
           return null;
         }
       },
