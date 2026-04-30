@@ -27,7 +27,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-    const rows = await typedDb
+  const rows = await typedDb
     .select()
     .from(triageState)
     .where(and(eq(triageState.userId, session.user.id), eq(triageState.batchPending, true)));

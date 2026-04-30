@@ -9,11 +9,15 @@ describe("crypto", () => {
   const ORIGINAL_ENV = process.env;
 
   beforeEach(() => {
-    // Provide a stable AUTH_SECRET for all tests; reset the key cache between
+    // Provide a stable AUTH_SECRET and AUTH_SALT for all tests; reset the key cache between
     // tests by restoring env (the module caches the derived key in module scope,
     // so we re-import after env manipulation where needed).
     vi.resetModules();
-    process.env = { ...ORIGINAL_ENV, AUTH_SECRET: "test-secret-32-chars-long-enough!!" };
+    process.env = {
+      ...ORIGINAL_ENV,
+      AUTH_SECRET: "test-secret-32-chars-long-enough!!",
+      AUTH_SALT: "test-salt-for-unit-tests",
+    };
   });
 
   afterEach(() => {
@@ -62,6 +66,19 @@ describe("crypto", () => {
       delete process.env.AUTH_SECRET;
       const { encrypt: freshEncrypt } = await import("@/lib/crypto");
       expect(() => freshEncrypt("token")).toThrowError(Error);
+    });
+
+    /**
+     * @target encrypt
+     * @dependencies getEncryptionKey, AUTH_SALT env var
+     * @scenario AUTH_SALT is missing from environment
+     * @expectedOutput Throws an Error
+     */
+    it("should throw when AUTH_SALT is not set", async () => {
+      // Re-import the module without AUTH_SALT so the key cache is cold
+      delete process.env.AUTH_SALT;
+      const { encrypt: freshEncrypt } = await import("@/lib/crypto");
+      expect(() => freshEncrypt("token")).toThrowError(/AUTH_SALT is required/);
     });
   });
 

@@ -11,11 +11,6 @@
  */
 import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from "crypto";
 
-/** Application salt — combined with AUTH_SECRET to derive the encryption key. 
- * Allows configuring AUTH_SALT for improved security, falling back to legacy salt.
- */
-const APP_SALT = process.env.AUTH_SALT || "snaptriage-token-encryption-v1";
-
 /**
  * Derives a 256-bit encryption key from AUTH_SECRET using PBKDF2.
  * Caches the result in module scope for performance.
@@ -29,7 +24,17 @@ function getEncryptionKey(): Buffer {
     throw new Error("AUTH_SECRET is required for token encryption");
   }
 
-  _cachedKey = pbkdf2Sync(secret, APP_SALT, 100_000, 32, "sha256");
+  const salt = process.env.AUTH_SALT;
+  if (!salt) {
+    throw new Error(
+      "AUTH_SALT is required for token encryption. " +
+        "For new installations, generate a secure random string. " +
+        "If you are upgrading and need to maintain compatibility with existing tokens, " +
+        'set AUTH_SALT to "snaptriage-token-encryption-v1".'
+    );
+  }
+
+  _cachedKey = pbkdf2Sync(secret, salt, 100_000, 32, "sha256");
   return _cachedKey;
 }
 

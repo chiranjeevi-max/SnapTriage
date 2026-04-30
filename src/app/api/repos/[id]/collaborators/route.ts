@@ -33,7 +33,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params;
 
-    const repoRows = await typedDb
+  const repoRows = await typedDb
     .select()
     .from(repos)
     .where(and(eq(repos.id, id), eq(repos.userId, session.user.id)));

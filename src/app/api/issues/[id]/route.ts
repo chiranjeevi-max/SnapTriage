@@ -50,13 +50,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { priority, snoozedUntil, dismissed, labels, assignees, state, batch } = parsed.data;
 
   // Verify issue belongs to user's repo
-    const issueRows = await typedDb.select().from(issues).where(eq(issues.id, id));
+  const issueRows = await typedDb.select().from(issues).where(eq(issues.id, id));
   const issue = issueRows[0];
   if (!issue) {
     return NextResponse.json({ error: "Issue not found" }, { status: 404 });
   }
 
-    const repoRows = await typedDb
+  const repoRows = await typedDb
     .select()
     .from(repos)
     .where(and(eq(repos.id, issue.repoId), eq(repos.userId, session.user.id)));
@@ -69,7 +69,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const isBatchMode = batch === true || repo.syncMode === "batch";
 
   // Get or create triage state
-    const existingTriage = await typedDb
+  const existingTriage = await typedDb
     .select()
     .from(triageState)
     .where(and(eq(triageState.issueId, id), eq(triageState.userId, session.user.id)));
@@ -85,9 +85,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (dismissed !== undefined) triageData.dismissed = dismissed;
 
     if (triageRow) {
-            await typedDb.update(triageState).set(triageData).where(eq(triageState.id, triageRow.id));
+      await typedDb.update(triageState).set(triageData).where(eq(triageState.id, triageRow.id));
     } else {
-            await typedDb.insert(triageState).values({
+      await typedDb.insert(triageState).values({
         issueId: id,
         userId: session.user.id,
         ...triageData,
@@ -109,12 +109,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       };
 
       if (triageRow) {
-                await typedDb
-          .update(triageState)
-          .set(batchData)
-          .where(eq(triageState.id, triageRow.id));
+        await typedDb.update(triageState).set(batchData).where(eq(triageState.id, triageRow.id));
       } else {
-                await typedDb.insert(triageState).values({
+        await typedDb.insert(triageState).values({
           issueId: id,
           userId: session.user.id,
           ...batchData,
@@ -149,7 +146,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           issueUpdate.state = state;
         }
         if (Object.keys(issueUpdate).length > 0) {
-                    await typedDb.update(issues).set(issueUpdate).where(eq(issues.id, id));
+          await typedDb.update(issues).set(issueUpdate).where(eq(issues.id, id));
         }
       }
     }
