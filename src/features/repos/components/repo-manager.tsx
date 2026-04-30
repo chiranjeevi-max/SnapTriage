@@ -144,8 +144,8 @@ export function RepoManager() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Disconnect {repo.fullName}?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will remove all cached issues and triage state for this
-                          repository. You can reconnect it later, but triage data will be lost.
+                          This will remove all cached issues and triage state for this repository.
+                          You can reconnect it later, but triage data will be lost.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>

@@ -82,7 +82,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         record.count++;
 
         if (record.count > 5) {
-          authLogger.warn({ip}, "Rate limit exceeded for PAT authentication");
+          authLogger.warn({ ip }, "Rate limit exceeded for PAT authentication");
           throw new Error("Too Many Requests. Please try again later.");
         }
 

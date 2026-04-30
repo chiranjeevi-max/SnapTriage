@@ -59,7 +59,8 @@ const priorityOptions = [
  * @param dateStr - ISO date string.
  */
 /** Formats an ISO date string into a compact relative time with "ago" suffix. */
-const timeAgo = (dateStr: string) => formatRelativeTime(dateStr, { suffix: true, nowLabel: "just now" });
+const timeAgo = (dateStr: string) =>
+  formatRelativeTime(dateStr, { suffix: true, nowLabel: "just now" });
 
 /**
  * Formats a snooze expiry into remaining time (e.g., "3h", "2d").
