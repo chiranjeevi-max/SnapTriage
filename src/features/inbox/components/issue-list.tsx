@@ -31,13 +31,6 @@ const priorityLabels: Record<number, { label: string; className: string }> = {
 };
 
 /**
- * Compact relative time formatter for list items (e.g., "5m", "2h", "3d").
- * @param dateStr - ISO date string.
- */
-/** @deprecated Use formatRelativeTime from @/lib/utils instead — kept as alias for readability. */
-const timeAgo = (dateStr: string) => formatRelativeTime(dateStr);
-
-/**
  * Scrollable issue list with loading skeletons and empty state.
  * Each row auto-scrolls into view when selected via keyboard navigation.
  */
@@ -137,7 +130,7 @@ function IssueRow({
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
           <span>#{issue.number}</span>
           {issue.author && <span>by {issue.author}</span>}
-          <span>{timeAgo(issue.updatedAt)}</span>
+          <span>{formatRelativeTime(issue.updatedAt)}</span>
         </div>
         {issue.labels.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
