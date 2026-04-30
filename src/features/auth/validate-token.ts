@@ -61,7 +61,7 @@ export async function validateGitHubToken(token: string): Promise<ValidatedUser>
  */
 export async function validateGitLabToken(token: string): Promise<ValidatedUser> {
   const baseUrl = process.env.AUTH_GITLAB_URL || "https://gitlab.com";
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
 

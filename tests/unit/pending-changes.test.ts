@@ -9,6 +9,7 @@
  * - Assignee add/remove with cancellation
  * - Dismissed and snoozedUntil flags
  * - Preservation of unrelated fields during merge
+ * - State open/close overriding
  */
 import { describe, it, expect } from "vitest";
 import { mergePendingChanges, type PendingChanges } from "@/features/triage/types";
@@ -27,6 +28,16 @@ describe("mergePendingChanges", () => {
   it("clears priority with null", () => {
     const result = mergePendingChanges({ priority: 1 }, { priority: null });
     expect(result.priority).toBeNull();
+  });
+
+  it("merges state changes", () => {
+    const result = mergePendingChanges({}, { state: "closed" });
+    expect(result.state).toBe("closed");
+  });
+
+  it("overrides existing state", () => {
+    const result = mergePendingChanges({ state: "open" }, { state: "closed" });
+    expect(result.state).toBe("closed");
   });
 
   it("merges label adds", () => {

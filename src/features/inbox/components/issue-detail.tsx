@@ -146,8 +146,12 @@ export function IssueDetail({ issue, onClose }: IssueDetailProps) {
                 {issue.author}
               </span>
             )}
-            <span>opened {formatRelativeTime(issue.createdAt, { suffix: true, nowLabel: "just now" })}</span>
-            <span>updated {formatRelativeTime(issue.updatedAt, { suffix: true, nowLabel: "just now" })}</span>
+            <span>
+              opened {formatRelativeTime(issue.createdAt, { suffix: true, nowLabel: "just now" })}
+            </span>
+            <span>
+              updated {formatRelativeTime(issue.updatedAt, { suffix: true, nowLabel: "just now" })}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-1">
