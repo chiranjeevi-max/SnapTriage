@@ -30,8 +30,10 @@ export function formatRelativeTime(
   options?: { suffix?: boolean; nowLabel?: string }
 ): string {
   if (!dateStr) return "Never";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return "Never";
   const { suffix = false, nowLabel = "now" } = options ?? {};
-  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const diffMs = Date.now() - date.getTime();
   const diffMins = Math.floor(diffMs / 60_000);
 
   const s = suffix ? " ago" : "";
