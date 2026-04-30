@@ -159,3 +159,40 @@ describe("validate-token", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+describe("Network errors", () => {
+  it("should throw an error on network failure for validateGitHubToken", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    await expect(validateGitHubToken("ghp_valid")).rejects.toThrow("Network error");
+  });
+
+  it("should throw an error on network failure for validateGitLabToken", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    await expect(validateGitLabToken("glpat_valid")).rejects.toThrow("Network error");
+  });
+});
+
+it("should throw for unknown provider", async () => {
+  await expect(validateToken("token", "unknown" as any)).rejects.toThrow(
+    "Unknown provider: unknown"
+  );
+});
+
+describe("GitLab edge cases", () => {
+  it("should fall back to username when name is null", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        id: 42,
+        username: "adalovelace",
+        name: null,
+        email: "ada@example.com",
+        avatar_url: "https://example.com/ada.png",
+      }),
+    });
+
+    const result = await validateGitLabToken("glpat_valid");
+    expect(result.name).toEqual("adalovelace");
+  });
+});
