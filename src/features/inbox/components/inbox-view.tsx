@@ -11,7 +11,7 @@
  */
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { IssueList } from "./issue-list";
 import { IssueDetail } from "./issue-detail";
@@ -70,10 +70,13 @@ export function InboxView() {
   useKeyboardShortcuts(issueList);
 
   // When user clicks an issue, update the store index
-  const handleSelect = (issue: { id: string }) => {
-    const idx = issueList.findIndex((i) => i.id === issue.id);
-    if (idx >= 0) setSelectedIndex(idx);
-  };
+  const handleSelect = useCallback(
+    (issue: { id: string }) => {
+      const idx = issueList.findIndex((i) => i.id === issue.id);
+      if (idx >= 0) setSelectedIndex(idx);
+    },
+    [issueList, setSelectedIndex]
+  );
 
   return (
     <div className="flex h-full flex-col">
