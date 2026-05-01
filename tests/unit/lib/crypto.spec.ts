@@ -102,5 +102,59 @@ describe("crypto", () => {
       const result = decrypt(malformed);
       expect(result).toEqual(malformed);
     });
+
+    /**
+     * @target decrypt
+     * @dependencies Node crypto (native)
+     * @scenario The ciphertext part of the encrypted string has been modified
+     * @expectedOutput Throws an error due to authTag mismatch (AES-GCM integrity check)
+     */
+    it("should throw if the ciphertext is tampered with", () => {
+      const plaintext = "super_secret_data";
+      const encrypted = encrypt(plaintext);
+      const [iv, authTag, ciphertext] = encrypted.split(":");
+
+      // Tamper with ciphertext by replacing the last char
+      const tamperedCiphertext = ciphertext.slice(0, -1) + (ciphertext.endsWith("0") ? "1" : "0");
+      const tampered = `${iv}:${authTag}:${tamperedCiphertext}`;
+
+      expect(() => decrypt(tampered)).toThrow();
+    });
+
+    /**
+     * @target decrypt
+     * @dependencies Node crypto (native)
+     * @scenario The authTag part of the encrypted string has been modified
+     * @expectedOutput Throws an error due to authTag mismatch
+     */
+    it("should throw if the authTag is tampered with", () => {
+      const plaintext = "super_secret_data";
+      const encrypted = encrypt(plaintext);
+      const [iv, authTag, ciphertext] = encrypted.split(":");
+
+      // Tamper with authTag
+      const tamperedAuthTag = authTag.slice(0, -1) + (authTag.endsWith("0") ? "1" : "0");
+      const tampered = `${iv}:${tamperedAuthTag}:${ciphertext}`;
+
+      expect(() => decrypt(tampered)).toThrow();
+    });
+
+    /**
+     * @target decrypt
+     * @dependencies Node crypto (native)
+     * @scenario The iv part of the encrypted string has been modified
+     * @expectedOutput Throws an error due to decryption failure/authTag mismatch
+     */
+    it("should throw if the iv is tampered with", () => {
+      const plaintext = "super_secret_data";
+      const encrypted = encrypt(plaintext);
+      const [iv, authTag, ciphertext] = encrypted.split(":");
+
+      // Tamper with iv
+      const tamperedIv = iv.slice(0, -1) + (iv.endsWith("0") ? "1" : "0");
+      const tampered = `${tamperedIv}:${authTag}:${ciphertext}`;
+
+      expect(() => decrypt(tampered)).toThrow();
+    });
   });
 });
