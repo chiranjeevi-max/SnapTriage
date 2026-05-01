@@ -55,6 +55,7 @@ const priorityOptions = [
 ];
 
 /**
+
  * Formats a date string into a human-readable relative time (e.g., "5m ago", "2d ago").
  * @param dateStr - ISO date string.
  */
@@ -63,6 +64,8 @@ const timeAgo = (dateStr: string) =>
   formatRelativeTime(dateStr, { suffix: true, nowLabel: "just now" });
 
 /**
+
+
  * Formats a snooze expiry into remaining time (e.g., "3h", "2d").
  * @param isoStr - ISO date string for the snooze-until timestamp.
  */
@@ -154,8 +157,12 @@ export function IssueDetail({ issue, onClose }: IssueDetailProps) {
                 {issue.author}
               </span>
             )}
-            <span>opened {timeAgo(issue.createdAt)}</span>
-            <span>updated {timeAgo(issue.updatedAt)}</span>
+            <span>
+              opened {formatRelativeTime(issue.createdAt, { suffix: true, nowLabel: "just now" })}
+            </span>
+            <span>
+              updated {formatRelativeTime(issue.updatedAt, { suffix: true, nowLabel: "just now" })}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-1">
