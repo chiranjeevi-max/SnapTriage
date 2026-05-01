@@ -10,4 +10,6 @@ import { db } from "./index";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
 
-export const typedDb: BetterSQLite3Database<typeof schema> = db as unknown as BetterSQLite3Database<typeof schema>;
+export const typedDb: BetterSQLite3Database<typeof schema> = db as unknown as BetterSQLite3Database<
+  typeof schema
+>;

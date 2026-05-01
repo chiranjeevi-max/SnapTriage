@@ -28,7 +28,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-    const oauthAccounts = await typedDb
+  const oauthAccounts = await typedDb
     .select({
       provider: accounts.provider,
       providerAccountId: accounts.providerAccountId,
@@ -37,7 +37,7 @@ export async function GET() {
     .from(accounts)
     .where(eq(accounts.userId, session.user.id));
 
-    const pats = await typedDb
+  const pats = await typedDb
     .select({
       provider: accessTokens.provider,
       label: accessTokens.label,

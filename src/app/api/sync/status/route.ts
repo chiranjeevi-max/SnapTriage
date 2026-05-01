@@ -27,7 +27,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-    const userRepos = await typedDb
+  const userRepos = await typedDb
     .select({
       id: repos.id,
       fullName: repos.fullName,
