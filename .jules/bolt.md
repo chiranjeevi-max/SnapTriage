@@ -1,0 +1,3 @@
+## 2023-10-27 - O(N) Re-renders on Keyboard Selection
+**Learning:** In a large list of complex components, if the parent component maps over the list and passes an inline callback or unmemoized prop, the entire list will re-render even if only a single item's state (like `isSelected`) changes. In this Next.js app, pressing arrow keys to change the selected issue caused severe input lag because every `IssueRow` was re-rendering.
+**Action:** Always memoize list items (`React.memo`) and ensure the props passed to them (like `onSelect`) are stable (via `useCallback` on the parent, and passing the stable function down instead of inline arrow functions).
