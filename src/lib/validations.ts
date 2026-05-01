@@ -69,6 +69,8 @@ export function parseBody<T extends z.ZodTypeAny>(
   if (result.success) {
     return { success: true, data: result.data };
   }
-  const messages = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+  const messages = result.error.issues.map(
+    (i) => `${i.path.join(".")}: ${i.message}`
+  );
   return { success: false, error: messages.join("; ") };
 }

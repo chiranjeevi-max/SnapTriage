@@ -18,7 +18,7 @@ import { encrypt } from "@/lib/crypto";
  * @returns The user record, or `null` if not found.
  */
 export async function findUserByEmail(email: string) {
-  const results = await typedDb.select().from(users).where(eq(users.email, email));
+    const results = await typedDb.select().from(users).where(eq(users.email, email));
   return results[0] ?? null;
 }
 
@@ -32,7 +32,7 @@ export async function createUser(data: {
   email: string | null;
   image: string | null;
 }) {
-  await typedDb.insert(users).values(data);
+    await typedDb.insert(users).values(data);
 }
 
 /**
@@ -41,7 +41,7 @@ export async function createUser(data: {
  * @param data - Fields to update (name, image).
  */
 export async function updateUser(id: string, data: { name: string; image: string | null }) {
-  await typedDb.update(users).set(data).where(eq(users.id, id));
+    await typedDb.update(users).set(data).where(eq(users.id, id));
 }
 
 /**
@@ -58,11 +58,13 @@ export async function storeAccessToken(data: {
   label: string;
 }) {
   // Remove existing token for this user+provider pair (upsert)
-  await typedDb
+    await typedDb
     .delete(accessTokens)
-    .where(and(eq(accessTokens.userId, data.userId), eq(accessTokens.provider, data.provider)));
+    .where(
+      and(eq(accessTokens.userId, data.userId), eq(accessTokens.provider, data.provider))
+    );
 
-  await typedDb.insert(accessTokens).values({
+    await typedDb.insert(accessTokens).values({
     ...data,
     token: encrypt(data.token),
   });

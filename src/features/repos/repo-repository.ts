@@ -14,7 +14,7 @@ import { repos } from "@/lib/db/schema";
  * @returns Array of repo records.
  */
 export async function getConnectedRepos(userId: string) {
-  return typedDb.select().from(repos).where(eq(repos.userId, userId));
+    return typedDb.select().from(repos).where(eq(repos.userId, userId));
 }
 
 /**
@@ -31,7 +31,7 @@ export async function connectRepo(data: {
   permission: string;
 }) {
   const id = crypto.randomUUID();
-  await typedDb.insert(repos).values({ id, ...data });
+    await typedDb.insert(repos).values({ id, ...data });
   return id;
 }
 
@@ -41,7 +41,7 @@ export async function connectRepo(data: {
  * @param userId - The user's ID (ownership guard).
  */
 export async function disconnectRepo(id: string, userId: string) {
-  await typedDb.delete(repos).where(and(eq(repos.id, id), eq(repos.userId, userId)));
+    await typedDb.delete(repos).where(and(eq(repos.id, id), eq(repos.userId, userId)));
 }
 
 /**
@@ -53,7 +53,7 @@ export async function disconnectRepo(id: string, userId: string) {
  * @returns The repo record, or `null` if not found.
  */
 export async function findConnectedRepo(userId: string, provider: string, fullName: string) {
-  const results = await typedDb
+    const results = await typedDb
     .select()
     .from(repos)
     .where(
@@ -73,7 +73,7 @@ export async function updateRepo(
   userId: string,
   data: { syncMode?: string; syncEnabled?: boolean }
 ) {
-  await typedDb
+    await typedDb
     .update(repos)
     .set(data)
     .where(and(eq(repos.id, id), eq(repos.userId, userId)));

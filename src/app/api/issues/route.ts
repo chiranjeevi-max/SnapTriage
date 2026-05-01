@@ -40,7 +40,7 @@ export async function GET(req: Request) {
   const hideDismissed = searchParams.get("hideDismissed") === "true";
 
   // Get user's connected repo IDs
-  const userRepos = await typedDb
+    const userRepos = await typedDb
     .select({ id: repos.id })
     .from(repos)
     .where(eq(repos.userId, session.user.id));
@@ -54,10 +54,12 @@ export async function GET(req: Request) {
   const repoIdSet = new Set(repoIds);
   let conditions = and(
     eq(issues.state, state),
-    repoId && repoIdSet.has(repoId) ? eq(issues.repoId, repoId) : inArray(issues.repoId, repoIds)
+    repoId && repoIdSet.has(repoId)
+      ? eq(issues.repoId, repoId)
+      : inArray(issues.repoId, repoIds)
   )!;
 
-  const issueRows = await typedDb
+    const issueRows = await typedDb
     .select()
     .from(issues)
     .where(conditions)
@@ -70,10 +72,15 @@ export async function GET(req: Request) {
   // Fetch triage state only for the matching issue IDs (not entire table)
   const issueIds: string[] = issueRows.map((i: { id: string }) => i.id);
 
-  const triageRows = await typedDb
+    const triageRows = await typedDb
     .select()
     .from(triageState)
-    .where(and(eq(triageState.userId, session.user.id), inArray(triageState.issueId, issueIds)));
+    .where(
+      and(
+        eq(triageState.userId, session.user.id),
+        inArray(triageState.issueId, issueIds)
+      )
+    );
 
   const triageMap = new Map<string, (typeof triageRows)[0]>();
   for (const t of triageRows) {
@@ -87,7 +94,9 @@ export async function GET(req: Request) {
 
   // Filter out dismissed issues if requested
   if (hideDismissed) {
-    result = result.filter((r: { triage: { dismissed: boolean } | null }) => !r.triage?.dismissed);
+    result = result.filter(
+      (r: { triage: { dismissed: boolean } | null }) => !r.triage?.dismissed
+    );
   }
 
   return NextResponse.json(result);

@@ -41,7 +41,7 @@ interface SyncResult {
 export async function syncRepo(repoId: string, userId: string): Promise<SyncResult> {
   const logId = crypto.randomUUID();
 
-  const repoRows = await typedDb
+    const repoRows = await typedDb
     .select()
     .from(repos)
     .where(and(eq(repos.id, repoId), eq(repos.userId, userId)));
@@ -52,7 +52,7 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
   syncLogger.info({ repoId, fullName: repo.fullName, provider: repo.provider }, "Sync started");
 
   // Log sync start
-  await typedDb.insert(syncLog).values({
+    await typedDb.insert(syncLog).values({
     id: logId,
     repoId,
     status: "started",
@@ -68,7 +68,7 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
 
     // Upsert issues — batch approach to avoid N+1 queries
     // Pre-fetch all existing issues for this repo in one query
-    const existingIssues = await typedDb
+        const existingIssues = await typedDb
       .select({ id: issues.id, providerIssueId: issues.providerIssueId })
       .from(issues)
       .where(eq(issues.repoId, repoId));
@@ -108,7 +108,7 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
         createdAt: issue.createdAt,
         updatedAt: issue.updatedAt,
       }));
-      await typedDb.insert(issues).values(insertValues);
+            await typedDb.insert(issues).values(insertValues);
     }
 
     // Update existing issues (still sequential because Drizzle doesn't support
@@ -136,22 +136,16 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
     }
 
     // Update repo lastSyncedAt
-    await typedDb.update(repos).set({ lastSyncedAt: new Date() }).where(eq(repos.id, repoId));
+        await typedDb.update(repos).set({ lastSyncedAt: new Date() }).where(eq(repos.id, repoId));
 
     // Log sync completion
-    await typedDb
+        await typedDb
       .update(syncLog)
       .set({ status: "completed", issuesFetched: fetched.length, completedAt: new Date() })
       .where(eq(syncLog.id, logId));
 
     syncLogger.info(
-      {
-        repoId,
-        fullName: repo.fullName,
-        inserted: toInsert.length,
-        updated: toUpdate.length,
-        total: fetched.length,
-      },
+      { repoId, fullName: repo.fullName, inserted: toInsert.length, updated: toUpdate.length, total: fetched.length },
       "Sync completed"
     );
 
@@ -161,7 +155,7 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
 
     syncLogger.error({ repoId, fullName: repo.fullName, error: errorMsg }, "Sync failed");
 
-    await typedDb
+        await typedDb
       .update(syncLog)
       .set({ status: "failed", error: errorMsg, completedAt: new Date() })
       .where(eq(syncLog.id, logId));
@@ -181,7 +175,7 @@ export async function syncAllRepos(userId: string): Promise<SyncResult[]> {
   const { default: pLimit } = await import("p-limit");
   const limit = pLimit(SYNC_CONCURRENCY);
 
-  const userRepos = await typedDb
+    const userRepos = await typedDb
     .select()
     .from(repos)
     .where(and(eq(repos.userId, userId), eq(repos.syncEnabled, true)));
@@ -189,7 +183,9 @@ export async function syncAllRepos(userId: string): Promise<SyncResult[]> {
   syncLogger.info({ userId, repoCount: userRepos.length }, "Syncing all repos");
 
   const results = await Promise.allSettled(
-    userRepos.map((repo: { id: string }) => limit(() => syncRepo(repo.id, userId)))
+    userRepos.map((repo: { id: string }) =>
+      limit(() => syncRepo(repo.id, userId))
+    )
   );
 
   return results.map((r) =>
@@ -223,14 +219,15 @@ export async function pushBatchChanges(
   let failed = 0;
 
   // Pre-fetch related issues and repos to eliminate N+1 queries
-  const issueIds = pendingRows.map((r) => r.issueId);
+  const issueIds = pendingRows.map(r => r.issueId);
   const fetchedIssues = await typedDb.select().from(issues).where(inArray(issues.id, issueIds));
-  const issueMap = new Map((fetchedIssues as any[]).map((i) => [i.id, i]));
+  const issueMap = new Map((fetchedIssues as any[]).map(i => [i.id, i]));
 
   const repoIds = [...new Set(fetchedIssues.map((i: any) => i.repoId))];
-  const fetchedRepos =
-    repoIds.length > 0 ? await typedDb.select().from(repos).where(inArray(repos.id, repoIds)) : [];
-  const repoMap = new Map((fetchedRepos as any[]).map((r) => [r.id, r]));
+  const fetchedRepos = repoIds.length > 0
+    ? await typedDb.select().from(repos).where(inArray(repos.id, repoIds))
+    : [];
+  const repoMap = new Map((fetchedRepos as any[]).map(r => [r.id, r]));
 
   // Cache tokens per provider to avoid querying the DB for every row
   const tokenCache = new Map<string, string | null>();

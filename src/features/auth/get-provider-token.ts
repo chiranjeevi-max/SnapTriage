@@ -29,7 +29,7 @@ export async function getProviderToken(
   provider: "github" | "gitlab"
 ): Promise<string | null> {
   // Check OAuth account first
-  const oauthAccounts = await typedDb
+    const oauthAccounts = await typedDb
     .select()
     .from(accounts)
     .where(and(eq(accounts.userId, userId), eq(accounts.provider, provider)));
@@ -54,7 +54,7 @@ export async function getProviderToken(
   }
 
   // Fall back to PAT
-  const pats = await typedDb
+    const pats = await typedDb
     .select()
     .from(accessTokens)
     .where(and(eq(accessTokens.userId, userId), eq(accessTokens.provider, provider)));

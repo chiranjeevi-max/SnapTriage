@@ -22,7 +22,9 @@ export class ProviderApiError extends Error {
     context: { provider: string; operation: string; owner?: string; repo?: string }
   ) {
     const target = context.owner && context.repo ? ` on ${context.owner}/${context.repo}` : "";
-    super(`${context.provider} API error during ${context.operation}${target}: HTTP ${status}`);
+    super(
+      `${context.provider} API error during ${context.operation}${target}: HTTP ${status}`
+    );
     this.name = "ProviderApiError";
     this.status = status;
     this.responseBody = responseBody.slice(0, 500);
