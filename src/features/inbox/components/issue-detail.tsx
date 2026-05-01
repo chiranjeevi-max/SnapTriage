@@ -55,17 +55,6 @@ const priorityOptions = [
 ];
 
 /**
-
- * Formats a date string into a human-readable relative time (e.g., "5m ago", "2d ago").
- * @param dateStr - ISO date string.
- */
-/** Formats an ISO date string into a compact relative time with "ago" suffix. */
-const timeAgo = (dateStr: string) =>
-  formatRelativeTime(dateStr, { suffix: true, nowLabel: "just now" });
-
-/**
-
-
  * Formats a snooze expiry into remaining time (e.g., "3h", "2d").
  * @param isoStr - ISO date string for the snooze-until timestamp.
  */
