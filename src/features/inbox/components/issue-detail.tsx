@@ -151,14 +151,24 @@ export function IssueDetail({ issue, onClose }: IssueDetailProps) {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" asChild>
-            <a href={issue.url} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" asChild>
+                <a href={issue.url} target="_blank" rel="noopener noreferrer" aria-label="Open in external link">
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Open in new tab</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close details">
+                <X className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Close details</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

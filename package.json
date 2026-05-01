@@ -45,6 +45,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@auth/core": "^0.34.3",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
