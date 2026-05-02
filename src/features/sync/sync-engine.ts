@@ -9,6 +9,7 @@ import { typedDb } from "@/lib/db/query";
 import { issues, repos, syncLog, triageState } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
+import type { ProviderIssue } from "@/lib/provider-interface";
 import { payloadToIssueUpdate, type PendingChanges } from "@/features/triage/types";
 import { syncLogger } from "@/lib/logger";
 
@@ -78,8 +79,8 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
       existingMap.set(e.providerIssueId, e.id);
     }
 
-    const toInsert: any[] = [];
-    const toUpdate: { existingId: string; issue: any }[] = [];
+    const toInsert: ProviderIssue[] = [];
+    const toUpdate: { existingId: string; issue: ProviderIssue }[] = [];
 
     for (const issue of fetched) {
       const existingId = existingMap.get(issue.providerIssueId);
@@ -225,12 +226,12 @@ export async function pushBatchChanges(
   // Pre-fetch related issues and repos to eliminate N+1 queries
   const issueIds = pendingRows.map((r) => r.issueId);
   const fetchedIssues = await typedDb.select().from(issues).where(inArray(issues.id, issueIds));
-  const issueMap = new Map((fetchedIssues as any[]).map((i) => [i.id, i]));
+  const issueMap = new Map(fetchedIssues.map((i) => [i.id, i]));
 
-  const repoIds = [...new Set(fetchedIssues.map((i: any) => i.repoId))];
+  const repoIds = [...new Set(fetchedIssues.map((i) => i.repoId))];
   const fetchedRepos =
     repoIds.length > 0 ? await typedDb.select().from(repos).where(inArray(repos.id, repoIds)) : [];
-  const repoMap = new Map((fetchedRepos as any[]).map((r) => [r.id, r]));
+  const repoMap = new Map(fetchedRepos.map((r) => [r.id, r]));
 
   // Cache tokens per provider to avoid querying the DB for every row
   const tokenCache = new Map<string, string | null>();
