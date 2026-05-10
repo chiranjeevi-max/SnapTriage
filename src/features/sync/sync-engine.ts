@@ -4,10 +4,11 @@
  * (GitHub/GitLab), upserting them into the local database, and pushing pending
  * batch changes back to the provider. This module runs exclusively on the server.
  */
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, type inferSelectModel } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { issues, repos, syncLog, triageState } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
+import type { ProviderIssue } from "@/lib/provider-interface";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { payloadToIssueUpdate, type PendingChanges } from "@/features/triage/types";
 import { syncLogger } from "@/lib/logger";
@@ -78,8 +79,8 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
       existingMap.set(e.providerIssueId, e.id);
     }
 
-    const toInsert: any[] = [];
-    const toUpdate: { existingId: string; issue: any }[] = [];
+    const toInsert: ProviderIssue[] = [];
+    const toUpdate: { existingId: string; issue: ProviderIssue }[] = [];
 
     for (const issue of fetched) {
       const existingId = existingMap.get(issue.providerIssueId);
@@ -222,15 +223,18 @@ export async function pushBatchChanges(
   let pushed = 0;
   let failed = 0;
 
+  type Issue = inferSelectModel<typeof issues>;
+  type Repo = inferSelectModel<typeof repos>;
+
   // Pre-fetch related issues and repos to eliminate N+1 queries
   const issueIds = pendingRows.map((r) => r.issueId);
   const fetchedIssues = await typedDb.select().from(issues).where(inArray(issues.id, issueIds));
-  const issueMap = new Map((fetchedIssues as any[]).map((i) => [i.id, i]));
+  const issueMap = new Map<string, Issue>(fetchedIssues.map((i) => [i.id, i]));
 
-  const repoIds = [...new Set(fetchedIssues.map((i: any) => i.repoId))];
+  const repoIds = [...new Set(fetchedIssues.map((i) => i.repoId))];
   const fetchedRepos =
     repoIds.length > 0 ? await typedDb.select().from(repos).where(inArray(repos.id, repoIds)) : [];
-  const repoMap = new Map((fetchedRepos as any[]).map((r) => [r.id, r]));
+  const repoMap = new Map<string, Repo>(fetchedRepos.map((r) => [r.id, r]));
 
   // Cache tokens per provider to avoid querying the DB for every row
   const tokenCache = new Map<string, string | null>();
