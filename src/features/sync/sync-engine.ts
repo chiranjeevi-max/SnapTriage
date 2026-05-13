@@ -313,6 +313,10 @@ export async function pushBatchChanges(
 
         pushed++;
       } catch (err) {
+        syncLogger.error(
+          { error: err instanceof Error ? err.message : String(err), issueId: row.issueId },
+          "Failed to push batch change"
+        );
         failed++;
       }
     }
