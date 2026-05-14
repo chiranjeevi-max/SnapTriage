@@ -21,6 +21,8 @@ const APP_SALT = process.env.AUTH_SALT || "snaptriage-token-encryption-v1";
  * Caches the result in module scope for performance.
  */
 let _cachedKey: Buffer | null = null;
+let _cachedLegacyKey: Buffer | null = null;
+
 function getEncryptionKey(): Buffer {
   if (_cachedKey) return _cachedKey;
 
@@ -29,10 +31,23 @@ function getEncryptionKey(): Buffer {
     throw new Error("AUTH_SECRET is required for token encryption");
   }
 
-  _cachedKey = pbkdf2Sync(secret, APP_SALT, 100_000, 32, "sha256");
+  // 600,000 is the OWASP recommended iteration count for PBKDF2-HMAC-SHA256
+  _cachedKey = pbkdf2Sync(secret, APP_SALT, 600_000, 32, "sha256");
   return _cachedKey;
 }
 
+function getLegacyEncryptionKey(): Buffer {
+  if (_cachedLegacyKey) return _cachedLegacyKey;
+
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error("AUTH_SECRET is required for token encryption");
+  }
+
+  // Legacy key used 100,000 iterations
+  _cachedLegacyKey = pbkdf2Sync(secret, APP_SALT, 100_000, 32, "sha256");
+  return _cachedLegacyKey;
+}
 /**
  * Encrypts a plaintext string using AES-256-GCM.
  *
@@ -75,10 +90,21 @@ export function decrypt(encryptedValue: string): string {
   const key = getEncryptionKey();
   const iv = Buffer.from(ivHex, "hex");
   const authTag = Buffer.from(authTagHex, "hex");
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(authTag);
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(authTag);
 
-  let decrypted = decipher.update(ciphertext, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
+    let decrypted = decipher.update(ciphertext, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } catch (e) {
+    // If authentication fails (wrong key), fall back to the legacy key
+    const legacyKey = getLegacyEncryptionKey();
+    const legacyDecipher = createDecipheriv("aes-256-gcm", legacyKey, iv);
+    legacyDecipher.setAuthTag(authTag);
+
+    let legacyDecrypted = legacyDecipher.update(ciphertext, "hex", "utf8");
+    legacyDecrypted += legacyDecipher.final("utf8");
+    return legacyDecrypted;
+  }
 }
