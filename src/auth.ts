@@ -12,7 +12,7 @@
  *
  * Exports `handlers` (route handler), `auth` (session getter), `signIn`, `signOut`.
  */
-import NextAuth from "next-auth";
+import NextAuth, { type Account } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/lib/db";
@@ -44,14 +44,16 @@ const nativeAdapter = DrizzleAdapter(db as any, {
 // Wrap native DrizzleAdapter to ensure standard OAuth tokens are encrypted at rest
 const adapter = {
   ...nativeAdapter,
-  async linkAccount(account: any) {
+  async linkAccount(account: Account) {
     if (account.access_token) {
+      // @ts-expect-error NextAuth Account types mark access_token as readonly, but we need to encrypt it
       account.access_token = encrypt(account.access_token);
     }
     if (account.refresh_token) {
+      // @ts-expect-error NextAuth Account types mark refresh_token as readonly, but we need to encrypt it
       account.refresh_token = encrypt(account.refresh_token);
     }
-    return nativeAdapter.linkAccount!(account);
+    return nativeAdapter.linkAccount!(account as any);
   },
 };
 
