@@ -1,0 +1,12 @@
+🧪 [testing improvement] Add tests for useRepoLabels hook
+
+🎯 What: Added a missing test file for `useRepoLabels` hook. The test mocks `useQuery` from `@tanstack/react-query` to test the logic directly and avoid boilerplate QueryClient provider wrapper setup, while ensuring correct `queryKey`, `enabled` conditions, and testing the functionality of `queryFn`.
+
+📊 Coverage:
+- `useQuery` gets called with right `queryKey`, `enabled` as true, and `staleTime` when `repoId` is provided.
+- `useQuery` gets called with `enabled` as false when `repoId` is missing/undefined.
+- `queryFn` correctly resolves to an empty array fallback when `repoId` is missing.
+- `queryFn` makes correct `fetch` call and parses returned json when `repoId` is provided.
+- `queryFn` properly rejects/throws error if `res.ok` from `fetch` is false.
+
+✨ Result: Ensured reliability and improved test coverage for the `useRepoLabels` hook by effectively unit testing its behavior and edge cases without unnecessary overhead.
