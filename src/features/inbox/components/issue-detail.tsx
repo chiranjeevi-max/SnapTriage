@@ -8,6 +8,7 @@
  */
 "use client";
 
+import Image from "next/image";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CircleDot, Clock, ExternalLink, Tag, User, UserPlus, X } from "lucide-react";
@@ -134,11 +135,13 @@ export function IssueDetail({ issue, onClose }: IssueDetailProps) {
             {issue.author && (
               <span className="flex items-center gap-1">
                 {issue.authorAvatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
                     src={issue.authorAvatar}
                     alt={issue.author}
+                    width={16}
+                    height={16}
                     className="h-4 w-4 rounded-full"
+                    unoptimized
                   />
                 ) : (
                   <User className="h-3 w-3" />
