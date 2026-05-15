@@ -4,7 +4,7 @@
  * (GitHub/GitLab), upserting them into the local database, and pushing pending
  * batch changes back to the provider. This module runs exclusively on the server.
  */
-import { eq, and, inArray, type inferSelectModel } from "drizzle-orm";
+import { eq, and, inArray, type InferSelectModel } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { issues, repos, syncLog, triageState } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
@@ -223,8 +223,8 @@ export async function pushBatchChanges(
   let pushed = 0;
   let failed = 0;
 
-  type Issue = inferSelectModel<typeof issues>;
-  type Repo = inferSelectModel<typeof repos>;
+  type Issue = InferSelectModel<typeof issues>;
+  type Repo = InferSelectModel<typeof repos>;
 
   // Pre-fetch related issues and repos to eliminate N+1 queries
   const issueIds = pendingRows.map((r) => r.issueId);
