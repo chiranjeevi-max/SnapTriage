@@ -81,4 +81,16 @@ describe("POST /api/auth/token", () => {
     expect(response.status).toBe(401);
     expect(data.error).toBe("Invalid token");
   });
+
+  it("should return 401 when encountering an unexpected error in the route handler", async () => {
+    // This empty object missing the json() method simulates an internal error
+    // within the POST handler, triggering the catch block.
+    const req = {} as Request;
+
+    const response = await POST(req);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe("Invalid token");
+  });
 });
