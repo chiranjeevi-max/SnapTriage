@@ -71,7 +71,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials, request) {
         // Rate Limiting Logic
-        const ip = request.headers?.get("x-forwarded-for") || "unknown";
+        const forwardedFor = request.headers?.get("x-forwarded-for");
+        const realIp = request.headers?.get("x-real-ip");
+        const ip = realIp ?? (forwardedFor ? forwardedFor.split(",")[0].trim() : "unknown");
         const now = Date.now();
         const windowMs = 15 * 60 * 1000; // 15 minutes window
 
