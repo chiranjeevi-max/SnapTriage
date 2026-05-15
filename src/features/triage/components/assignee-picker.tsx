@@ -6,6 +6,7 @@
  */
 "use client";
 
+import Image from "next/image";
 import { Check } from "lucide-react";
 import {
   CommandDialog,
@@ -99,11 +100,13 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
               >
                 <div className="flex items-center gap-2 flex-1">
                   {collab.avatar ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <Image
                       src={collab.avatar}
                       alt={collab.username}
+                      width={20}
+                      height={20}
                       className="h-5 w-5 rounded-full shrink-0"
+                      unoptimized
                     />
                   ) : (
                     <span className="h-5 w-5 rounded-full bg-muted shrink-0" />
