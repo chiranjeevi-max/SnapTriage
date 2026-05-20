@@ -19,6 +19,8 @@ const APP_SALT = process.env.AUTH_SALT || "snaptriage-token-encryption-v1";
 /**
  * Derives a 256-bit encryption key from AUTH_SECRET using PBKDF2.
  * Caches the result in module scope for performance.
+ * 600,000 iterations is the OWASP recommendation for PBKDF2-HMAC-SHA256.
+ * @returns {Buffer} The 32-byte derived encryption key.
  */
 let _cachedKey: Buffer | null = null;
 let _cachedLegacyKey: Buffer | null = null;
@@ -36,6 +38,11 @@ function getEncryptionKey(): Buffer {
   return _cachedKey;
 }
 
+/**
+ * Derives a legacy encryption key from AUTH_SECRET using PBKDF2.
+ * Uses 100,000 iterations for backwards compatibility with older stored tokens.
+ * @returns {Buffer} The 32-byte derived legacy encryption key.
+ */
 function getLegacyEncryptionKey(): Buffer {
   if (_cachedLegacyKey) return _cachedLegacyKey;
 
