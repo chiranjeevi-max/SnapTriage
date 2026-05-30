@@ -153,9 +153,13 @@ Optional:
 
 </details>
 
-## Contributing
-
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
+## Documentation
+
+For deep dives into how SnapTriage works under the hood, check out our extended documentation:
+- [Architecture & Tech Stack](docs/architecture.md)
+- [Security Overview](docs/security.md)
 
 ## License
 
