@@ -105,7 +105,7 @@ SnapTriage is production-ready today. Here's where it's headed:
 - [ ] **Saved filters & views** — Custom inbox views with persistent filter sets
 - [ ] **Team sync** — Shared triage queues with real-time presence
 - [ ] **Jira & Linear providers** — Extend the provider abstraction beyond GitHub/GitLab
-- [ ] **Bulk actions** — Select multiple issues, apply changes in one shot
+- [x] **Bulk actions** — Select multiple issues, apply changes in one shot
 - [ ] **Webhooks** — Real-time sync via webhooks instead of polling
 - [ ] **Browser extension** — Triage sidebar on GitHub/GitLab issue pages
 - [ ] **Mobile-friendly view** — Responsive triage for on-the-go processing
