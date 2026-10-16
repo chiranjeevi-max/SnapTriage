@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,13 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useKeyboardStore } from "../keyboard-store";
-import { shortcuts, type Shortcut } from "../shortcut-registry";
+import {
+  shortcuts,
+  type Shortcut,
+  getShortcutKey,
+  setShortcutOverride,
+  resetShortcutOverrides,
+} from "../shortcut-registry";
 import { Kbd } from "./kbd";
 
 /** Human-readable labels for shortcut categories. */
@@ -30,6 +37,25 @@ const categoryOrder: Shortcut["category"][] = ["navigation", "triage", "utility"
 /** Modal dialog showing all keyboard shortcuts grouped by category. */
 export function ShortcutOverlay() {
   const { overlayOpen, toggleOverlay } = useKeyboardStore();
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editingId) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        setEditingId(null);
+        return;
+      }
+      setShortcutOverride(editingId, event.key);
+      setEditingId(null);
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [editingId]);
 
   const grouped = categoryOrder.map((cat) => ({
     label: categoryLabels[cat],
@@ -58,13 +84,31 @@ export function ShortcutOverlay() {
                     className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm"
                   >
                     <span>{shortcut.description}</span>
-                    <Kbd>{formatKey(shortcut)}</Kbd>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(shortcut.id)}
+                      className="rounded border px-2 py-0.5"
+                      aria-label={`Rebind ${shortcut.description}`}
+                    >
+                      {editingId === shortcut.id ? (
+                        "Press a key..."
+                      ) : (
+                        <Kbd>{formatKey(shortcut)}</Kbd>
+                      )}
+                    </button>
                   </div>
                 ))}
               </div>
             </div>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={resetShortcutOverrides}
+          className="text-xs text-muted-foreground underline"
+        >
+          Reset keyboard shortcuts
+        </button>
       </DialogContent>
     </Dialog>
   );
@@ -75,8 +119,9 @@ export function ShortcutOverlay() {
  * @param shortcut - The shortcut definition.
  */
 function formatKey(shortcut: Shortcut): string {
-  if (shortcut.key === "Enter") return "\u21B5";
-  if (shortcut.key === "Escape") return "Esc";
-  if (shortcut.shift) return shortcut.key;
-  return shortcut.key.toUpperCase();
+  const key = getShortcutKey(shortcut);
+  if (key === "Enter") return "\u21B5";
+  if (key === "Escape") return "Esc";
+  if (shortcut.shift && key === shortcut.key) return key;
+  return key.toUpperCase();
 }
