@@ -8,9 +8,9 @@
 "use client";
 
 import { useEffect, useRef, memo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { CircleDot, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { IssueWithTriage } from "../use-issues";
@@ -35,6 +35,20 @@ const priorityLabels: Record<number, { label: string; className: string }> = {
  * Each row auto-scrolls into view when selected via keyboard navigation.
  */
 export function IssueList({ issues, selectedIndex, onSelect, isLoading }: IssueListProps) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: isLoading ? 0 : issues.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 76,
+    overscan: 6,
+  });
+
+  useEffect(() => {
+    if (selectedIndex >= 0 && issues.length > 0) {
+      virtualizer.scrollToIndex(selectedIndex, { align: "auto" });
+    }
+  }, [selectedIndex, virtualizer, issues.length]);
+
   if (isLoading) {
     return (
       <div className="space-y-1 p-2">
@@ -64,18 +78,33 @@ export function IssueList({ issues, selectedIndex, onSelect, isLoading }: IssueL
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div role="listbox" className="space-y-0.5 p-1">
-        {issues.map((issue, index) => (
-          <IssueRow
-            key={issue.id}
-            issue={issue}
-            isSelected={index === selectedIndex}
-            onSelect={onSelect}
-          />
-        ))}
+    <div ref={parentRef} className="h-full overflow-auto p-1" role="listbox">
+      <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const issue = issues[virtualItem.index];
+          return (
+            <div
+              key={virtualItem.key}
+              ref={virtualizer.measureElement}
+              data-index={virtualItem.index}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualItem.start}px)`,
+              }}
+            >
+              <IssueRow
+                issue={issue}
+                isSelected={virtualItem.index === selectedIndex}
+                onSelect={onSelect}
+              />
+            </div>
+          );
+        })}
       </div>
-    </ScrollArea>
+    </div>
   );
 }
 
