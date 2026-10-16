@@ -15,6 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { IssueWithTriage } from "../use-issues";
 
+const EMPTY_SELECTED = new Set<string>();
+
 interface IssueListProps {
   issues: IssueWithTriage[];
   selectedIndex: number;
@@ -41,7 +43,7 @@ export function IssueList({
   selectedIndex,
   onSelect,
   isLoading,
-  selectedIds,
+  selectedIds = EMPTY_SELECTED,
   onToggleSelected,
 }: IssueListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -108,7 +110,7 @@ export function IssueList({
                 issue={issue}
                 isSelected={virtualItem.index === selectedIndex}
                 onSelect={onSelect}
-                isSelectedForBulk={selectedIds?.has(issue.id) ?? false}
+                isSelectedForBulk={selectedIds.has(issue.id)}
                 onToggleSelected={onToggleSelected}
               />
             </div>
@@ -149,8 +151,9 @@ const IssueRow = memo(function IssueRow({
       {onToggleSelected && (
         <input
           type="checkbox"
-          aria-label={`Select issue ${issue.number}`}
+          aria-label={`Select ${issue.title} (#${issue.number})`}
           checked={isSelectedForBulk}
+          aria-checked={isSelectedForBulk}
           onClick={(event) => event.stopPropagation()}
           onChange={() => onToggleSelected(issue.id)}
           className="mt-3 h-4 w-4 shrink-0 accent-primary"
