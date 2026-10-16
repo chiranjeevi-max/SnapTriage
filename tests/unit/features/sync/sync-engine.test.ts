@@ -1,5 +1,6 @@
 /* @vitest-environment node */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,7 +20,7 @@ describe("sync engine", () => {
     vi.resetModules();
 
     const { db } = await import("@/lib/db");
-    migrate(db, { migrationsFolder: join(process.cwd(), "drizzle") });
+    migrate(db as never, { migrationsFolder: join(process.cwd(), "drizzle") });
 
     const { typedDb } = await import("@/lib/db/query");
     const { users, repos, accessTokens } = await import("@/lib/db/schema");
@@ -86,13 +87,12 @@ describe("sync engine", () => {
   }, 30000);
 
   afterAll(() => {
-    try {
-      const fs = require("node:fs");
-      fs.unlinkSync(dbPath);
-      fs.unlinkSync(`${dbPath}-wal`);
-      fs.unlinkSync(`${dbPath}-shm`);
-    } catch {
-      // cleanup best effort
+    for (const file of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+      try {
+        unlinkSync(file);
+      } catch {
+        // cleanup best effort
+      }
     }
   });
 
