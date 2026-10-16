@@ -63,13 +63,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .where(and(eq(repos.id, issue.repoId), eq(repos.userId, session.user.id)));
 
   if (repoRows.length === 0) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    return NextResponse.json({ error: "Issue not found" }, { status: 404 });
   }
   const repo = repoRows[0];
 
-  // Cached permission is checked when available; legacy rows let the provider
-  // enforce write access and report failures back to the client.
-  if ((labels || assignees || state) && repo.permission === "none") {
+  // Provider writeback requires write access on the repo.
+  if (
+    (labels || assignees || state) &&
+    repo.permission !== "admin" &&
+    repo.permission !== "write"
+  ) {
     return NextResponse.json({ error: "Insufficient repository permission" }, { status: 403 });
   }
 
