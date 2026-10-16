@@ -42,6 +42,18 @@ export const connectRepoSchema = z.object({
 
 export type ConnectRepoInput = z.infer<typeof connectRepoSchema>;
 
+/** Schema for PATCH /api/repos/:id — repo settings update. */
+export const updateRepoSchema = z
+  .object({
+    syncMode: z.enum(["live", "batch"]).optional(),
+    syncEnabled: z.boolean().optional(),
+  })
+  .refine((data) => data.syncMode !== undefined || data.syncEnabled !== undefined, {
+    message: "At least one field is required",
+  });
+
+export type UpdateRepoInput = z.infer<typeof updateRepoSchema>;
+
 /** Schema for POST /api/sync — trigger sync. */
 export const syncTriggerSchema = z.object({
   repoId: z.string().uuid().optional(),

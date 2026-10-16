@@ -47,8 +47,20 @@ function sleep(ms: number) {
  * @returns The fetch Response (original or retried).
  */
 async function ghFetch(url: string, token: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(url, { ...init, headers: { ...headers(token), ...init?.headers } });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  let res: Response | null = null;
+  try {
+    res = await fetch(url, {
+      ...init,
+      signal: init?.signal ?? controller.signal,
+      headers: { ...headers(token), ...init?.headers },
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
+  if (!res) throw new Error("GitHub request failed before receiving a response");
   if (res.status === 403) {
     const remaining = res.headers.get("x-ratelimit-remaining");
     const resetAt = res.headers.get("x-ratelimit-reset");
@@ -146,16 +158,30 @@ export const githubProvider: IssueProvider = {
    * @param changes - The set of changes to apply.
    */
   async updateIssue(owner, repo, issueNumber, token, changes) {
+    const checked = async (url: string, tok: string, init?: RequestInit): Promise<Response> => {
+      const response = await ghFetch(url, tok, init);
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new ProviderApiError(response.status, body, {
+          provider: "github",
+          operation: "updateIssue",
+          owner,
+          repo,
+        });
+      }
+      return response;
+    };
+
     // Build the update payload
     if (changes.state) {
-      await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}`, token, {
+      await checked(`${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}`, token, {
         method: "PATCH",
         body: JSON.stringify({ state: changes.state }),
       });
     }
 
     if (changes.labels?.add?.length) {
-      await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/labels`, token, {
+      await checked(`${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/labels`, token, {
         method: "POST",
         body: JSON.stringify({ labels: changes.labels.add }),
       });
@@ -163,7 +189,7 @@ export const githubProvider: IssueProvider = {
 
     if (changes.labels?.remove?.length) {
       for (const label of changes.labels.remove) {
-        await ghFetch(
+        await checked(
           `${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`,
           token,
           { method: "DELETE" }
@@ -172,14 +198,14 @@ export const githubProvider: IssueProvider = {
     }
 
     if (changes.assignees?.add?.length) {
-      await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/assignees`, token, {
+      await checked(`${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/assignees`, token, {
         method: "POST",
         body: JSON.stringify({ assignees: changes.assignees.add }),
       });
     }
 
     if (changes.assignees?.remove?.length) {
-      await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/assignees`, token, {
+      await checked(`${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/assignees`, token, {
         method: "DELETE",
         body: JSON.stringify({ assignees: changes.assignees.remove }),
       });

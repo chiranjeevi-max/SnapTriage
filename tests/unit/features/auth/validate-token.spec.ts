@@ -174,7 +174,7 @@ describe("Network errors", () => {
 });
 
 it("should throw for unknown provider", async () => {
-  await expect(validateToken("token", "unknown" as any)).rejects.toThrow(
+  await expect(validateToken("token", "unknown" as never)).rejects.toThrow(
     "Unknown provider: unknown"
   );
 });

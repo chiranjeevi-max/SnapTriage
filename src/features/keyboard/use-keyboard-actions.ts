@@ -12,7 +12,7 @@
  */
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useKeyboardStore } from "./keyboard-store";
 import { useSync, type IssueWithTriage } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
@@ -36,15 +36,18 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
 
   // Use refs for unstable dependencies (mutation objects that change identity each render)
   const triageRef = useRef(triage);
-  triageRef.current = triage;
   const syncRef = useRef(sync);
-  syncRef.current = sync;
   const batchPushRef = useRef(batchPush);
-  batchPushRef.current = batchPush;
   const issuesRef = useRef(issues);
-  issuesRef.current = issues;
   const selectedIndexRef = useRef(selectedIndex);
-  selectedIndexRef.current = selectedIndex;
+
+  useEffect(() => {
+    triageRef.current = triage;
+    syncRef.current = sync;
+    batchPushRef.current = batchPush;
+    issuesRef.current = issues;
+    selectedIndexRef.current = selectedIndex;
+  });
 
   return useCallback(
     (id: string) => {

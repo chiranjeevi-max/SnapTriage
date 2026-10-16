@@ -1,10 +1,19 @@
 /** Next.js configuration -- enables standalone output for Docker deployment. */
 import type { NextConfig } from "next";
 
+let gitlabOrigin = "https://gitlab.com";
+if (process.env.AUTH_GITLAB_URL) {
+  try {
+    gitlabOrigin = new URL(process.env.AUTH_GITLAB_URL).origin;
+  } catch {
+    gitlabOrigin = "https://gitlab.com";
+  }
+}
+
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
-    value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://avatars.githubusercontent.com https://secure.gravatar.com https://*.gitlab.io; font-src 'self'; connect-src 'self' https://api.github.com https://gitlab.com;",
+    value: `default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://avatars.githubusercontent.com https://secure.gravatar.com https://*.gitlab.io ${gitlabOrigin}; font-src 'self'; connect-src 'self' https://api.github.com ${gitlabOrigin};`,
   },
   {
     key: "X-Frame-Options",

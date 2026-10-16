@@ -8,6 +8,17 @@
  * and normalizes them into the {@link AvailableRepo} shape.
  */
 
+/** Abort slow provider requests. */
+async function fetchWithTimeout(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    return await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /** Normalized repository data returned by the provider-specific fetch functions. */
 export interface AvailableRepo {
   provider: "github" | "gitlab";
@@ -30,7 +41,7 @@ export async function fetchGitHubRepos(token: string): Promise<AvailableRepo[]> 
   let page = 1;
 
   while (true) {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated`,
       {
         headers: {
@@ -40,7 +51,7 @@ export async function fetchGitHubRepos(token: string): Promise<AvailableRepo[]> 
       }
     );
 
-    if (!res.ok) break;
+    if (!res.ok) throw new Error(`Failed to fetch repositories (HTTP ${res.status})`);
 
     const data = await res.json();
     if (data.length === 0) break;
@@ -80,14 +91,14 @@ export async function fetchGitLabRepos(token: string): Promise<AvailableRepo[]> 
   let page = 1;
 
   while (true) {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${baseUrl}/api/v4/projects?membership=true&per_page=100&page=${page}&order_by=updated_at`,
       {
         headers: { "PRIVATE-TOKEN": token },
       }
     );
 
-    if (!res.ok) break;
+    if (!res.ok) throw new Error(`Failed to fetch repositories (HTTP ${res.status})`);
 
     const data = await res.json();
     if (data.length === 0) break;

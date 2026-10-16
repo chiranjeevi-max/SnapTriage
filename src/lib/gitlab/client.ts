@@ -46,6 +46,17 @@ function projectPath(owner: string, repo: string) {
   return encodeURIComponent(`${owner}/${repo}`);
 }
 
+/** Abort fetches that hang against a provider. */
+async function timedFetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    return await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /** GitLab implementation of the {@link IssueProvider} interface. */
 export const gitlabProvider: IssueProvider = {
   /**
@@ -74,7 +85,7 @@ export const gitlabProvider: IssueProvider = {
       });
       if (since) params.set("updated_after", since.toISOString());
 
-      const res = await fetch(`${baseUrl}/api/v4/projects/${project}/issues?${params}`, {
+      const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}/issues?${params}`, {
         headers: headers(token),
       });
 
@@ -145,12 +156,22 @@ export const gitlabProvider: IssueProvider = {
     // Fetch current issue state once if needed for labels or assignees
     let currentIssue: Record<string, unknown> | null = null;
     if (needsLabels || needsAssignees) {
-      const issueRes = await fetch(`${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}`, {
-        headers: headers(token),
-      });
-      if (issueRes.ok) {
-        currentIssue = await issueRes.json();
+      const issueRes = await timedFetch(
+        `${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}`,
+        {
+          headers: headers(token),
+        }
+      );
+      if (!issueRes.ok) {
+        const body = await issueRes.text().catch(() => "");
+        throw new ProviderApiError(issueRes.status, body, {
+          provider: "gitlab",
+          operation: "updateIssue",
+          owner,
+          repo,
+        });
       }
+      currentIssue = await issueRes.json();
     }
 
     // GitLab sets labels as a full replacement
@@ -173,7 +194,7 @@ export const gitlabProvider: IssueProvider = {
       // Resolve usernames to IDs
       const currentAssigneeIds: number[] = [];
       for (const username of existingAssignees) {
-        const userRes = await fetch(
+        const userRes = await timedFetch(
           `${baseUrl}/api/v4/users?username=${encodeURIComponent(username)}`,
           { headers: headers(token) }
         );
@@ -186,14 +207,26 @@ export const gitlabProvider: IssueProvider = {
     }
 
     if (Object.keys(params).length > 0) {
-      await fetch(`${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}`, {
-        method: "PUT",
-        headers: {
-          ...headers(token),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(params),
-      });
+      const updateRes = await timedFetch(
+        `${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}`,
+        {
+          method: "PUT",
+          headers: {
+            ...headers(token),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(params),
+        }
+      );
+      if (!updateRes.ok) {
+        const body = await updateRes.text().catch(() => "");
+        throw new ProviderApiError(updateRes.status, body, {
+          provider: "gitlab",
+          operation: "updateIssue",
+          owner,
+          repo,
+        });
+      }
     }
   },
 
@@ -210,7 +243,7 @@ export const gitlabProvider: IssueProvider = {
     const baseUrl = getBaseUrl();
     const project = projectPath(owner, repo);
 
-    const res = await fetch(`${baseUrl}/api/v4/projects/${project}`, {
+    const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}`, {
       headers: headers(token),
     });
 
@@ -242,7 +275,7 @@ export const gitlabProvider: IssueProvider = {
 
     while (true) {
       const params = new URLSearchParams({ per_page: "100", page: String(page) });
-      const res = await fetch(`${baseUrl}/api/v4/projects/${project}/labels?${params}`, {
+      const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}/labels?${params}`, {
         headers: headers(token),
       });
       if (!res.ok) break;
@@ -281,7 +314,7 @@ export const gitlabProvider: IssueProvider = {
 
     while (true) {
       const params = new URLSearchParams({ per_page: "100", page: String(page) });
-      const res = await fetch(`${baseUrl}/api/v4/projects/${project}/members/all?${params}`, {
+      const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}/members/all?${params}`, {
         headers: headers(token),
       });
       if (!res.ok) break;

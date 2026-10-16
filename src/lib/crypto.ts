@@ -104,7 +104,7 @@ export function decrypt(encryptedValue: string): string {
     let decrypted = decipher.update(ciphertext, "hex", "utf8");
     decrypted += decipher.final("utf8");
     return decrypted;
-  } catch (e) {
+  } catch {
     // If authentication fails (wrong key), fall back to the legacy key
     const legacyKey = getLegacyEncryptionKey();
     const legacyDecipher = createDecipheriv("aes-256-gcm", legacyKey, iv);

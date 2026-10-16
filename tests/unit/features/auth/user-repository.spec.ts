@@ -19,7 +19,9 @@ vi.mock("@/lib/db/query", () => {
       insert: insertMock,
       delete: deleteMock,
       select: selectMock,
+      transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => fn({ insert: insertMock, delete: deleteMock, select: selectMock })),
     },
+    runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => fn({ insert: insertMock, delete: deleteMock, select: selectMock })),
   };
 });
 
@@ -43,10 +45,10 @@ describe("UserRepository", () => {
       vi.mocked(encrypt).mockReturnValue(encryptedMangledText);
 
       const deleteWhereSpy = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(typedDb.delete).mockReturnValue({ where: deleteWhereSpy } as any);
+      vi.mocked(typedDb.delete).mockReturnValue({ where: deleteWhereSpy } as never);
 
       const insertValuesSpy = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(typedDb.insert).mockReturnValue({ values: insertValuesSpy } as any);
+      vi.mocked(typedDb.insert).mockReturnValue({ values: insertValuesSpy } as never);
 
       // 2. Act
       await storeAccessToken(mockTokenPayload);
@@ -78,7 +80,7 @@ describe("UserRepository", () => {
       const expectedOutput = mockUser;
       const selectWhereSpy = vi.fn().mockResolvedValue([expectedOutput]);
       const selectFromSpy = vi.fn().mockReturnValue({ where: selectWhereSpy });
-      vi.mocked(typedDb.select).mockReturnValue({ from: selectFromSpy } as any);
+      vi.mocked(typedDb.select).mockReturnValue({ from: selectFromSpy } as never);
 
       // 2. Act
       const result = await findUserByEmail("grace@example.com");

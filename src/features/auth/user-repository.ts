@@ -8,7 +8,7 @@
  * client (cast to `any` to satisfy the SQLite/Neon union type).
  */
 import { eq, and } from "drizzle-orm";
-import { typedDb } from "@/lib/db/query";
+import { typedDb, runTransaction } from "@/lib/db/query";
 import { users, accessTokens } from "@/lib/db/schema";
 import { encrypt } from "@/lib/crypto";
 
@@ -57,13 +57,15 @@ export async function storeAccessToken(data: {
   token: string;
   label: string;
 }) {
-  // Remove existing token for this user+provider pair (upsert)
-  await typedDb
-    .delete(accessTokens)
-    .where(and(eq(accessTokens.userId, data.userId), eq(accessTokens.provider, data.provider)));
+  // Remove + insert in one transaction to avoid duplicate rows from races
+  await runTransaction(async (tx) => {
+    await tx
+      .delete(accessTokens)
+      .where(and(eq(accessTokens.userId, data.userId), eq(accessTokens.provider, data.provider)));
 
-  await typedDb.insert(accessTokens).values({
-    ...data,
-    token: encrypt(data.token),
+    await tx.insert(accessTokens).values({
+      ...data,
+      token: encrypt(data.token),
+    });
   });
 }
