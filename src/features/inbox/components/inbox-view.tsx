@@ -18,6 +18,7 @@ import { IssueDetail } from "./issue-detail";
 import { useIssues } from "../use-issues";
 import { useIssueFilter } from "../use-issue-filter";
 import { filterIssues, ISSUE_FILTERS } from "../issue-filters";
+import { useSavedViews, useSaveCurrentView } from "../use-saved-views";
 import { useBulkTriage } from "@/features/triage/use-bulk-triage";
 import { useKeyboardStore, useKeyboardShortcuts, ShortcutOverlay } from "@/features/keyboard";
 import {
@@ -37,6 +38,8 @@ export function InboxView() {
   const [filter, setFilter] = useIssueFilter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const bulkTriage = useBulkTriage();
+  const { data: savedViews } = useSavedViews();
+  const saveCurrentView = useSaveCurrentView();
 
   const issueList = useMemo(() => issues ?? [], [issues]);
   const filteredIssues = useMemo(() => filterIssues(issueList, filter), [issueList, filter]);
@@ -143,6 +146,34 @@ export function InboxView() {
               </option>
             ))}
           </select>
+          {savedViews && savedViews.length > 0 && (
+            <select
+              aria-label="Saved views"
+              value=""
+              onChange={(event) => {
+                const view = savedViews.find((item) => item.id === event.target.value);
+                if (view) setFilter(view.filter);
+              }}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+            >
+              <option value="">Saved views</option>
+              {savedViews.map((view) => (
+                <option key={view.id} value={view.id}>
+                  {view.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const name = window.prompt("Name this view");
+              if (name) saveCurrentView.mutate({ name, filter });
+            }}
+            className="h-8 rounded-md border px-2 text-xs"
+          >
+            Save view
+          </button>
         </div>
         {selectedIds.size > 0 && (
           <div

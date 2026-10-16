@@ -107,6 +107,33 @@ export const accessTokens = sqliteTable(
   (table) => [uniqueIndex("access_token_user_provider_unique").on(table.userId, table.provider)]
 );
 
+// ─── Saved Inbox Views ────────────────────────────────────
+
+/**
+ * User-defined inbox views (filter/priority/state combinations).
+ * Stored per user so preferences survive device and browser changes.
+ */
+export const savedViews = sqliteTable(
+  "saved_view",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    filter: text("filter").notNull().default("all"),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updatedAt", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [index("saved_view_userId_idx").on(table.userId)]
+);
+
 // ─── Rate Limit Buckets ────────────────────────────────────
 
 /**
