@@ -56,7 +56,8 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 ```bash
 git clone https://github.com/chiranjeevi-max/SnapTriage.git
 cd SnapTriage
-npm install
+# Requires Node 22+ (see .nvmrc); CI uses the same version
+npm ci
 cp .env.example .env.local
 # Edit .env.local with your GitHub/GitLab OAuth credentials
 npm run dev
