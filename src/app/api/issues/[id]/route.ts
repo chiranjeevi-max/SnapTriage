@@ -21,6 +21,7 @@ import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { mergePendingChanges, type PendingChanges } from "@/features/triage/types";
 import { triagePatchSchema, parseBody } from "@/lib/validations";
+import { apiLogger } from "@/lib/logger";
 
 /**
  * Applies triage updates to a single issue.
@@ -43,6 +44,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   const userId = session.user!.id;
+  const startedAt = performance.now();
   const rawBody = await req.json();
   const parsed = parseBody(triagePatchSchema, rawBody);
   if (!parsed.success) {
@@ -169,5 +171,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
+  apiLogger.info(
+    { issueId: id, durationMs: Math.round(performance.now() - startedAt) },
+    "Issue triage update completed"
+  );
   return NextResponse.json({ ok: true });
 }
