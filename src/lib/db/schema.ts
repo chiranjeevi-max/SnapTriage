@@ -113,11 +113,15 @@ export const accessTokens = sqliteTable(
  * Shared request counters used by endpoints that must limit across
  * database-backed instances (e.g. PAT authentication).
  */
-export const rateLimitBuckets = sqliteTable("rate_limit_bucket", {
-  key: text("key").primaryKey(),
-  count: integer("count").notNull().default(1),
-  windowStart: integer("windowStart", { mode: "timestamp_ms" }).notNull(),
-});
+export const rateLimitBuckets = sqliteTable(
+  "rate_limit_bucket",
+  {
+    key: text("key").primaryKey(),
+    count: integer("count").notNull().default(1),
+    windowStart: integer("windowStart", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("rate_limit_bucket_windowStart_idx").on(table.windowStart)]
+);
 
 // ─── Repos ────────────────────────────────────────────────
 

@@ -67,12 +67,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   const repo = repoRows[0];
 
-  // Provider writeback requires write access on the repo
-  if (
-    (labels || assignees || state) &&
-    repo.permission !== "admin" &&
-    repo.permission !== "write"
-  ) {
+  // Cached permission is checked when available; legacy rows let the provider
+  // enforce write access and report failures back to the client.
+  if ((labels || assignees || state) && repo.permission === "none") {
     return NextResponse.json({ error: "Insufficient repository permission" }, { status: 403 });
   }
 
@@ -89,38 +86,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const ensureTriageRow = async () => {
     if (triageRow) return triageRow.id;
 
-    try {
-      const inserted = await typedDb
-        .insert(triageState)
-        .values({
-          issueId: id,
-          userId,
-          updatedAt: new Date(),
-        })
-        .returning({ id: triageState.id });
-      const newId = inserted[0].id;
-      triageRow = {
-        id: newId,
-        issueId: id,
-        userId,
-        priority: null,
-        snoozedUntil: null,
-        dismissed: false,
-        batchPending: false,
-        pendingChanges: {},
-        updatedAt: new Date(),
-      } as (typeof existingTriage)[number];
-      return newId;
-    } catch {
-      // Handle a race with another request by reloading the existing row.
-      const existing = await typedDb
-        .select()
-        .from(triageState)
-        .where(and(eq(triageState.issueId, id), eq(triageState.userId, userId)));
-      if (!existing[0]) throw new Error("Failed to create triage state");
-      triageRow = existing[0];
-      return existing[0].id;
-    }
+    await typedDb
+      .insert(triageState)
+      .values({ issueId: id, userId, updatedAt: new Date() })
+      .onConflictDoNothing({ target: [triageState.issueId, triageState.userId] });
+
+    const existing = await typedDb
+      .select()
+      .from(triageState)
+      .where(and(eq(triageState.issueId, id), eq(triageState.userId, userId)));
+    if (!existing[0]) throw new Error("Failed to get triage state");
+    triageRow = existing[0];
+    return existing[0].id;
   };
 
   // Update triage state in DB

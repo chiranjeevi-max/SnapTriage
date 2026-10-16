@@ -1,0 +1,1 @@
+CREATE INDEX `rate_limit_bucket_windowStart_idx` ON `rate_limit_bucket` (`windowStart`);

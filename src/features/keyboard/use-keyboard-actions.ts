@@ -12,7 +12,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef, useLayoutEffect } from "react";
 import { useKeyboardStore } from "./keyboard-store";
 import { useSync, type IssueWithTriage } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
@@ -41,7 +41,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
   const issuesRef = useRef(issues);
   const selectedIndexRef = useRef(selectedIndex);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     triageRef.current = triage;
     syncRef.current = sync;
     batchPushRef.current = batchPush;

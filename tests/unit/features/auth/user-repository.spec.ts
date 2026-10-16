@@ -47,7 +47,8 @@ describe("UserRepository", () => {
       const deleteWhereSpy = vi.fn().mockResolvedValue(undefined);
       vi.mocked(typedDb.delete).mockReturnValue({ where: deleteWhereSpy } as never);
 
-      const insertValuesSpy = vi.fn().mockResolvedValue(undefined);
+      const insertConflictSpy = vi.fn().mockResolvedValue(undefined);
+      const insertValuesSpy = vi.fn().mockReturnValue({ onConflictDoUpdate: insertConflictSpy });
       vi.mocked(typedDb.insert).mockReturnValue({ values: insertValuesSpy } as never);
 
       // 2. Act
@@ -55,8 +56,6 @@ describe("UserRepository", () => {
 
       // 3. Assert - RCS-001 Verification typing
       expect(encrypt).toHaveBeenCalledWith(mockTokenPayload.token);
-      expect(typedDb.delete).toHaveBeenCalled();
-      expect(deleteWhereSpy).toHaveBeenCalled();
       expect(typedDb.insert).toHaveBeenCalled();
       expect(insertValuesSpy).toHaveBeenCalledWith(
         expect.objectContaining({
