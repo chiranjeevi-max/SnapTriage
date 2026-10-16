@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { syncRepo, syncAllRepos } from "@/features/sync/sync-engine";
 import { syncTriggerSchema, parseBody } from "@/lib/validations";
+import { syncLogger } from "@/lib/logger";
 
 /**
  * Initiates a sync operation. If `repoId` is provided in the request body,
@@ -35,11 +36,21 @@ export async function POST(req: Request) {
   }
   const { repoId } = parsed.data;
 
+  const startedAt = performance.now();
+
   if (repoId) {
     const result = await syncRepo(repoId, session.user.id);
+    syncLogger.info(
+      { repoId, durationMs: Math.round(performance.now() - startedAt), status: result.status },
+      "Sync request completed"
+    );
     return NextResponse.json(result);
   }
 
   const results = await syncAllRepos(session.user.id);
+  syncLogger.info(
+    { durationMs: Math.round(performance.now() - startedAt), repoCount: results.length },
+    "Full sync request completed"
+  );
   return NextResponse.json(results);
 }
