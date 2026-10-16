@@ -76,7 +76,7 @@ src/
 ### Testing
 
 - Unit tests (Vitest): `tests/unit/`
-- E2E tests (Playwright): `tests/e2e/`
+- E2E tests (Playwright): `tests/e2e/` (set `E2E_GITHUB_PAT` for authenticated coverage)
 - Write tests for business logic, especially triage actions and sync engine
 
 ## Architecture
