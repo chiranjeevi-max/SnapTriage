@@ -110,6 +110,7 @@ const IssueRow = memo(function IssueRow({
         "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
         isSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50 text-foreground"
       )}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "76px" }}
     >
       <CircleDot
         className={cn(
