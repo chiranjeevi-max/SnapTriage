@@ -1,6 +1,6 @@
 import { typedDb } from "@/lib/db/query";
 import { rateLimitBuckets } from "@/lib/db/schema";
-import { sql } from "drizzle-orm";
+import { lt, sql } from "drizzle-orm";
 import { authLogger } from "@/lib/logger";
 /**
  * @module lib/rate-limit
@@ -74,6 +74,15 @@ export async function checkPersistentRateLimit(
   windowMs = 15 * 60 * 1000
 ): Promise<boolean> {
   const now = Date.now();
+  // Purge expired buckets opportunistically to prevent unbounded growth.
+  try {
+    await typedDb
+      .delete(rateLimitBuckets)
+      .where(lt(rateLimitBuckets.windowStart, new Date(now - windowMs)));
+  } catch {
+    // Best-effort cleanup must not disable auth-rate limiting.
+  }
+
   try {
     const result = await typedDb
       .insert(rateLimitBuckets)
