@@ -20,6 +20,8 @@ interface IssueListProps {
   selectedIndex: number;
   onSelect: (issue: IssueWithTriage) => void;
   isLoading: boolean;
+  selectedIds?: ReadonlySet<string>;
+  onToggleSelected?: (issueId: string) => void;
 }
 
 /** Priority label config mapping P0-P3 to display text and color classes. */
@@ -34,7 +36,14 @@ const priorityLabels: Record<number, { label: string; className: string }> = {
  * Scrollable issue list with loading skeletons and empty state.
  * Each row auto-scrolls into view when selected via keyboard navigation.
  */
-export function IssueList({ issues, selectedIndex, onSelect, isLoading }: IssueListProps) {
+export function IssueList({
+  issues,
+  selectedIndex,
+  onSelect,
+  isLoading,
+  selectedIds,
+  onToggleSelected,
+}: IssueListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: isLoading ? 0 : issues.length,
@@ -99,6 +108,8 @@ export function IssueList({ issues, selectedIndex, onSelect, isLoading }: IssueL
                 issue={issue}
                 isSelected={virtualItem.index === selectedIndex}
                 onSelect={onSelect}
+                isSelectedForBulk={selectedIds?.has(issue.id) ?? false}
+                onToggleSelected={onToggleSelected}
               />
             </div>
           );
@@ -115,10 +126,14 @@ const IssueRow = memo(function IssueRow({
   issue,
   isSelected,
   onSelect,
+  isSelectedForBulk,
+  onToggleSelected,
 }: {
   issue: IssueWithTriage;
   isSelected: boolean;
   onSelect: (issue: IssueWithTriage) => void;
+  isSelectedForBulk: boolean;
+  onToggleSelected?: (issueId: string) => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   const priority = issue.triage?.priority != null ? priorityLabels[issue.triage.priority] : null;
@@ -130,53 +145,67 @@ const IssueRow = memo(function IssueRow({
   }, [isSelected]);
 
   return (
-    <button
-      ref={ref}
-      role="option"
-      aria-selected={isSelected}
-      onClick={() => onSelect(issue)}
-      className={cn(
-        "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
-        isSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50 text-foreground"
+    <div className="flex items-start gap-2">
+      {onToggleSelected && (
+        <input
+          type="checkbox"
+          aria-label={`Select issue ${issue.number}`}
+          checked={isSelectedForBulk}
+          onClick={(event) => event.stopPropagation()}
+          onChange={() => onToggleSelected(issue.id)}
+          className="mt-3 h-4 w-4 shrink-0 accent-primary"
+        />
       )}
-      style={{ contentVisibility: "auto", containIntrinsicSize: "76px" }}
-    >
-      <CircleDot
+      <button
+        ref={ref}
+        role="option"
+        aria-selected={isSelected}
+        onClick={() => onSelect(issue)}
         className={cn(
-          "mt-0.5 h-4 w-4 shrink-0",
-          issue.state === "open" ? "text-green-500" : "text-muted-foreground"
+          "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
+          isSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50 text-foreground"
         )}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          {priority && (
-            <Badge
-              variant="outline"
-              className={cn("shrink-0 text-[10px] px-1.5 py-0", priority.className)}
-            >
-              {priority.label}
-            </Badge>
+        style={{ contentVisibility: "auto", containIntrinsicSize: "76px" }}
+      >
+        <CircleDot
+          className={cn(
+            "mt-0.5 h-4 w-4 shrink-0",
+            issue.state === "open" ? "text-green-500" : "text-muted-foreground"
           )}
-          <span className="truncate text-sm font-medium">{issue.title}</span>
-        </div>
-        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-          <span>#{issue.number}</span>
-          {issue.author && <span>by {issue.author}</span>}
-          <span>{formatRelativeTime(issue.updatedAt)}</span>
-        </div>
-        {issue.labels.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {issue.labels.slice(0, 3).map((label) => (
-              <Badge key={label} variant="secondary" className="text-[10px] px-1.5 py-0">
-                {label}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            {priority && (
+              <Badge
+                variant="outline"
+                className={cn("shrink-0 text-[10px] px-1.5 py-0", priority.className)}
+              >
+                {priority.label}
               </Badge>
-            ))}
-            {issue.labels.length > 3 && (
-              <span className="text-[10px] text-muted-foreground">+{issue.labels.length - 3}</span>
             )}
+            <span className="truncate text-sm font-medium">{issue.title}</span>
           </div>
-        )}
-      </div>
-    </button>
+          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <span>#{issue.number}</span>
+            {issue.author && <span>by {issue.author}</span>}
+            <span>{formatRelativeTime(issue.updatedAt)}</span>
+          </div>
+          {issue.labels.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {issue.labels.slice(0, 3).map((label) => (
+                <Badge key={label} variant="secondary" className="text-[10px] px-1.5 py-0">
+                  {label}
+                </Badge>
+              ))}
+              {issue.labels.length > 3 && (
+                <span className="text-[10px] text-muted-foreground">
+                  +{issue.labels.length - 3}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </button>
+    </div>
   );
 });

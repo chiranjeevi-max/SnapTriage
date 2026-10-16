@@ -11,13 +11,14 @@
  */
 "use client";
 
-import { useEffect, useMemo, useRef, useCallback } from "react";
+import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { IssueList } from "./issue-list";
 import { IssueDetail } from "./issue-detail";
 import { useIssues } from "../use-issues";
 import { useIssueFilter } from "../use-issue-filter";
 import { filterIssues, ISSUE_FILTERS } from "../issue-filters";
+import { useBulkTriage } from "@/features/triage/use-bulk-triage";
 import { useKeyboardStore, useKeyboardShortcuts, ShortcutOverlay } from "@/features/keyboard";
 import {
   LabelPicker,
@@ -34,6 +35,8 @@ import {
 export function InboxView() {
   const { data: issues, isLoading } = useIssues();
   const [filter, setFilter] = useIssueFilter();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const bulkTriage = useBulkTriage();
 
   const issueList = useMemo(() => issues ?? [], [issues]);
   const filteredIssues = useMemo(() => filterIssues(issueList, filter), [issueList, filter]);
@@ -54,6 +57,33 @@ export function InboxView() {
   useEffect(() => {
     setIssueCount(filteredIssues.length);
   }, [filteredIssues.length, setIssueCount]);
+
+  const toggleSelected = useCallback((issueId: string) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(issueId)) next.delete(issueId);
+      else next.add(issueId);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  const runBulk = useCallback(
+    (payload: Parameters<typeof bulkTriage.mutate>[0]["payload"], description: string) => {
+      const issueIds = [...selectedIds].filter((id) =>
+        filteredIssues.some((issue) => issue.id === id)
+      );
+      if (issueIds.length === 0) return;
+      bulkTriage.mutate(
+        { issueIds, payload, description },
+        {
+          onSuccess: () => clearSelection(),
+        }
+      );
+    },
+    [selectedIds, filteredIssues, bulkTriage, clearSelection]
+  );
 
   // Derive current issue from the filtered list so keyboard nav follows the view
   const currentIssue = selectedIndex >= 0 ? (filteredIssues[selectedIndex] ?? null) : null;
@@ -113,6 +143,62 @@ export function InboxView() {
             ))}
           </select>
         </div>
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">{selectedIds.size} selected</span>
+            <button
+              type="button"
+              disabled={bulkTriage.isPending}
+              onClick={() => runBulk({ priority: 0 }, "Set priority to P0")}
+              className="rounded border px-2 py-1"
+            >
+              P0
+            </button>
+            <button
+              type="button"
+              disabled={bulkTriage.isPending}
+              onClick={() => runBulk({ priority: 1 }, "Set priority to P1")}
+              className="rounded border px-2 py-1"
+            >
+              P1
+            </button>
+            <button
+              type="button"
+              disabled={bulkTriage.isPending}
+              onClick={() => runBulk({ priority: 2 }, "Set priority to P2")}
+              className="rounded border px-2 py-1"
+            >
+              P2
+            </button>
+            <button
+              type="button"
+              disabled={bulkTriage.isPending}
+              onClick={() => runBulk({ priority: 3 }, "Set priority to P3")}
+              className="rounded border px-2 py-1"
+            >
+              P3
+            </button>
+            <button
+              type="button"
+              disabled={bulkTriage.isPending}
+              onClick={() => runBulk({ dismissed: true }, "Dismissed issues")}
+              className="rounded border px-2 py-1"
+            >
+              Dismiss
+            </button>
+            <button
+              type="button"
+              disabled={bulkTriage.isPending}
+              onClick={() => runBulk({ dismissed: false }, "Undismissed issues")}
+              className="rounded border px-2 py-1"
+            >
+              Undismiss
+            </button>
+            <button type="button" onClick={clearSelection} className="rounded border px-2 py-1">
+              Clear
+            </button>
+          </div>
+        )}
         <SyncStatus />
       </div>
 
@@ -124,6 +210,8 @@ export function InboxView() {
             selectedIndex={selectedIndex}
             onSelect={handleSelect}
             isLoading={isLoading}
+            selectedIds={selectedIds}
+            onToggleSelected={toggleSelected}
           />
         </ResizablePanel>
         <ResizableHandle withHandle />
