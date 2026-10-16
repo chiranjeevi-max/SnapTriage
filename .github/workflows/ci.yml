@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
@@ -31,6 +36,11 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Database migration drift check
+        run: |
+          npm run db:generate
+          git diff --exit-code -- drizzle/
 
       - name: Build
         run: npm run build

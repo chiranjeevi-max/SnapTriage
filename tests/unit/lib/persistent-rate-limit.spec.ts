@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { unlinkSync } from "node:fs";
+import { unlinkSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("checkPersistentRateLimit", () => {
-  const dbPath = `/private/var/folders/2g/dn5b2tlx0g5fqw9rclbxjbvc0000gn/T/opencode/persistent-rate-limit-${Date.now()}.db`;
+  const dbDir = join(tmpdir(), "snaptriage-tests");
+  mkdirSync(dbDir, { recursive: true });
+  const dbPath = join(dbDir, `persistent-rate-limit-${Date.now()}.db`);
 
   beforeAll(async () => {
     vi.resetModules();
