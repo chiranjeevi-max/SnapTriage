@@ -16,6 +16,8 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { IssueList } from "./issue-list";
 import { IssueDetail } from "./issue-detail";
 import { useIssues } from "../use-issues";
+import { useIssueFilter } from "../use-issue-filter";
+import { filterIssues, ISSUE_FILTERS } from "../issue-filters";
 import { useKeyboardStore, useKeyboardShortcuts, ShortcutOverlay } from "@/features/keyboard";
 import {
   LabelPicker,
@@ -31,6 +33,11 @@ import {
  */
 export function InboxView() {
   const { data: issues, isLoading } = useIssues();
+  const [filter, setFilter] = useIssueFilter();
+
+  const issueList = useMemo(() => issues ?? [], [issues]);
+  const filteredIssues = useMemo(() => filterIssues(issueList, filter), [issueList, filter]);
+
   const {
     selectedIndex,
     setSelectedIndex,
@@ -43,15 +50,13 @@ export function InboxView() {
     setSnoozePickerOpen,
   } = useKeyboardStore();
 
-  const issueList = useMemo(() => issues ?? [], [issues]);
-
-  // Keep issueCount in sync
+  // Keep issueCount in sync with the filtered list so keyboard nav stays in bounds
   useEffect(() => {
-    setIssueCount(issueList.length);
-  }, [issueList.length, setIssueCount]);
+    setIssueCount(filteredIssues.length);
+  }, [filteredIssues.length, setIssueCount]);
 
-  // Derive current issue from index
-  const currentIssue = selectedIndex >= 0 ? (issueList[selectedIndex] ?? null) : null;
+  // Derive current issue from the filtered list so keyboard nav follows the view
+  const currentIssue = selectedIndex >= 0 ? (filteredIssues[selectedIndex] ?? null) : null;
 
   // Stabilize selection after data refresh
   const selectedIdRef = useRef<string | null>(null);
@@ -60,24 +65,22 @@ export function InboxView() {
   }, [currentIssue]);
 
   useEffect(() => {
-    if (selectedIdRef.current && issueList.length > 0) {
-      const idx = issueList.findIndex((i) => i.id === selectedIdRef.current);
+    if (selectedIdRef.current && filteredIssues.length > 0) {
+      const idx = filteredIssues.findIndex((i) => i.id === selectedIdRef.current);
       if (idx >= 0) setSelectedIndex(idx);
     }
-  }, [issueList, setSelectedIndex]);
+  }, [filteredIssues, setSelectedIndex]);
 
   // Wire up keyboard shortcuts
-  useKeyboardShortcuts(issueList);
+  useKeyboardShortcuts(filteredIssues);
 
   // When user clicks an issue, update the store index
-  // ⚡ Bolt: Memoize handleSelect to provide a stable reference to IssueList,
-  // preventing unnecessary O(N) re-renders when issueList/setSelectedIndex haven't changed.
   const handleSelect = useCallback(
     (issue: { id: string }) => {
-      const idx = issueList.findIndex((i) => i.id === issue.id);
+      const idx = filteredIssues.findIndex((i) => i.id === issue.id);
       if (idx >= 0) setSelectedIndex(idx);
     },
-    [issueList, setSelectedIndex]
+    [filteredIssues, setSelectedIndex]
   );
 
   return (
@@ -92,9 +95,23 @@ export function InboxView() {
           <h1 className="text-sm font-semibold">Inbox</h1>
           {issues && (
             <span className="text-xs text-muted-foreground">
-              {issues.length} issue{issues.length !== 1 ? "s" : ""}
+              {filteredIssues.length} of {issues.length}
             </span>
           )}
+          <select
+            aria-label="Filter issues"
+            value={filter}
+            onChange={(event) =>
+              setFilter(event.target.value as (typeof ISSUE_FILTERS)[number]["value"])
+            }
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+          >
+            {ISSUE_FILTERS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
         <SyncStatus />
       </div>
@@ -103,7 +120,7 @@ export function InboxView() {
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel defaultSize={40} minSize={25}>
           <IssueList
-            issues={issueList}
+            issues={filteredIssues}
             selectedIndex={selectedIndex}
             onSelect={handleSelect}
             isLoading={isLoading}

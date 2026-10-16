@@ -57,3 +57,6 @@ next-env.d.ts
 
 # claude
 .claude/
+
+# local planning notes (not committed)
+/PLAN.md
