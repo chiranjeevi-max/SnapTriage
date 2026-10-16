@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { typedDb } from "@/lib/db/query";
 import { savedViews } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { parseBody } from "@/lib/validations";
 import { z } from "zod";
 

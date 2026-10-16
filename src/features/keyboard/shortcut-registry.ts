@@ -19,6 +19,40 @@ export interface Shortcut {
   category: "navigation" | "triage" | "utility";
 }
 
+const OVERRIDE_STORAGE_KEY = "snaptriage:shortcut-overrides";
+
+function readOverrides(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(OVERRIDE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Returns the effective key for a shortcut, including any user override. */
+export function getShortcutKey(shortcut: Shortcut): string {
+  const override = readOverrides()[shortcut.id];
+  return typeof override === "string" && override.length > 0 ? override : shortcut.key;
+}
+
+/** Persists an override for a shortcut key. */
+export function setShortcutOverride(id: string, key: string): void {
+  if (typeof window === "undefined") return;
+  const overrides = readOverrides();
+  overrides[id] = key;
+  window.localStorage.setItem(OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+}
+
+/** Removes all user keyboard shortcut overrides. */
+export function resetShortcutOverrides(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(OVERRIDE_STORAGE_KEY);
+}
+
 /** Complete list of registered shortcuts, ordered by category then key. */
 export const shortcuts: Shortcut[] = [
   { id: "move-down", key: "j", category: "navigation", description: "Next issue" },
@@ -63,7 +97,8 @@ export function matchShortcut(event: KeyboardEvent): Shortcut | null {
     if (!shortcut.shift && event.shiftKey) continue;
 
     const eventKey = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-    const shortcutKey = shortcut.key.length === 1 ? shortcut.key.toLowerCase() : shortcut.key;
+    const resolvedKey = getShortcutKey(shortcut);
+    const shortcutKey = resolvedKey.length === 1 ? resolvedKey.toLowerCase() : resolvedKey;
 
     if (eventKey === shortcutKey) return shortcut;
   }
