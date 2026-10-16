@@ -1,6 +1,6 @@
 # SnapTriage
 
-[![CI](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml/badge.svg)](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml)
+[![CI](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Keyboard-driven inbox for triaging GitHub & GitLab issues at speed.** Think "Superhuman for issue triage."
