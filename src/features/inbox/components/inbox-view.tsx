@@ -69,20 +69,20 @@ export function InboxView() {
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
+  const visibleSelectedIds = useMemo(
+    () => [...selectedIds].filter((id) => filteredIssues.some((issue) => issue.id === id)),
+    [selectedIds, filteredIssues]
+  );
+
   const runBulk = useCallback(
-    (payload: Parameters<typeof bulkTriage.mutate>[0]["payload"], description: string) => {
-      const issueIds = [...selectedIds].filter((id) =>
-        filteredIssues.some((issue) => issue.id === id)
-      );
-      if (issueIds.length === 0) return;
+    (payload: Parameters<typeof bulkTriage.mutate>[0]["payload"]) => {
+      if (visibleSelectedIds.length === 0) return;
       bulkTriage.mutate(
-        { issueIds, payload, description },
-        {
-          onSuccess: () => clearSelection(),
-        }
+        { issueIds: visibleSelectedIds, payload },
+        { onSuccess: () => clearSelection() }
       );
     },
-    [selectedIds, filteredIssues, bulkTriage, clearSelection]
+    [visibleSelectedIds, bulkTriage, clearSelection]
   );
 
   // Derive current issue from the filtered list so keyboard nav follows the view
@@ -145,12 +145,16 @@ export function InboxView() {
           </select>
         </div>
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">{selectedIds.size} selected</span>
+          <div
+            className="flex items-center gap-2 text-xs"
+            aria-live="polite"
+            aria-busy={bulkTriage.isPending}
+          >
+            <span className="text-muted-foreground">{visibleSelectedIds.length} selected</span>
             <button
               type="button"
               disabled={bulkTriage.isPending}
-              onClick={() => runBulk({ priority: 0 }, "Set priority to P0")}
+              onClick={() => runBulk({ priority: 0 })}
               className="rounded border px-2 py-1"
             >
               P0
@@ -158,7 +162,7 @@ export function InboxView() {
             <button
               type="button"
               disabled={bulkTriage.isPending}
-              onClick={() => runBulk({ priority: 1 }, "Set priority to P1")}
+              onClick={() => runBulk({ priority: 1 })}
               className="rounded border px-2 py-1"
             >
               P1
@@ -166,7 +170,7 @@ export function InboxView() {
             <button
               type="button"
               disabled={bulkTriage.isPending}
-              onClick={() => runBulk({ priority: 2 }, "Set priority to P2")}
+              onClick={() => runBulk({ priority: 2 })}
               className="rounded border px-2 py-1"
             >
               P2
@@ -174,7 +178,7 @@ export function InboxView() {
             <button
               type="button"
               disabled={bulkTriage.isPending}
-              onClick={() => runBulk({ priority: 3 }, "Set priority to P3")}
+              onClick={() => runBulk({ priority: 3 })}
               className="rounded border px-2 py-1"
             >
               P3
@@ -182,7 +186,7 @@ export function InboxView() {
             <button
               type="button"
               disabled={bulkTriage.isPending}
-              onClick={() => runBulk({ dismissed: true }, "Dismissed issues")}
+              onClick={() => runBulk({ dismissed: true })}
               className="rounded border px-2 py-1"
             >
               Dismiss
@@ -190,12 +194,17 @@ export function InboxView() {
             <button
               type="button"
               disabled={bulkTriage.isPending}
-              onClick={() => runBulk({ dismissed: false }, "Undismissed issues")}
+              onClick={() => runBulk({ dismissed: false })}
               className="rounded border px-2 py-1"
             >
               Undismiss
             </button>
-            <button type="button" onClick={clearSelection} className="rounded border px-2 py-1">
+            <button
+              type="button"
+              disabled={bulkTriage.isPending}
+              onClick={clearSelection}
+              className="rounded border px-2 py-1"
+            >
               Clear
             </button>
           </div>

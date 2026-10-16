@@ -34,6 +34,14 @@ test.describe("authenticated inbox", () => {
     await filter.selectOption("all");
     await expect(filter).toHaveValue("all");
 
+    const issueCheckbox = page.getByRole("checkbox").first();
+    if (await issueCheckbox.isVisible().catch(() => false)) {
+      await issueCheckbox.click();
+      await expect(page.getByText(/1 selected/)).toBeVisible();
+      await page.getByRole("button", { name: "Clear" }).click();
+      await expect(page.getByText(/selected/)).not.toBeVisible();
+    }
+
     expect(consoleErrors).toEqual([]);
   });
 });

@@ -50,22 +50,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   const { priority, snoozedUntil, dismissed, labels, assignees, state, batch } = parsed.data;
 
-  // Verify issue belongs to user's repo
-  const issueRows = await typedDb.select().from(issues).where(eq(issues.id, id));
-  const issue = issueRows[0];
-  if (!issue) {
+  // Scope the issue to a repo owned by the current user before exposing it.
+  const rows = await typedDb
+    .select({ issue: issues, repo: repos })
+    .from(issues)
+    .innerJoin(repos, eq(repos.id, issues.repoId))
+    .where(and(eq(issues.id, id), eq(repos.userId, userId)));
+
+  const row = rows[0];
+  if (!row) {
     return NextResponse.json({ error: "Issue not found" }, { status: 404 });
   }
-
-  const repoRows = await typedDb
-    .select()
-    .from(repos)
-    .where(and(eq(repos.id, issue.repoId), eq(repos.userId, session.user.id)));
-
-  if (repoRows.length === 0) {
-    return NextResponse.json({ error: "Issue not found" }, { status: 404 });
-  }
-  const repo = repoRows[0];
+  const { issue, repo } = row;
 
   // Provider writeback requires write access on the repo.
   if (
