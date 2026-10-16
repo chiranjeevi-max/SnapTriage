@@ -131,9 +131,10 @@ export function InboxView() {
           <select
             aria-label="Filter issues"
             value={filter}
-            onChange={(event) =>
-              setFilter(event.target.value as (typeof ISSUE_FILTERS)[number]["value"])
-            }
+            onChange={(event) => {
+              setFilter(event.target.value as (typeof ISSUE_FILTERS)[number]["value"]);
+              clearSelection();
+            }}
             className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
           >
             {ISSUE_FILTERS.map((option) => (
