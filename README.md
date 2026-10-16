@@ -102,11 +102,11 @@ SQLite data is persisted in a Docker volume. See `.env.example` for all configur
 SnapTriage is production-ready today. Here's where it's headed:
 
 - [ ] **AI-assisted triage** — Auto-suggest labels, priority, and assignees based on issue content
-- [ ] **Saved filters & views** — Custom inbox views with persistent filter sets
+- [x] **Saved filters & views** — Custom inbox views with persistent filter sets
 - [ ] **Team sync** — Shared triage queues with real-time presence
 - [ ] **Jira & Linear providers** — Extend the provider abstraction beyond GitHub/GitLab
 - [x] **Bulk actions** — Select multiple issues, apply changes in one shot
-- [ ] **Webhooks** — Real-time sync via webhooks instead of polling
+- [x] **Webhooks** — Real-time sync via webhooks instead of polling
 - [ ] **Browser extension** — Triage sidebar on GitHub/GitLab issue pages
 - [ ] **Mobile-friendly view** — Responsive triage for on-the-go processing
 
