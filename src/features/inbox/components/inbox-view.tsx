@@ -104,10 +104,8 @@ export function InboxView() {
     }
   }, [filteredIssues, setSelectedIndex]);
 
-  // Wire up keyboard shortcuts
   useKeyboardShortcuts(filteredIssues);
 
-  // When user clicks an issue, update the store index
   const handleSelect = useCallback(
     (issue: { id: string }) => {
       const idx = filteredIssues.findIndex((i) => i.id === issue.id);
