@@ -1,6 +1,6 @@
 # Architecture & Technology Stack
 
-SnapTriage is designed to be a keyboard-first, highly responsive issue triaging tool. It acts as an aggregator over GitHub and GitLab APIs.
+SnapTriage is a keyboard-first issue triage tool. It aggregates issues, repositories, and labels from the GitHub and GitLab APIs.
 
 ## Core Stack
 
@@ -16,9 +16,9 @@ SnapTriage is designed to be a keyboard-first, highly responsive issue triaging 
 
 ## Data Flow & Sync Modes
 
-SnapTriage connects to remote providers (GitHub and GitLab) to fetch issues, repositories, and labels. Since triage speed is critical, it heavily utilizes optimistic UI updates.
+SnapTriage connects to remote providers (GitHub and GitLab) to fetch issues, repositories, and labels. Since triage speed is critical, it uses optimistic UI updates.
 
-There are two primary synchronization modes:
+There are two sync modes:
 
 1. **Live Sync (Instant)**
    - Actions like labeling, dismissing, or prioritizing trigger an immediate API call to the provider.
@@ -28,10 +28,12 @@ There are two primary synchronization modes:
    - They are pushed to the remote provider in bulk when the user explicitly hits the "Sync" shortcut.
    - Ideal for scenarios with rate limits or slow networks.
 
+Webhook updates (optional): a GitHub or GitLab webhook calling `/api/webhooks/[provider]` with `?secret=WEBHOOK_SECRET` syncs the matching connected repos immediately, on top of the polling interval.
+
 ## Deployment Strategy
 
 ### Docker (Local & Self-Hosted)
-- Uses `SQLite` by default, making it simple to run anywhere.
+- Uses SQLite by default, so it runs anywhere.
 - The `Dockerfile` provides a standalone production build.
 - Data is stored locally in the `data/` volume.
 
@@ -41,5 +43,5 @@ There are two primary synchronization modes:
 
 ## Extensibility
 
-- **Providers**: The architecture abstracts the underlying provider logic, making it easy to add future integrations like Jira or Linear.
-- **Shortcuts**: Managed via a global Shortcut Registry that binds React components to key presses.
+- **Providers**: The `IssueProvider` interface abstracts provider logic, so adding integrations like Jira or Linear means implementing it.
+- **Shortcuts**: A shared registry binds React components to key presses.

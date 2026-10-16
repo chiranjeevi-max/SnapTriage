@@ -1,6 +1,6 @@
 # Contributing to SnapTriage
 
-Thanks for your interest in contributing to SnapTriage! This document provides guidelines and instructions for contributing.
+Thanks for your interest in contributing to SnapTriage!
 
 ## Development Setup
 
@@ -75,8 +75,8 @@ src/
 
 ### Testing
 
-- **Unit tests**: `tests/unit/` — Vitest
-- **E2E tests**: `tests/e2e/` — Playwright
+- Unit tests (Vitest): `tests/unit/`
+- E2E tests (Playwright): `tests/e2e/`
 - Write tests for business logic, especially triage actions and sync engine
 
 ## Architecture

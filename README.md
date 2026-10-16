@@ -3,11 +3,11 @@
 [![CI](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Keyboard-driven inbox for triaging GitHub & GitLab issues at speed.** Think "Superhuman for issue triage."
+**Keyboard-driven inbox for triaging GitHub and GitLab issues fast.** Think "Superhuman for issue triage."
 
 ## Vision
 
-One inbox. Every repo. Zero mouse. SnapTriage brings the speed of a keyboard-driven email client to issue management — unified across GitHub and GitLab, optimistic by default, and fast enough to clear a hundred-issue backlog before your coffee gets cold.
+One inbox. Every repo. Zero mouse. SnapTriage treats GitHub and GitLab issues like mail: optimistic by default, and fast enough to clear a hundred-issue backlog before your coffee gets cold.
 
 ## Problem
 
@@ -24,16 +24,19 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 
 ## Features
 
-- **Keyboard-first** — Navigate and triage issues entirely from the keyboard
-- **Multi-provider** — Connect GitHub and GitLab repos in one unified inbox
-- **Optimistic UI** — Actions feel instant with automatic rollback on failure
-- **Undo** — Every action has a 5-second undo window
-- **Two sync modes** — Live (instant writeback) or Batch (stage changes, push when ready)
-- **Label & assignee pickers** — Searchable command palettes for quick editing
-- **Snooze** — Hide issues until a specific time
-- **Secure By Default** — Personal Access Tokens and sensitive credentials are AES-256 encrypted at rest
-- **Dark mode** — Dark theme by default, light and system themes available
-- **Self-hostable** — SQLite by default, Postgres optional. Docker Compose included.
+- **Keyboard-first**: navigate and triage issues entirely from the keyboard
+- **Customizable shortcuts**: rebind any key from the `?` overlay
+- **Multi-provider**: connect GitHub and GitLab repos in one unified inbox
+- **Optimistic UI**: actions feel instant with automatic rollback on failure
+- **Undo**: every action has a 5-second undo window
+- **Two sync modes**: live (instant writeback) or batch (stage changes, push when ready)
+- **Webhook sync**: connect GitHub/GitLab webhooks to trigger an instant repo sync
+- **Label & assignee pickers**: searchable command palettes for quick editing
+- **Saved views**: keep named inbox filters (all, open, dismissed, snoozed, urgent) for one-click switching
+- **Snooze**: hide issues until a specific time
+- **Secure by default**: Personal Access Tokens and sensitive credentials are AES-256 encrypted at rest
+- **Dark mode**: dark theme by default, light and system themes available
+- **Self-hostable**: SQLite by default, Postgres optional. Docker Compose included.
 
 ## Keyboard Shortcuts
 
@@ -56,7 +59,7 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 ```bash
 git clone https://github.com/chiranjeevi-max/SnapTriage.git
 cd SnapTriage
-# Requires Node 22+ (see .nvmrc); CI uses the same version
+# Requires Node 22 (see the engines field in package.json); CI uses the same version
 npm ci
 cp .env.example .env.local
 # Edit .env.local with your GitHub/GitLab OAuth credentials
@@ -67,7 +70,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Deploy
 
-> **Multi-user note:** A single deployment supports multiple users — each person signs in with their own GitHub/GitLab account and gets an independent inbox. There is no shared triage state between users yet.
+> **Multi-user note:** A single deployment supports multiple users. Each person signs in with their own GitHub/GitLab account and gets an independent inbox. There is no shared triage state between users yet.
 
 ### Vercel
 
@@ -77,7 +80,7 @@ Requires a Postgres database (e.g. [Neon](https://neon.tech)) since SQLite is no
 
 ### Docker
 
-Uses SQLite by default — no external database required.
+Uses SQLite by default, so no external database is required.
 
 ```bash
 docker compose -f docker/docker-compose.yml up
@@ -92,23 +95,23 @@ SQLite data is persisted in a Docker volume. See `.env.example` for all configur
 | Framework | Next.js 16 (App Router) + TypeScript |
 | Styling | Tailwind CSS 4 + shadcn/ui |
 | Database | SQLite (default) + Postgres via Drizzle ORM |
-| Auth | Auth.js — GitHub/GitLab OAuth + PAT fallback (Encrypted) |
+| Auth | Auth.js, GitHub/GitLab OAuth + PAT fallback (encrypted) |
 | State | TanStack Query + Zustand |
 | Logging | Pino (structured JSON logger) |
 | Testing | Vitest + Playwright |
 
 ## Roadmap
 
-SnapTriage is production-ready today. Here's where it's headed:
+SnapTriage is production-ready today. What's next:
 
-- [ ] **AI-assisted triage** — Auto-suggest labels, priority, and assignees based on issue content
-- [x] **Saved filters & views** — Custom inbox views with persistent filter sets
-- [ ] **Team sync** — Shared triage queues with real-time presence
-- [ ] **Jira & Linear providers** — Extend the provider abstraction beyond GitHub/GitLab
-- [x] **Bulk actions** — Select multiple issues, apply changes in one shot
-- [x] **Webhooks** — Real-time sync via webhooks instead of polling
-- [ ] **Browser extension** — Triage sidebar on GitHub/GitLab issue pages
-- [ ] **Mobile-friendly view** — Responsive triage for on-the-go processing
+- [ ] **AI-assisted triage**: auto-suggest labels, priority, and assignees based on issue content
+- [x] **Saved filters & views**: custom inbox views with persistent filter sets
+- [ ] **Team sync**: shared triage queues with real-time presence
+- [ ] **Jira & Linear providers**: extend the provider abstraction beyond GitHub/GitLab
+- [x] **Bulk actions**: select multiple issues, apply changes in one shot
+- [x] **Webhooks**: real-time sync via webhooks alongside polling
+- [ ] **Browser extension**: triage sidebar on GitHub/GitLab issue pages
+- [ ] **Mobile-friendly view**: responsive triage for on-the-go processing
 
 <details>
 <summary><strong>Scripts</strong></summary>
@@ -151,6 +154,7 @@ Optional:
 | `AUTH_GITLAB_SECRET` | GitLab OAuth App secret | |
 | `AUTH_GITLAB_URL` | Self-hosted GitLab URL | `https://gitlab.com` |
 | `SYNC_INTERVAL_MS` | Auto-sync interval | `300000` (5 min) |
+| `WEBHOOK_SECRET` | Shared secret for GitHub/GitLab webhook sync, passed as `?secret=` | (webhook sync disabled) |
 
 </details>
 
@@ -158,7 +162,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## Documentation
 
-For deep dives into how SnapTriage works under the hood, check out our extended documentation:
+For more detail on how SnapTriage works:
 - [Architecture & Tech Stack](docs/architecture.md)
 - [Security Overview](docs/security.md)
 
