@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `issue_repo_provider_issue_unique` ON `issue` (`repoId`,`providerIssueId`);

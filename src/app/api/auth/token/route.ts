@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
  * - **Auth:** Public — used during PAT-based sign-in flow
  */
 import { NextResponse } from "next/server";
-import { validateToken, type TokenProvider } from "@/features/auth/validate-token";
+import { validateToken } from "@/features/auth/validate-token";
+import { tokenValidationSchema, parseBody } from "@/lib/validations";
+import { checkPersistentRateLimit } from "@/lib/rate-limit";
 
 /**
  * Validates a provider PAT and returns the associated user info.
@@ -20,18 +22,21 @@ import { validateToken, type TokenProvider } from "@/features/auth/validate-toke
  */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { token, provider } = body as { token: string; provider: TokenProvider };
-
-    if (!token || !provider) {
-      return NextResponse.json({ error: "Token and provider are required" }, { status: 400 });
+    const rawBody = await req.json().catch(() => ({}));
+    const parsed = parseBody(tokenValidationSchema, rawBody);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
-    if (provider !== "github" && provider !== "gitlab") {
-      return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    const forwardedFor = req.headers.get("x-forwarded-for");
+    const realIp = req.headers.get("x-real-ip");
+    const ip = realIp ?? (forwardedFor ? forwardedFor.split(",")[0].trim() : "unknown");
+
+    if (await checkPersistentRateLimit(ip, 5)) {
+      return NextResponse.json({ error: "Too Many Requests" }, { status: 429 });
     }
 
-    const user = await validateToken(token, provider);
+    const user = await validateToken(parsed.data.token, parsed.data.provider);
     return NextResponse.json({ valid: true, user });
   } catch {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });

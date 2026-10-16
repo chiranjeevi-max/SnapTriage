@@ -10,9 +10,18 @@ vi.mock("@/features/auth/validate-token", () => ({
   validateToken: vi.fn(),
 }));
 
+vi.mock("@/lib/rate-limit", () => ({
+  checkPersistentRateLimit: vi.fn().mockResolvedValue(false),
+}));
+
 describe("POST /api/auth/token", () => {
   it("should return 200 and user data on successful validation", async () => {
-    const mockUser = { id: "1", name: "Test User", email: "test@example.com", image: "https://avatar.url" };
+    const mockUser = {
+      id: "1",
+      name: "Test User",
+      email: "test@example.com",
+      image: "https://avatar.url",
+    };
     vi.mocked(validateToken).mockResolvedValueOnce(mockUser);
 
     const req = new Request("http://localhost/api/auth/token", {
@@ -38,7 +47,7 @@ describe("POST /api/auth/token", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error).toBe("Token and provider are required");
+    expect(data.error).toBe("token: Invalid input: expected string, received undefined");
   });
 
   it("should return 400 if provider is invalid", async () => {
@@ -51,7 +60,7 @@ describe("POST /api/auth/token", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error).toBe("Invalid provider");
+    expect(data.error).toBe('provider: Invalid option: expected one of "github"|"gitlab"');
   });
 
   it("should return 401 if validateToken fails", async () => {
@@ -69,7 +78,7 @@ describe("POST /api/auth/token", () => {
     expect(data.error).toBe("Invalid token");
   });
 
-  it("should return 401 if request body parsing fails", async () => {
+  it("should return 400 if request body parsing fails", async () => {
     const req = new Request("http://localhost/api/auth/token", {
       method: "POST",
       body: "not-a-json",
@@ -78,8 +87,8 @@ describe("POST /api/auth/token", () => {
     const response = await POST(req);
     const data = await response.json();
 
-    expect(response.status).toBe(401);
-    expect(data.error).toBe("Invalid token");
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('token: Invalid input: expected string, received undefined; provider: Invalid option: expected one of "github"|"gitlab"');
   });
 
   it("should return 401 when encountering an unexpected error in the route handler", async () => {

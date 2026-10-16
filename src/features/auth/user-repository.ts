@@ -7,7 +7,7 @@
  * and persist their tokens. All queries use Drizzle ORM with the shared `db`
  * client (cast to `any` to satisfy the SQLite/Neon union type).
  */
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { users, accessTokens } from "@/lib/db/schema";
 import { encrypt } from "@/lib/crypto";
@@ -57,13 +57,18 @@ export async function storeAccessToken(data: {
   token: string;
   label: string;
 }) {
-  // Remove existing token for this user+provider pair (upsert)
-  await typedDb
-    .delete(accessTokens)
-    .where(and(eq(accessTokens.userId, data.userId), eq(accessTokens.provider, data.provider)));
+  const encrypted = encrypt(data.token);
 
-  await typedDb.insert(accessTokens).values({
-    ...data,
-    token: encrypt(data.token),
-  });
+  await typedDb
+    .insert(accessTokens)
+    .values({
+      userId: data.userId,
+      provider: data.provider,
+      token: encrypted,
+      label: data.label,
+    })
+    .onConflictDoUpdate({
+      target: [accessTokens.userId, accessTokens.provider],
+      set: { token: encrypted, label: data.label },
+    });
 }

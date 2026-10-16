@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { syncRepo, syncAllRepos } from "@/features/sync/sync-engine";
+import { syncTriggerSchema, parseBody } from "@/lib/validations";
 
 /**
  * Initiates a sync operation. If `repoId` is provided in the request body,
@@ -27,8 +28,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const { repoId } = body as { repoId?: string };
+  const rawBody = await req.json().catch(() => ({}));
+  const parsed = parseBody(syncTriggerSchema, rawBody === null ? {} : rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+  const { repoId } = parsed.data;
 
   if (repoId) {
     const result = await syncRepo(repoId, session.user.id);

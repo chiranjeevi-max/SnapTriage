@@ -20,10 +20,8 @@ import { encrypt } from "@/lib/crypto";
 import { authConfig } from "./auth.config";
 import { patProvider } from "@/features/auth/pat-provider";
 
-// Cast `db` to any because DrizzleAdapter's type expects a specific Drizzle flavor
-// but our `db` is a union of SQLite | Neon clients.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const nativeAdapter = DrizzleAdapter(db as any, {
+// DrizzleAdapter expects one driver, but our `db` is SQLite/Neon; cast it.
+const nativeAdapter = DrizzleAdapter(db as unknown as Parameters<typeof DrizzleAdapter>[0], {
   usersTable: users,
   accountsTable: accounts,
   sessionsTable: sessions,
@@ -42,15 +40,12 @@ const adapter = {
       // @ts-expect-error NextAuth Account types mark refresh_token as readonly, but we need to encrypt it
       account.refresh_token = encrypt(account.refresh_token);
     }
-    return nativeAdapter.linkAccount!(account as any);
+    return nativeAdapter.linkAccount!(account as never);
   },
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  adapter: adapter as any,
-  providers: [
-    ...authConfig.providers,
-    patProvider,
-  ],
+  adapter: adapter as never,
+  providers: [...authConfig.providers, patProvider],
 });

@@ -11,7 +11,14 @@
  * 3. **Triage tables** — `triageState`, `syncLog`
  *    (per-user triage decisions and sync audit trail)
  */
-import { sqliteTable, text, integer, primaryKey, index } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  primaryKey,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 import type { AdapterAccountType } from "@auth/core/adapters";
 
 // ─── Auth.js tables ───────────────────────────────────────
@@ -81,20 +88,40 @@ export const verificationTokens = sqliteTable(
  * Personal Access Tokens (PATs) stored by users as an alternative to OAuth.
  * Each token is scoped to a single provider ("github" | "gitlab").
  */
-export const accessTokens = sqliteTable("access_token", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  userId: text("userId")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  provider: text("provider").notNull(), // "github" | "gitlab"
-  token: text("token").notNull(),
-  label: text("label"),
-  createdAt: integer("createdAt", { mode: "timestamp_ms" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-});
+export const accessTokens = sqliteTable(
+  "access_token",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(), // "github" | "gitlab"
+    token: text("token").notNull(),
+    label: text("label"),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [uniqueIndex("access_token_user_provider_unique").on(table.userId, table.provider)]
+);
+
+// ─── Rate Limit Buckets ────────────────────────────────────
+
+/**
+ * Shared request counters used by endpoints that must limit across
+ * database-backed instances (e.g. PAT authentication).
+ */
+export const rateLimitBuckets = sqliteTable(
+  "rate_limit_bucket",
+  {
+    key: text("key").primaryKey(),
+    count: integer("count").notNull().default(1),
+    windowStart: integer("windowStart", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("rate_limit_bucket_windowStart_idx").on(table.windowStart)]
+);
 
 // ─── Repos ────────────────────────────────────────────────
 
@@ -127,6 +154,11 @@ export const repos = sqliteTable(
   (table) => [
     index("repo_userId_idx").on(table.userId),
     index("repo_provider_fullName_idx").on(table.provider, table.fullName),
+    uniqueIndex("repo_user_provider_fullName_unique").on(
+      table.userId,
+      table.provider,
+      table.fullName
+    ),
   ]
 );
 
@@ -167,6 +199,7 @@ export const issues = sqliteTable(
     index("issue_repoId_idx").on(table.repoId),
     index("issue_state_idx").on(table.state),
     index("issue_provider_issueId_idx").on(table.provider, table.providerIssueId),
+    uniqueIndex("issue_repo_provider_issue_unique").on(table.repoId, table.providerIssueId),
   ]
 );
 
@@ -204,6 +237,7 @@ export const triageState = sqliteTable(
   (table) => [
     index("triage_issueId_userId_idx").on(table.issueId, table.userId),
     index("triage_userId_idx").on(table.userId),
+    uniqueIndex("triage_issue_user_unique").on(table.issueId, table.userId),
   ]
 );
 

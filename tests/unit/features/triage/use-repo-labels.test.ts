@@ -31,10 +31,10 @@ describe("useRepoLabels", () => {
   });
 
   it("returns an empty array when repoId is missing inside queryFn", async () => {
-    let capturedQueryFn: any;
-    vi.mocked(useQuery).mockImplementation((options: any) => {
-      capturedQueryFn = options.queryFn;
-      return {} as any;
+    let capturedQueryFn!: () => Promise<unknown>;
+    vi.mocked(useQuery).mockImplementation((options: unknown) => {
+      capturedQueryFn = (options as { queryFn: () => Promise<unknown> }).queryFn;
+      return {} as never;
     });
 
     useRepoLabels(undefined);
@@ -49,10 +49,10 @@ describe("useRepoLabels", () => {
       json: vi.fn().mockResolvedValue(mockLabels),
     });
 
-    let capturedQueryFn: any;
-    vi.mocked(useQuery).mockImplementation((options: any) => {
-      capturedQueryFn = options.queryFn;
-      return {} as any;
+    let capturedQueryFn!: () => Promise<unknown>;
+    vi.mocked(useQuery).mockImplementation((options: unknown) => {
+      capturedQueryFn = (options as { queryFn: () => Promise<unknown> }).queryFn;
+      return {} as never;
     });
 
     useRepoLabels("repo-123");
@@ -67,10 +67,10 @@ describe("useRepoLabels", () => {
       ok: false,
     });
 
-    let capturedQueryFn: any;
-    vi.mocked(useQuery).mockImplementation((options: any) => {
-      capturedQueryFn = options.queryFn;
-      return {} as any;
+    let capturedQueryFn!: () => Promise<unknown>;
+    vi.mocked(useQuery).mockImplementation((options: unknown) => {
+      capturedQueryFn = (options as { queryFn: () => Promise<unknown> }).queryFn;
+      return {} as never;
     });
 
     useRepoLabels("repo-123");

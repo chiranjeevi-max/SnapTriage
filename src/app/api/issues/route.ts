@@ -52,7 +52,7 @@ export async function GET(req: Request) {
 
   // Build conditions — always filter by state and user's repos
   const repoIdSet = new Set(repoIds);
-  let conditions = and(
+  const conditions = and(
     eq(issues.state, state),
     repoId && repoIdSet.has(repoId) ? eq(issues.repoId, repoId) : inArray(issues.repoId, repoIds)
   )!;

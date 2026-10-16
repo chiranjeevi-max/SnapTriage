@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { disconnectRepo, updateRepo } from "@/features/repos/repo-repository";
+import { updateRepoSchema, parseBody } from "@/lib/validations";
 
 /**
  * Disconnects (removes) a repository from the user's account.
@@ -45,16 +46,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const { id } = await params;
-  const body = await req.json();
-  const { syncMode, syncEnabled } = body;
+  const rawBody = await req.json().catch(() => ({}));
+  const parsed = parseBody(updateRepoSchema, rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
 
   const data: Record<string, unknown> = {};
-  if (syncMode !== undefined) data.syncMode = syncMode;
-  if (syncEnabled !== undefined) data.syncEnabled = syncEnabled;
-
-  if (Object.keys(data).length === 0) {
-    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
-  }
+  if (parsed.data.syncMode !== undefined) data.syncMode = parsed.data.syncMode;
+  if (parsed.data.syncEnabled !== undefined) data.syncEnabled = parsed.data.syncEnabled;
 
   await updateRepo(id, session.user.id, data);
   return NextResponse.json({ ok: true });

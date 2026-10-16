@@ -42,6 +42,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const { id } = await params;
+  const userId = session.user!.id;
   const rawBody = await req.json();
   const parsed = parseBody(triagePatchSchema, rawBody);
   if (!parsed.success) {
@@ -66,6 +67,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   const repo = repoRows[0];
 
+  // Cached permission is checked when available; legacy rows let the provider
+  // enforce write access and report failures back to the client.
+  if ((labels || assignees || state) && repo.permission === "none") {
+    return NextResponse.json({ error: "Insufficient repository permission" }, { status: 403 });
+  }
+
   const isBatchMode = batch === true || repo.syncMode === "batch";
 
   // Get or create triage state
@@ -74,7 +81,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .from(triageState)
     .where(and(eq(triageState.issueId, id), eq(triageState.userId, session.user.id)));
 
-  const triageRow = existingTriage[0] ?? null;
+  let triageRow: (typeof existingTriage)[number] | null = existingTriage[0] ?? null;
+
+  const ensureTriageRow = async () => {
+    if (triageRow) return triageRow.id;
+
+    await typedDb
+      .insert(triageState)
+      .values({ issueId: id, userId, updatedAt: new Date() })
+      .onConflictDoNothing({ target: [triageState.issueId, triageState.userId] });
+
+    const existing = await typedDb
+      .select()
+      .from(triageState)
+      .where(and(eq(triageState.issueId, id), eq(triageState.userId, userId)));
+    if (!existing[0]) throw new Error("Failed to get triage state");
+    triageRow = existing[0];
+    return existing[0].id;
+  };
 
   // Update triage state in DB
   if (priority !== undefined || snoozedUntil !== undefined || dismissed !== undefined) {
@@ -84,21 +108,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       triageData.snoozedUntil = snoozedUntil ? new Date(snoozedUntil) : null;
     if (dismissed !== undefined) triageData.dismissed = dismissed;
 
-    if (triageRow) {
-      await typedDb.update(triageState).set(triageData).where(eq(triageState.id, triageRow.id));
-    } else {
-      await typedDb.insert(triageState).values({
-        issueId: id,
-        userId: session.user.id,
-        ...triageData,
-      });
-    }
+    const triageId = await ensureTriageRow();
+    await typedDb.update(triageState).set(triageData).where(eq(triageState.id, triageId));
   }
 
   // Handle provider changes (labels, assignees, state)
   if (labels || assignees || state) {
     if (isBatchMode) {
       // Batch mode: stage changes in pendingChanges
+      const ensuredTriageId = await ensureTriageRow();
+
       const currentPending = (triageRow?.pendingChanges ?? {}) as PendingChanges;
       const merged = mergePendingChanges(currentPending, { labels, assignees, state });
 
@@ -108,46 +127,45 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         updatedAt: new Date(),
       };
 
-      if (triageRow) {
-        await typedDb.update(triageState).set(batchData).where(eq(triageState.id, triageRow.id));
-      } else {
-        await typedDb.insert(triageState).values({
-          issueId: id,
-          userId: session.user.id,
-          ...batchData,
-        });
-      }
+      await typedDb.update(triageState).set(batchData).where(eq(triageState.id, ensuredTriageId));
     } else {
       // Live mode: write changes to provider immediately
       const token = await getProviderToken(session.user.id, repo.provider as "github" | "gitlab");
-      if (token) {
-        const provider = getProvider(repo.provider as "github" | "gitlab");
+      if (!token) {
+        return NextResponse.json({ error: "No provider token available" }, { status: 403 });
+      }
+
+      const provider = getProvider(repo.provider as "github" | "gitlab");
+      try {
         await provider.updateIssue(repo.owner, repo.name, issue.number, token, {
           labels,
           assignees,
           state,
         });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Provider update failed";
+        return NextResponse.json({ error: message }, { status: 502 });
+      }
 
-        // Also update local issues table with new labels/assignees
-        const issueUpdate: Record<string, unknown> = {};
-        if (labels) {
-          const currentLabels = new Set<string>(issue.labels ?? []);
-          for (const l of labels.add ?? []) currentLabels.add(l);
-          for (const l of labels.remove ?? []) currentLabels.delete(l);
-          issueUpdate.labels = [...currentLabels];
-        }
-        if (assignees) {
-          const currentAssignees = new Set<string>(issue.assignees ?? []);
-          for (const a of assignees.add ?? []) currentAssignees.add(a);
-          for (const a of assignees.remove ?? []) currentAssignees.delete(a);
-          issueUpdate.assignees = [...currentAssignees];
-        }
-        if (state) {
-          issueUpdate.state = state;
-        }
-        if (Object.keys(issueUpdate).length > 0) {
-          await typedDb.update(issues).set(issueUpdate).where(eq(issues.id, id));
-        }
+      // Also update local issues table with new labels/assignees
+      const issueUpdate: Record<string, unknown> = {};
+      if (labels) {
+        const currentLabels = new Set<string>(issue.labels ?? []);
+        for (const l of labels.add ?? []) currentLabels.add(l);
+        for (const l of labels.remove ?? []) currentLabels.delete(l);
+        issueUpdate.labels = [...currentLabels];
+      }
+      if (assignees) {
+        const currentAssignees = new Set<string>(issue.assignees ?? []);
+        for (const a of assignees.add ?? []) currentAssignees.add(a);
+        for (const a of assignees.remove ?? []) currentAssignees.delete(a);
+        issueUpdate.assignees = [...currentAssignees];
+      }
+      if (state) {
+        issueUpdate.state = state;
+      }
+      if (Object.keys(issueUpdate).length > 0) {
+        await typedDb.update(issues).set(issueUpdate).where(eq(issues.id, id));
       }
     }
   }

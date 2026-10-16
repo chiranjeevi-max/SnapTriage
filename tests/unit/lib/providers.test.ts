@@ -23,6 +23,6 @@ describe("getProvider", () => {
   });
 
   it("should throw an error for undefined", () => {
-    expect(() => getProvider(undefined as any)).toThrowError("Unknown provider: undefined");
+    expect(() => getProvider(undefined as never)).toThrowError("Unknown provider: undefined");
   });
 });

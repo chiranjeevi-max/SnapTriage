@@ -24,7 +24,7 @@ vi.mock("@/lib/db/query", () => {
 function mockSelect(rows: unknown[]) {
   const whereSpy = vi.fn().mockResolvedValue(rows);
   const fromSpy = vi.fn().mockReturnValue({ where: whereSpy });
-  vi.mocked(typedDb.select).mockReturnValue({ from: fromSpy } as any);
+  vi.mocked(typedDb.select).mockReturnValue({ from: fromSpy } as never);
   return { fromSpy, whereSpy };
 }
 
@@ -48,7 +48,7 @@ describe("getProviderToken", () => {
         { access_token: "oauth_token_hex", expires_at: futureExpiry },
       ]);
       const fromSpy1 = vi.fn().mockReturnValue({ where: whereSpy1 });
-      vi.mocked(typedDb.select).mockReturnValueOnce({ from: fromSpy1 } as any);
+      vi.mocked(typedDb.select).mockReturnValueOnce({ from: fromSpy1 } as never);
 
       const result = await getProviderToken("USR-001", "github");
 
@@ -76,8 +76,8 @@ describe("getProviderToken", () => {
       const fromSpy2 = vi.fn().mockReturnValue({ where: whereSpy2 });
 
       vi.mocked(typedDb.select)
-        .mockReturnValueOnce({ from: fromSpy1 } as any)
-        .mockReturnValueOnce({ from: fromSpy2 } as any);
+        .mockReturnValueOnce({ from: fromSpy1 } as never)
+        .mockReturnValueOnce({ from: fromSpy2 } as never);
 
       const result = await getProviderToken("USR-001", "github");
 
@@ -118,8 +118,8 @@ describe("getProviderToken", () => {
       const fromSpy2 = vi.fn().mockReturnValue({ where: whereSpy2 });
 
       vi.mocked(typedDb.select)
-        .mockReturnValueOnce({ from: fromSpy1 } as any)
-        .mockReturnValueOnce({ from: fromSpy2 } as any);
+        .mockReturnValueOnce({ from: fromSpy1 } as never)
+        .mockReturnValueOnce({ from: fromSpy2 } as never);
 
       const result = await getProviderToken("USR-001", "gitlab");
 
@@ -138,7 +138,7 @@ describe("getProviderToken", () => {
       const makeEmpty = () => {
         const whereSpy = vi.fn().mockResolvedValue([]);
         const fromSpy = vi.fn().mockReturnValue({ where: whereSpy });
-        return { from: fromSpy } as any;
+        return { from: fromSpy } as never;
       };
 
       vi.mocked(typedDb.select)

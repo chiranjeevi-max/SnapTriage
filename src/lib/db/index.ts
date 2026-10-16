@@ -10,7 +10,7 @@
  *
  * WAL mode is enabled on SQLite for concurrent read performance.
  */
-import { mkdirSync, existsSync } from "fs";
+import { mkdirSync } from "fs";
 import { dirname, resolve } from "path";
 import Database from "better-sqlite3";
 import { drizzle as drizzleSqlite, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";

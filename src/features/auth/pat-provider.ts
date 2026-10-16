@@ -15,7 +15,7 @@ import {
   storeAccessToken,
 } from "@/features/auth/user-repository";
 import { authLogger } from "@/lib/logger";
-import { patRateLimiter } from "@/lib/rate-limit";
+import { checkPersistentRateLimit } from "@/lib/rate-limit";
 
 export const patProvider = Credentials({
   id: "credentials",
@@ -30,7 +30,7 @@ export const patProvider = Credentials({
     const realIp = request.headers?.get("x-real-ip");
     const ip = realIp ?? (forwardedFor ? forwardedFor.split(",")[0].trim() : "unknown");
 
-    if (patRateLimiter.isRateLimited(ip, 5)) {
+    if (await checkPersistentRateLimit(ip, 5)) {
       authLogger.warn({ ip }, "Rate limit exceeded for PAT authentication");
       throw new Error("Too Many Requests. Please try again later.");
     }
