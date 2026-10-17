@@ -1,0 +1,12 @@
+name: SnapTriage CodeQL config
+
+paths-ignore:
+  - "node_modules/**"
+  - ".next/**"
+  - "playwright-report/**"
+  - "test-results/**"
+  - "drizzle/**"
+
+queries:
+  - uses: security-and-quality
+
