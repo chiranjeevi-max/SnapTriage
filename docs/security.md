@@ -36,3 +36,16 @@ SnapTriage enforces strict HTTP response headers via `next.config.ts`:
 - Uses `pino` for structured JSON logging.
 - Sensitive information (such as tokens or passwords) is never logged.
 - Failed authentication attempts log the IP and provider for anomaly detection.
+
+## Static Analysis (CodeQL)
+
+SnapTriage runs [GitHub CodeQL](https://codeql.github.com/) on every pull request and push to `main`, plus a weekly scheduled scan. Results are surfaced in the repository's **Security → Code scanning alerts** tab. The workflow lives at `.github/workflows/codeql.yml` and query config at `.github/codeql/codeql-config.yml`.
+
+To run CodeQL locally, install the `codeql` CLI and the JavaScript query pack, then:
+
+```sh
+codeql database create .codeql-db --language=javascript --source-root .
+codeql database analyze .codeql-db codeql/javascript-queries:codeql-suites/javascript-security-and-quality.qls --format=sarif-latest --output=codeql.sarif
+```
+
+Severity `high`/`critical` findings from CodeQL or the existing gitleaks scan are expected to block merge where reported by the security workflow.
