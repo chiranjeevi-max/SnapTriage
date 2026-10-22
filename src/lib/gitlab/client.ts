@@ -247,7 +247,9 @@ export const gitlabProvider: IssueProvider = {
       headers: headers(token),
     });
 
-    if (!res.ok) return "read";
+    // 404 means the token cannot see this project at all.
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
 
     const data = await res.json();
     const accessLevel = data.permissions?.project_access?.access_level ?? 0;

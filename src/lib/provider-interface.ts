@@ -61,8 +61,9 @@ export interface IssueProvider {
     changes: IssueUpdate
   ): Promise<void>;
 
-  /** Check the authenticated user's permission level on a repo */
-  getRepoPermission(owner: string, repo: string, token: string): Promise<RepoPermission>;
+  /** Check the authenticated user's permission level on a repo.
+   * Returns `null` when the token cannot see the repository at all. */
+  getRepoPermission(owner: string, repo: string, token: string): Promise<RepoPermission | null>;
 
   /** Fetch all labels for a repo */
   fetchLabels?(owner: string, repo: string, token: string): Promise<ProviderLabel[]>;

@@ -88,7 +88,7 @@ export function RepoManager() {
     const res = await fetch("/api/repos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(repo),
+      body: JSON.stringify({ provider: repo.provider, owner: repo.owner, name: repo.name }),
     });
     if (res.ok) {
       const refreshed = await fetch("/api/repos");

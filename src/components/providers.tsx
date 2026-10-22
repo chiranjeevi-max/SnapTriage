@@ -19,7 +19,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  nonce,
+}: {
+  children: React.ReactNode;
+  /** Per-request CSP nonce, forwarded to the inline script next-themes injects. */
+  nonce?: string;
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -35,7 +42,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+          nonce={nonce}
+        >
           <TooltipProvider>
             {children}
             <Toaster richColors closeButton />

@@ -224,7 +224,7 @@ export const githubProvider: IssueProvider = {
   async getRepoPermission(owner, repo, token) {
     // Get authenticated user first
     const userRes = await ghFetch(`${GITHUB_API}/user`, token);
-    if (!userRes.ok) return "read";
+    if (!userRes.ok) return null;
     const user = await userRes.json();
 
     const res = await ghFetch(
@@ -232,7 +232,9 @@ export const githubProvider: IssueProvider = {
       token
     );
 
-    if (!res.ok) return "read";
+    // 404 means the token cannot see this repository at all.
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
 
     const data = await res.json();
     const perm = data.permission as string;
