@@ -10,7 +10,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Inbox, FolderGit2, Settings, Github, Keyboard } from "lucide-react";
+import { Inbox, FolderGit2, Settings, Keyboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "@/features/auth/components/user-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeyboardStore } from "@/features/keyboard";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { GitHubIcon } from "@/components/icons/github-icon";
 
 /** Shape of a connected repo record returned by the repos API. */
 interface ConnectedRepo {
@@ -91,7 +92,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground"
                 >
                   {repo.provider === "github" ? (
-                    <Github className="h-3.5 w-3.5 shrink-0" />
+                    <GitHubIcon className="h-3.5 w-3.5 shrink-0" />
                   ) : (
                     <GitLabIcon className="h-3.5 w-3.5 shrink-0" />
                   )}

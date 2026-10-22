@@ -8,7 +8,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Github, Loader2, Moon, Sun, Monitor } from "lucide-react";
+import { Loader2, Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitLabIcon } from "@/components/icons/gitlab-icon";
 
 interface ConnectedRepo {
   id: string;
@@ -156,7 +158,7 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {repo.provider === "github" ? (
-                        <Github className="h-4 w-4 shrink-0" />
+                        <GitHubIcon className="h-4 w-4 shrink-0" />
                       ) : (
                         <GitLabIcon className="h-4 w-4 shrink-0" />
                       )}
@@ -226,7 +228,7 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-2">
                     {account.provider === "github" ? (
-                      <Github className="h-4 w-4" />
+                      <GitHubIcon className="h-4 w-4" />
                     ) : (
                       <GitLabIcon className="h-4 w-4" />
                     )}
@@ -273,16 +275,8 @@ export default function SettingsPage() {
 function ShortcutRow({ keys, desc }: { keys: string; desc: string }) {
   return (
     <div className="flex items-center justify-between rounded-md px-2 py-1.5">
-      <span className="text-muted-foreground">{desc}</span>
-      <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono">{keys}</kbd>
+      <span className="text-sm text-muted-foreground">{desc}</span>
+      <kbd className="rounded border bg-muted px-1.5 py-1.5 font-mono text-xs">{keys}</kbd>
     </div>
-  );
-}
-
-function GitLabIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M22.65 14.39 12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z" />
-    </svg>
   );
 }

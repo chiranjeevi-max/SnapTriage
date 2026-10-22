@@ -12,13 +12,13 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { GitHubIcon } from "@/components/icons/github-icon";
 
 /**
  * Full-page login form with OAuth and PAT sign-in options.
@@ -77,7 +77,7 @@ export function LoginForm() {
           className="w-full"
           onClick={() => signIn("github", { redirectTo: "/inbox" })}
         >
-          <Github className="mr-2 h-4 w-4" />
+          <GitHubIcon className="mr-2 h-4 w-4" />
           Continue with GitHub
         </Button>
 

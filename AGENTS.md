@@ -4,7 +4,7 @@ Keyboard-driven inbox for triaging GitHub + GitLab issues. Next.js 16 App Router
 
 ## Commands
 
-Run from repo root with `npm` (CI uses `npm ci`, Node 22):
+Run from repo root with `npm` (CI uses `npm ci`, Node 26):
 
 - Install: `npm ci`
 - Dev: `npm run dev` (`cp .env.example .env.local` first, needs `AUTH_SECRET`)
