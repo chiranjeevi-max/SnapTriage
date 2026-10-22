@@ -34,7 +34,7 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 - **Label & assignee pickers**: searchable command palettes for quick editing
 - **Saved views**: keep named inbox filters (all, open, dismissed, snoozed, urgent) for one-click switching
 - **Snooze**: hide issues until a specific time
-- **Secure by default**: Personal Access Tokens and sensitive credentials are AES-256 encrypted at rest
+- **Secure by default**: AES-256 encrypted tokens at rest, a nonce-based Content-Security-Policy, and webhooks authenticated in a request header instead of a URL
 - **Dark mode**: dark theme by default, light and system themes available
 - **Self-hostable**: SQLite by default, Postgres optional. Docker Compose included.
 
@@ -72,6 +72,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 > **Multi-user note:** A single deployment supports multiple users. Each person signs in with their own GitHub/GitLab account and gets an independent inbox. There is no shared triage state between users yet.
 
+> **Behind a proxy?** The rate limiter identifies clients from `X-Forwarded-For` and trusts only the entries your own proxies appended. Set `TRUSTED_PROXY_HOPS=1` behind a single proxy (Vercel, Cloudflare, nginx); with the default `0` no forwarding header is believable and every client shares one allowance.
+
 ### Vercel
 
 Requires a Postgres database (e.g. [Neon](https://neon.tech)) since SQLite is not compatible with serverless environments. Set `DATABASE_URL` in your environment variables.
@@ -87,6 +89,10 @@ docker compose -f docker/docker-compose.yml up
 ```
 
 SQLite data is persisted in a Docker volume. See `.env.example` for all configuration options.
+
+### Webhooks
+
+Set `WEBHOOK_SECRET` and point the provider at `/api/webhooks/github` (or `/api/webhooks/gitlab`). The secret is verified from the provider's own header — `X-Hub-Signature-256` for GitHub, `X-Gitlab-Token` for GitLab — so it never appears in the webhook URL.
 
 ## Tech Stack
 
@@ -147,7 +153,7 @@ Optional:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AUTH_URL` | Base URL for Auth.js callbacks | `http://localhost:3000` |
-| `AUTH_SALT` | Cryptographic salt for AES encryption | (Defaults to internal) |
+| `AUTH_SALT` | Cryptographic salt for AES encryption (an empty value is an error) | (built-in default) |
 | `DATABASE_URL` | Postgres connection string | (uses SQLite) |
 | `SQLITE_PATH` | SQLite database file path | `./data/snaptriage.db` |
 | `AUTH_GITLAB_ID` | GitLab OAuth App ID | |
@@ -155,6 +161,7 @@ Optional:
 | `AUTH_GITLAB_URL` | Self-hosted GitLab URL | `https://gitlab.com` |
 | `SYNC_INTERVAL_MS` | Auto-sync interval | `300000` (5 min) |
 | `WEBHOOK_SECRET` | Shared secret for GitHub/GitLab webhook sync, sent in the provider's signature header (never in the URL) | (webhook sync disabled) |
+| `TRUSTED_PROXY_HOPS` | How many proxies append the client address to `X-Forwarded-For`; the rate limiter trusts only those entries | `0` |
 
 </details>
 
