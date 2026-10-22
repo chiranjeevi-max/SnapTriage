@@ -150,6 +150,34 @@ export const rateLimitBuckets = sqliteTable(
   (table) => [index("rate_limit_bucket_windowStart_idx").on(table.windowStart)]
 );
 
+// ─── Webhook Deliveries ──────────────────────────────────────
+
+/**
+ * Seen webhook delivery IDs used for replay protection.
+ *
+ * GitHub sends `X-GitHub-Delivery`; GitLab sends `X-Gitlab-Event-UUID`.
+ * Recording each delivery ID (provider-scoped) and rejecting repeats makes the
+ * webhook endpoint idempotent: a captured or re-sent delivery cannot trigger
+ * the same sync twice. Rows are purged as deliveries come in, so the table
+ * cannot grow without bound.
+ */
+export const webhookDeliveries = sqliteTable(
+  "webhook_delivery",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    // `${provider}:${deliveryId}` — provider-scoped so GitHub and GitLab IDs
+    // cannot collide with each other.
+    deliveryId: text("delivery_id").notNull().unique(),
+    provider: text("provider").notNull(),
+    receivedAt: integer("receivedAt", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [index("webhook_delivery_receivedAt_idx").on(table.receivedAt)]
+);
+
 // ─── Repos ────────────────────────────────────────────────
 
 /**

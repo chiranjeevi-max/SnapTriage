@@ -16,6 +16,7 @@ import {
 } from "@/features/auth/user-repository";
 import { authLogger } from "@/lib/logger";
 import { checkPersistentRateLimit } from "@/lib/rate-limit";
+import { clientIp, rateLimitKey } from "@/lib/request-context";
 
 export const patProvider = Credentials({
   id: "credentials",
@@ -25,13 +26,16 @@ export const patProvider = Credentials({
     provider: { label: "Provider", type: "text" },
   },
   async authorize(credentials, request) {
-    // Rate Limiting Logic
-    const forwardedFor = request.headers?.get("x-forwarded-for");
-    const realIp = request.headers?.get("x-real-ip");
-    const ip = realIp ?? (forwardedFor ? forwardedFor.split(",")[0].trim() : "unknown");
+    const provider = credentials?.provider as TokenProvider | undefined;
+    const ip = clientIp(request);
 
-    if (await checkPersistentRateLimit(ip, 5)) {
-      authLogger.warn({ ip }, "Rate limit exceeded for PAT authentication");
+    // Scoped separately from the /api/auth/token validation step it follows, so
+    // the two halves of one sign-in do not spend the same allowance.
+    if (await checkPersistentRateLimit(rateLimitKey(request, "pat:signin"), 5)) {
+      authLogger.warn(
+        { ip: ip ?? "unattributed", provider: provider ?? "unknown" },
+        "Rate limit exceeded for PAT authentication"
+      );
       throw new Error("Too Many Requests. Please try again later.");
     }
 
@@ -45,7 +49,6 @@ export const patProvider = Credentials({
     }
 
     const token = credentials.token.trim();
-    const provider = credentials.provider as TokenProvider;
 
     if (provider !== "github" && provider !== "gitlab") {
       return null;

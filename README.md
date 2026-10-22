@@ -154,7 +154,7 @@ Optional:
 | `AUTH_GITLAB_SECRET` | GitLab OAuth App secret | |
 | `AUTH_GITLAB_URL` | Self-hosted GitLab URL | `https://gitlab.com` |
 | `SYNC_INTERVAL_MS` | Auto-sync interval | `300000` (5 min) |
-| `WEBHOOK_SECRET` | Shared secret for GitHub/GitLab webhook sync, passed as `?secret=` | (webhook sync disabled) |
+| `WEBHOOK_SECRET` | Shared secret for GitHub/GitLab webhook sync, sent in the provider's signature header (never in the URL) | (webhook sync disabled) |
 
 </details>
 

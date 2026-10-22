@@ -28,7 +28,7 @@ There are two sync modes:
    - They are pushed to the remote provider in bulk when the user explicitly hits the "Sync" shortcut.
    - Ideal for scenarios with rate limits or slow networks.
 
-Webhook updates (optional): a GitHub or GitLab webhook calling `/api/webhooks/[provider]` with `?secret=WEBHOOK_SECRET` syncs the matching connected repos immediately, on top of the polling interval.
+Webhook updates (optional): a GitHub or GitLab webhook calling `/api/webhooks/[provider]` syncs the matching connected repos immediately, on top of the polling interval. The shared secret travels in the provider's own header — `X-Hub-Signature-256` (HMAC-SHA256 over the raw body) for GitHub, `X-Gitlab-Token` for GitLab — never in a query string that would land in access logs.
 
 ## Deployment Strategy
 

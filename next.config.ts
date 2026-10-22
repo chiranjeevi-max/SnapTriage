@@ -1,37 +1,39 @@
-/** Next.js configuration -- enables standalone output for Docker deployment. */
+/**
+ * @module next.config
+ *
+ * Next.js configuration -- enables standalone output for Docker deployment.
+ *
+ * Security headers are applied to every response. The Content-Security-Policy
+ * is *not* set here: a static header cannot carry a per-request nonce, and
+ * Next.js emits the RSC payload as an inline script, so the policy is built
+ * and attached by `src/proxy.ts` instead (see `src/lib/csp.ts`).
+ *
+ * Issue bodies are rendered by untrusted third-party authors via react-markdown
+ * without `rehype-raw`, so CSP is the backstop against stored XSS.
+ */
 import type { NextConfig } from "next";
 
-let gitlabOrigin = "https://gitlab.com";
-if (process.env.AUTH_GITLAB_URL) {
-  try {
-    gitlabOrigin = new URL(process.env.AUTH_GITLAB_URL).origin;
-  } catch {
-    gitlabOrigin = "https://gitlab.com";
-  }
+/** Security headers applied to every response. */
+export function securityHeaders() {
+  return [
+    {
+      key: "X-Frame-Options",
+      value: "DENY",
+    },
+    {
+      key: "X-Content-Type-Options",
+      value: "nosniff",
+    },
+    {
+      key: "Referrer-Policy",
+      value: "strict-origin-when-cross-origin",
+    },
+    {
+      key: "Strict-Transport-Security",
+      value: "max-age=63072000; includeSubDomains; preload",
+    },
+  ];
 }
-
-const securityHeaders = [
-  {
-    key: "Content-Security-Policy",
-    value: `default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://avatars.githubusercontent.com https://secure.gravatar.com https://*.gitlab.io ${gitlabOrigin}; font-src 'self'; connect-src 'self' https://api.github.com ${gitlabOrigin};`,
-  },
-  {
-    key: "X-Frame-Options",
-    value: "DENY",
-  },
-  {
-    key: "X-Content-Type-Options",
-    value: "nosniff",
-  },
-  {
-    key: "Referrer-Policy",
-    value: "strict-origin-when-cross-origin",
-  },
-  {
-    key: "Strict-Transport-Security",
-    value: "max-age=63072000; includeSubDomains; preload",
-  },
-];
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -39,7 +41,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/(.*)",
-        headers: securityHeaders,
+        headers: securityHeaders(),
       },
     ];
   },

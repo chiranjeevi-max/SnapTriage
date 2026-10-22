@@ -29,15 +29,18 @@ export const triagePatchSchema = z.object({
 
 export type TriagePatchInput = z.infer<typeof triagePatchSchema>;
 
-/** Schema for POST /api/repos — connect a new repository. */
+/**
+ * Schema for POST /api/repos — connect a new repository.
+ *
+ * Only the coordinates the provider API is called with are accepted. The
+ * repository's full name and its permission are derived server-side: a client
+ * that could name the stored repo freely would be able to attach a webhook
+ * for a repository it does not own.
+ */
 export const connectRepoSchema = z.object({
   provider: z.enum(["github", "gitlab"]),
   owner: z.string().min(1).max(256),
   name: z.string().min(1).max(256),
-  fullName: z.string().min(1).max(512),
-  permission: z.enum(["admin", "write", "read"]).optional().default("read"),
-  description: z.string().max(1024).nullable().optional(),
-  isPrivate: z.boolean().optional(),
 });
 
 export type ConnectRepoInput = z.infer<typeof connectRepoSchema>;

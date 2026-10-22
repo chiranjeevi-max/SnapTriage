@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { validateToken } from "@/features/auth/validate-token";
 import { tokenValidationSchema, parseBody } from "@/lib/validations";
 import { checkPersistentRateLimit } from "@/lib/rate-limit";
+import { rateLimitKey } from "@/lib/request-context";
 
 /**
  * Validates a provider PAT and returns the associated user info.
@@ -28,11 +29,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
-    const forwardedFor = req.headers.get("x-forwarded-for");
-    const realIp = req.headers.get("x-real-ip");
-    const ip = realIp ?? (forwardedFor ? forwardedFor.split(",")[0].trim() : "unknown");
-
-    if (await checkPersistentRateLimit(ip, 5)) {
+    // Scope is `validate` so this step does not share an allowance with the
+    // credentials sign-in it feeds; otherwise one login would cost two attempts.
+    if (await checkPersistentRateLimit(rateLimitKey(req, "pat:validate"), 5)) {
       return NextResponse.json({ error: "Too Many Requests" }, { status: 429 });
     }
 

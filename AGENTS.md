@@ -32,7 +32,8 @@ These override statistical defaults. Follow them exactly.
 7. `live` writes through to the provider immediately with optimistic rollback. `batch` stages in `triage_state.pendingChanges` and flushes on explicit push. Respect `repos.syncMode`.
 8. Import with `@/*` (`src/*` per `tsconfig.json:22`). Keep `@module` JSDoc on touched modules.
 9. Provider writes must propagate failures; live sync and batch push must surface provider errors rather than swallowing them. UPSERT keys are issue `(repoId, providerIssueId)` and access token `(userId, provider)`.
-10. Keep PAT rate limiting on the shared `rate_limit_bucket` table and purge expired rows; do not reintroduce per-instance-only limits.
+10. Keep PAT rate limiting on the shared `rate_limit_bucket` table and purge expired rows; do not reintroduce per-instance-only limits. Keys carry their scope (`pat:validate:<ip>`), and the purge horizon must be the longest window in use so one scope cannot reset another.
+11. Webhook auth is header-borne only: `X-Hub-Signature-256` (HMAC over the raw body) for GitHub, `X-Gitlab-Token` for GitLab. Never accept a secret in a query string.
 ## Style
 
 - TypeScript `strict:true`, `target:ES2017`, `jsx:react-jsx`.
@@ -48,8 +49,10 @@ These override statistical defaults. Follow them exactly.
 ## API / Auth
 
 - All `/api/*` except `api/auth/[...nextauth]` require session via `auth()`. `proxy.ts` protects `/inbox,/repos,/settings` → `/login`.
-- PAT rate limit is 5/15min per IP on `POST /api/auth/token`.
-- New external image/API hosts need CSP update in `next.config.ts`.
+- PAT rate limit is 5/15min per IP on `POST /api/auth/token` and on the credentials callback, in separate scopes so one sign-in does not spend both allowances.
+- The client IP for rate limiting comes from `x-forwarded-for`, trusted only as deep as `TRUSTED_PROXY_HOPS` says. Unattributable traffic shares one bucket.
+- The Content-Security-Policy is nonce-based and built in `src/lib/csp.ts`, applied per request by `src/proxy.ts`. Keep `script-src` free of `'unsafe-inline'`; pages stay `force-dynamic` so the nonce can be stamped.
+- New external image/API hosts need a CSP update in `src/lib/csp.ts`.
 - Details: `src/app/api/AGENTS.md`.
 
 ## Read on demand

@@ -63,7 +63,8 @@ describe("Validations", () => {
       const result = connectRepoSchema.safeParse(payload);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.permission).toBe("read"); // default
+        // permission is derived server-side, never accepted from the client
+        expect(result.data).not.toHaveProperty("permission");
       }
     });
 
