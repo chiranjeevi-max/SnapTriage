@@ -8,7 +8,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Github, Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import type { AvailableRepo } from "../fetch-available-repos";
 
 /** Shape of a connected repo record from the repos API. */
@@ -172,7 +173,7 @@ export function RepoManager() {
           <Tabs defaultValue="github" onValueChange={handleTabChange}>
             <TabsList>
               <TabsTrigger value="github">
-                <Github className="mr-1.5 h-4 w-4" />
+                <GitHubIcon className="mr-1.5 h-4 w-4" />
                 GitHub
               </TabsTrigger>
               <TabsTrigger value="gitlab">
@@ -268,6 +269,6 @@ function PermissionBadge({ permission }: { permission: string }) {
 
 /** Renders the GitHub or GitLab icon based on provider name. */
 function ProviderIcon({ provider }: { provider: string }) {
-  if (provider === "github") return <Github className="h-4 w-4 shrink-0" />;
+  if (provider === "github") return <GitHubIcon className="h-4 w-4 shrink-0" />;
   return <GitLabIcon className="h-4 w-4 shrink-0" />;
 }
