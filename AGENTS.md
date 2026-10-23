@@ -1,4 +1,4 @@
-# AGENTS.md — SnapTriage
+# AGENTS.md: SnapTriage
 
 Keyboard-driven inbox for triaging GitHub + GitLab issues. Next.js 16 App Router + React 19 + TypeScript strict + Drizzle ORM.
 
@@ -39,6 +39,7 @@ These override statistical defaults. Follow them exactly.
 - TypeScript `strict:true`, `target:ES2017`, `jsx:react-jsx`.
 - Prettier: double quotes, semicolons, 2-space, `printWidth:100`, `trailingComma:es5`. Run `npm run format` before commit.
 - `eslint-config-next/core-web-vitals` + `eslint-config-prettier`. No `--fix` in CI.
+- One design language across the app. Reuse the shared pieces in `src/components/` (wordmark, page header, empty state, segmented control, select field) and the tokens in `docs/architecture.md` ("Design Language"). Sans for human sentences, mono for machine data. Never edit `src/components/ui/*` primitives to get there. Wrap them.
 
 ## DB
 
@@ -53,6 +54,8 @@ These override statistical defaults. Follow them exactly.
 - The client IP for rate limiting comes from `x-forwarded-for`, trusted only as deep as `TRUSTED_PROXY_HOPS` says. Unattributable traffic shares one bucket.
 - The Content-Security-Policy is nonce-based and built in `src/lib/csp.ts`, applied per request by `src/proxy.ts`. Keep `script-src` free of `'unsafe-inline'`; pages stay `force-dynamic` so the nonce can be stamped.
 - New external image/API hosts need a CSP update in `src/lib/csp.ts`.
+- `GET /api/issues` carries the queue fields only. Issue descriptions load per issue from `GET /api/issues/[id]`, so the list stays small no matter how many issues a user has.
+- Validate anything written back to a provider against that provider's real limits (`providerLimits` in `src/lib/provider-interface.ts`). Never accept a value the provider will reject.
 - Details: `src/app/api/AGENTS.md`.
 
 ## Read on demand
@@ -60,6 +63,7 @@ These override statistical defaults. Follow them exactly.
 | Mention | Read |
 |---|---|
 | sync modes, deployment, providers | `docs/architecture.md` |
+| design language, shared UI pieces, `?data=` fixtures | `docs/architecture.md` ("Design Language") |
 | tokens, CSP, rate limit | `docs/security.md` |
 | setup, PR checks | `CONTRIBUTING.md` |
 | env vars | `.env.example` |
@@ -77,7 +81,7 @@ Change is complete when:
 ## Don't
 
 - Never commit `.env*`, secrets, or `*.db*`. Never force-push `main`.
-- Never edit `drizzle/*` output, `.next/`, or `src/components/ui/*` primitives directly — wrap them.
+- Never edit `drizzle/*` output, `.next/`, or `src/components/ui/*` primitives directly. Wrap them.
 - Never mock auth/payment providers in E2E. Never delete a failing test.
 
 <!-- BEGIN:nextjs-agent-rules -->

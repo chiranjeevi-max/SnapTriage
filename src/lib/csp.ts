@@ -8,7 +8,7 @@
  * React Server Component payload and its runtime as inline `<script>` tags, so
  * a `script-src` without `'unsafe-inline'` blocks them unless the response
  * carries a nonce the browser can match. Serving the policy from `next.config`
- * alone cannot work — a static header has no per-request nonce to attach.
+ * alone cannot work. A static header has no per-request nonce to attach.
  *
  * This module is imported by the proxy and therefore must stay edge-safe: no
  * Node.js built-ins, no database access, no secrets.

@@ -1,7 +1,7 @@
 /**
  * @module tests/unit/app/api/repos/route.spec.ts
  *
- * Unit tests for POST /api/repos — connecting a new repository.
+ * Unit tests for POST /api/repos: connecting a new repository.
  *
  * Security contract (OWASP A01):
  * - `permission` is derived server-side from the provider API; the client

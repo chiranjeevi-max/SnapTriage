@@ -66,7 +66,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). Signed-out visitors get the product page; signing in takes you straight to the inbox.
 
 ## Deploy
 
@@ -92,7 +92,7 @@ SQLite data is persisted in a Docker volume. See `.env.example` for all configur
 
 ### Webhooks
 
-Set `WEBHOOK_SECRET` and point the provider at `/api/webhooks/github` (or `/api/webhooks/gitlab`). The secret is verified from the provider's own header — `X-Hub-Signature-256` for GitHub, `X-Gitlab-Token` for GitLab — so it never appears in the webhook URL.
+Set `WEBHOOK_SECRET` and point the provider at `/api/webhooks/github` (or `/api/webhooks/gitlab`). The secret is verified from the provider's own header (`X-Hub-Signature-256` for GitHub, `X-Gitlab-Token` for GitLab), so it never appears in the webhook URL.
 
 ## Tech Stack
 

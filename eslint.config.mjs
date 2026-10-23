@@ -8,6 +8,15 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   prettier,
+  {
+    // TanStack Virtual returns helpers React Compiler cannot memoize, so the
+    // compiler skips IssueList. The warning has no code-level fix short of
+    // dropping the virtualizer; scope the rule to the one component that uses it.
+    files: ["src/features/inbox/components/issue-list.tsx"],
+    rules: {
+      "react-hooks/incompatible-library": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

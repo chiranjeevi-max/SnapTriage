@@ -6,6 +6,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { devViews, readDataMode } from "@/features/dev-tools/data-mode";
 import type { IssueFilter } from "./issue-filters";
 
 export interface SavedView {
@@ -21,6 +22,9 @@ export function useSavedViews() {
   return useQuery<SavedView[]>({
     queryKey: ["saved-views"],
     queryFn: async () => {
+      // The dev-only data toggle swaps the real views for the worst case.
+      const fixture = await devViews(readDataMode());
+      if (fixture) return fixture;
       const res = await fetch("/api/views");
       if (!res.ok) throw new Error("Failed to fetch saved views");
       return res.json();

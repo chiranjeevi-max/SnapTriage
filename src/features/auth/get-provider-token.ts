@@ -4,9 +4,9 @@
  * Resolves the best available API token for a user+provider pair.
  *
  * Token lookup order:
- * 1. OAuth `access_token` from the `accounts` table (set during OAuth sign-in)
- *    — skipped if the token has expired (checked via `expires_at`) or cannot be
- *      decrypted with any known key
+ * 1. OAuth `access_token` from the `accounts` table (set during OAuth sign-in).
+ *    It is skipped if the token has expired (checked via `expires_at`) or cannot
+ *    be decrypted with any known key.
  * 2. Personal Access Token from the `accessTokens` table (set during PAT sign-in)
  *
  * Returns `null` if neither source yields a usable token for the given provider.
@@ -35,7 +35,7 @@ function isWithinExpiry(expiresAtSeconds: number | null): boolean {
  * Decrypts a stored credential, reporting an unusable value as `null`.
  *
  * A value that fails authentication is indistinguishable from a corrupt one at
- * this layer, so it is logged and treated as "no credential available" — the
+ * this layer, so it is logged and treated as "no credential available". The
  * user is prompted to re-authenticate instead of hitting an unhandled error on
  * a request they initiated. Errors that are *not* decryption failures propagate:
  * those indicate a real fault that should stay visible.

@@ -5,7 +5,7 @@
  *
  * The threat model is header spoofing: a client that can choose its own
  * rate-limit key gets a fresh allowance on every request, which turns the
- * limiter into a no-op. These tests pin the trust boundary — only hops
+ * limiter into a no-op. These tests pin the trust boundary: only hops
  * appended by a proxy we actually sit behind are believed, and nothing is
  * believed at all until the deployment says how many proxies there are.
  */
@@ -75,7 +75,7 @@ describe("clientIp", () => {
      * @target clientIp
      * @dependencies TRUSTED_PROXY_HOPS env var, Request headers
      * @scenario The header carries fewer hops than the configured depth
-     * @expectedOutput Returns null — the header cannot be attributed with enough
+     * @expectedOutput Returns null: the header cannot be attributed with enough
      *                 confidence, so it must not be used as an identity
      */
     it("should return null when the chain is shorter than the trusted depth", () => {
@@ -135,7 +135,7 @@ describe("clientIp", () => {
      * @scenario A request carries a platform forwarding header
      * @expectedOutput The header is ignored. It is only trustworthy when the
      *                 request actually came through that platform, and nothing
-     *                 in the request proves that — on a directly exposed
+     *                 in the request proves that; on a directly exposed
      *                 deployment it is as forgeable as any other header.
      */
     it("should ignore platform forwarding headers", () => {

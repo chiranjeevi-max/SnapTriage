@@ -10,9 +10,9 @@ export const dynamic = "force-dynamic";
  * - **HTTP Methods:** GET
  * - **Auth:** Required (session-based)
  * - **Query params:**
- *   - `repoId` (optional) — filter issues to a specific repo
- *   - `state` (optional, default `"open"`) — issue state filter
- *   - `hideDismissed` (optional) — hide dismissed issues when `"true"`
+ *   - `repoId` (optional): filter issues to a specific repo
+ *   - `state` (optional, default `"open"`): issue state filter
+ *   - `hideDismissed` (optional): hide dismissed issues when `"true"`
  */
 import { NextResponse } from "next/server";
 import { eq, and, desc, inArray } from "drizzle-orm";
@@ -24,6 +24,10 @@ import { issues, repos, triageState } from "@/lib/db/schema";
  * Fetches issues belonging to the current user's connected repos.
  * Uses a targeted triage lookup (filtered by matching issue IDs)
  * instead of scanning the entire triage table.
+ *
+ * The response carries the queue fields only. Issue descriptions are large
+ * and only the pane showing one issue needs them, so they are fetched per
+ * issue from `GET /api/issues/:id` instead of travelling with every poll.
  *
  * @param req - Incoming request; query params `repoId`, `state`, `hideDismissed` are read from the URL
  * @returns JSON array of issue objects, each augmented with a `triage` property (or `null`)
@@ -50,7 +54,7 @@ export async function GET(req: Request) {
     return NextResponse.json([]);
   }
 
-  // Build conditions — always filter by state and user's repos
+  // Build conditions; always filter by state and user's repos
   const repoIdSet = new Set(repoIds);
   const conditions = and(
     eq(issues.state, state),
@@ -58,7 +62,23 @@ export async function GET(req: Request) {
   )!;
 
   const issueRows = await typedDb
-    .select()
+    .select({
+      id: issues.id,
+      repoId: issues.repoId,
+      provider: issues.provider,
+      number: issues.number,
+      title: issues.title,
+      author: issues.author,
+      authorAvatar: issues.authorAvatar,
+      state: issues.state,
+      labels: issues.labels,
+      assignees: issues.assignees,
+      url: issues.url,
+      providerIssueId: issues.providerIssueId,
+      createdAt: issues.createdAt,
+      updatedAt: issues.updatedAt,
+      fetchedAt: issues.fetchedAt,
+    })
     .from(issues)
     .where(conditions)
     .orderBy(desc(issues.updatedAt));

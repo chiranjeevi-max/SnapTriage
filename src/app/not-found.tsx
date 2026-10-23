@@ -1,25 +1,34 @@
 /**
  * @module app/not-found
- * Custom 404 page for SnapTriage. Displays a large "404" heading, a brief
- * explanation, and a button linking back to the inbox so users can recover
- * from mistyped or stale URLs.
+ * Custom 404 page for SnapTriage. Displays a brief explanation and a button
+ * linking back to the inbox so users can recover from mistyped or stale URLs.
  */
 import Link from "next/link";
+import { FileQuestion } from "lucide-react";
+import { Wordmark } from "@/components/brand";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="mx-auto max-w-md text-center">
-        <h1 className="text-6xl font-bold text-muted-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The page you&apos;re looking for doesn&apos;t exist.
-        </p>
-        <Button asChild className="mt-6">
-          <Link href="/inbox">Go to Inbox</Link>
-        </Button>
+    <main id="main-content" className="flex min-h-screen flex-col">
+      <header className="px-5 py-5">
+        <Wordmark href="/" />
+      </header>
+      <div className="flex flex-1 items-center justify-center px-5 pb-20">
+        <EmptyState
+          icon={<FileQuestion className="h-5 w-5" />}
+          titleAs="h1"
+          title="This page does not exist"
+          description="The link may be out of date, or the page may have moved."
+          action={
+            <Button asChild size="sm">
+              <Link href="/inbox">Go to the inbox</Link>
+            </Button>
+          }
+          className="max-w-sm"
+        />
       </div>
-    </div>
+    </main>
   );
 }

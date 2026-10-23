@@ -215,7 +215,7 @@ describe("POST /api/webhooks/:provider", () => {
      * @expectedOutput The delivery is authenticated. The signature covers the
      *                 raw bytes the provider sent, so re-encoding a decoded
      *                 string would replace the invalid sequences and break the
-     *                 comparison — a legitimate delivery would be dropped.
+     *                 comparison; a legitimate delivery would be dropped.
      */
     it("should verify the signature over the raw body bytes", async () => {
       const payload = Buffer.concat([
@@ -353,7 +353,7 @@ describe("POST /api/webhooks/:provider", () => {
      * @target POST /api/webhooks/:provider
      * @dependencies process.env.WEBHOOK_SECRET
      * @scenario JSON body is malformed
-     * @expectedOutput 400 — the endpoint parses safely instead of crashing
+     * @expectedOutput 400: the endpoint parses safely instead of crashing
      */
     it("should return 400 for a malformed JSON body", async () => {
       const req = new Request("http://localhost/api/webhooks/github", {

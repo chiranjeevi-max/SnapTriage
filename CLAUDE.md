@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# CLAUDE.md — SnapTriage (Claude-only)
+# CLAUDE.md: SnapTriage (Claude-only)
 
 Use `/init` output as draft only, keep this file as source of truth.
 Run `/context` to confirm load, `/memory` to edit, `/clear` between tasks.

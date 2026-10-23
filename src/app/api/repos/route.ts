@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // Derive permission from the provider — never trust the client value.
+  // Derive permission from the provider; never trust the client value.
   const providerImpl = getProvider(provider);
   const permission = await providerImpl.getRepoPermission(owner, name, token);
   if (permission === null) {

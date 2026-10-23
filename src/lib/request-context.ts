@@ -12,7 +12,7 @@
  *
  * Nothing the client sends is trustworthy on its own. `X-Forwarded-For` is a
  * chain each proxy appends the address it observed to, so only the entries
- * written by our own proxies can be believed — and only when we know how many
+ * written by our own proxies can be believed, and only when we know how many
  * of them there are.
  */
 
@@ -57,7 +57,7 @@ function parseChain(header: string): string[] {
  * address it observed. The entries at the head were supplied by the client and
  * are therefore ignored; the value used is `TRUSTED_PROXY_HOPS` positions from
  * the end, where our own proxies wrote. Setting `TRUSTED_PROXY_HOPS` to match
- * the actual number of proxies is what keeps this sound — if it is set higher
+ * the actual number of proxies is what keeps this sound. If it is set higher
  * than reality, attacker-supplied entries become reachable again.
  *
  * Platform headers such as `x-vercel-forwarded-for` or `cf-connecting-ip` are
@@ -76,7 +76,7 @@ export function clientIp(req: Request): string | null {
   if (!forwardedFor) return null;
 
   const chain = parseChain(forwardedFor);
-  // Too short to attribute — the chain does not contain enough entries
+  // Too short to attribute. The chain does not contain enough entries
   // written by our own proxies.
   if (chain.length < hops) return null;
 
@@ -86,8 +86,8 @@ export function clientIp(req: Request): string | null {
 /**
  * Resolves the rate-limit key for a request.
  *
- * When the client cannot be identified — a bare local dev server with no proxy
- * in front of it — requests share a single bucket. That is deliberately the
+ * When the client cannot be identified (a bare local dev server with no proxy
+ * in front of it), requests share a single bucket. That is deliberately the
  * strict direction: unattributable traffic shares one allowance rather than
  * minting a fresh one per request, and the key is a fixed constant so it cannot
  * be rotated by a caller who omits the headers.

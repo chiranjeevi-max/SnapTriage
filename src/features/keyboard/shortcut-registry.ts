@@ -85,6 +85,28 @@ export const shortcuts: Shortcut[] = [
   },
 ];
 
+/** Human-readable labels for shortcut categories. */
+export const categoryLabels: Record<Shortcut["category"], string> = {
+  navigation: "Navigation",
+  triage: "Triage",
+  utility: "Utility",
+};
+
+/** Display order for shortcut categories. */
+export const categoryOrder: Shortcut["category"][] = ["navigation", "triage", "utility"];
+
+/**
+ * Formats a shortcut key for display (e.g., Enter → "↵", Escape → "Esc").
+ * @param shortcut - The shortcut definition.
+ */
+export function formatKey(shortcut: Shortcut): string {
+  const key = getShortcutKey(shortcut);
+  if (key === "Enter") return "↵";
+  if (key === "Escape") return "Esc";
+  if (shortcut.shift && key === shortcut.key) return key;
+  return key.toUpperCase();
+}
+
 /**
  * Matches a keyboard event to a registered shortcut.
  * Compares keys case-insensitively and checks the shift modifier.

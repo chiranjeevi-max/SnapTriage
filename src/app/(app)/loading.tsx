@@ -1,15 +1,14 @@
 /**
  * @module app/(app)/loading
- * Loading skeleton for the authenticated app routes. Displays a centered
- * spinning indicator while the page content is being fetched or streamed
- * via React Suspense.
+ * Loading state for the authenticated app routes. Matches the settings page
+ * spinner so every route hands over the same way.
  */
 import { Loader2 } from "lucide-react";
 
 export default function Loading() {
   return (
     <div className="flex h-full items-center justify-center">
-      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
     </div>
   );
 }

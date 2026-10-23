@@ -1,4 +1,4 @@
-# AGENTS.md — src/lib/db
+# AGENTS.md: src/lib/db
 
 Dual-driver Drizzle layer. SQLite default, Neon Postgres when `DATABASE_URL` is set.
 

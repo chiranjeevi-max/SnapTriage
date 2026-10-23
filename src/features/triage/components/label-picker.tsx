@@ -85,7 +85,9 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
     >
       <CommandInput placeholder="Search labels..." />
       <CommandList>
-        <CommandEmpty>{isLoading ? "Loading labels..." : "No labels found."}</CommandEmpty>
+        <CommandEmpty className="py-6 text-xs text-muted-foreground">
+          {isLoading ? "Loading labels..." : "No labels found."}
+        </CommandEmpty>
         <CommandGroup>
           {(labels ?? []).map((label) => {
             const isApplied = currentLabels.has(label.name);

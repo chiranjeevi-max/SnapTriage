@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import type { IssueWithTriage } from "@/features/inbox/use-issues";
+import type { IssueDetail } from "\@/features/inbox/use-issues";
 
 import { matchesIssueFilter } from "@/features/inbox/issue-filters";
 
-function issue(overrides: Partial<IssueWithTriage> = {}): IssueWithTriage {
+function issue(overrides: Partial<IssueDetail> = {}): IssueDetail {
   return {
     id: "i1",
     repoId: "r1",
@@ -32,12 +32,19 @@ describe("matchesIssueFilter", () => {
   });
 
   it("excludes dismissed issues from open", () => {
-    expect(matchesIssueFilter(issue({ triage: { id: "t", priority: null, snoozedUntil: null, dismissed: true } }), "open")).toBe(false);
+    expect(
+      matchesIssueFilter(
+        issue({ triage: { id: "t", priority: null, snoozedUntil: null, dismissed: true } }),
+        "open"
+      )
+    ).toBe(false);
   });
 
   it("selects snoozed issues only", () => {
     const future = new Date(Date.now() + 60_000).toISOString();
-    const item = issue({ triage: { id: "t", priority: null, snoozedUntil: future, dismissed: false } });
+    const item = issue({
+      triage: { id: "t", priority: null, snoozedUntil: future, dismissed: false },
+    });
     expect(matchesIssueFilter(item, "snoozed")).toBe(true);
     expect(matchesIssueFilter(item, "open")).toBe(false);
   });

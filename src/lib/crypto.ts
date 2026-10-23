@@ -16,7 +16,7 @@
  *
  * Decryption is fail-closed by design. `AUTH_SECRET` is the only secret
  * standing between a database dump and a live credential, so {@link decrypt}
- * never returns a value it has not authenticated — malformed input raises
+ * never returns a value it has not authenticated. Malformed input raises
  * {@link TokenDecryptionError} instead of being echoed back as though it were
  * a plaintext token.
  */
@@ -45,7 +45,7 @@ const LEGACY_ITERATIONS = 100_000;
  * Raised when a stored value cannot be decrypted.
  *
  * Callers should treat this as "the stored credential is unusable" and prompt
- * the user to re-authenticate — it must never be swallowed and downgraded to a
+ * the user to re-authenticate. It must never be swallowed and downgraded to a
  * plaintext fallback.
  */
 export class TokenDecryptionError extends Error {
@@ -151,7 +151,7 @@ const HEX_SEGMENT = /^[0-9a-f]+$/i;
  * well-formed record.
  *
  * Validation happens up front rather than being left to `Buffer.from(.., "hex")`,
- * which silently truncates odd-length or non-hex input — a bad record would then
+ * which silently truncates odd-length or non-hex input. A bad record would then
  * reach the cipher as a shorter key or tag instead of being reported as corrupt.
  *
  * @param stored - The raw database value.
@@ -176,7 +176,7 @@ function parseRecord(stored: unknown): ParsedRecord {
 
   const [ivHex, authTagHex, ciphertext] = segments;
 
-  // An empty ciphertext is legitimate — encrypting "" yields a bare auth tag —
+  // An empty ciphertext is legitimate. Encrypting "" yields a bare auth tag,
   // but every other segment must carry hex content.
   if (!HEX_SEGMENT.test(ivHex) || !HEX_SEGMENT.test(authTagHex)) {
     throw new TokenDecryptionError("Stored token contains non-hex segments");
@@ -209,7 +209,7 @@ function parseRecord(stored: unknown): ParsedRecord {
  *
  * Every key that could have produced the record is tried before giving up, so
  * tokens stored before the PBKDF2 work factor was raised remain readable. A
- * value that none of them can authenticate is reported as an error — it is
+ * value that none of them can authenticate is reported as an error. It is
  * never returned as-is.
  *
  * @param stored - The stored value, either `v1:iv:authTag:ciphertext` or the
@@ -228,7 +228,7 @@ export function decrypt(stored: string): string {
 
   // A versioned record can only have been written with the current work
   // factor. An unversioned one may predate the iteration bump, so the legacy
-  // key is a candidate for it as well — derived only when it is actually
+  // key is a candidate for it as well; derived only when it is actually
   // needed, because the derivation is deliberately expensive.
   try {
     return attempt(getEncryptionKey());

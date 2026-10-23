@@ -3,7 +3,7 @@
  * Settings page for SnapTriage. Provides UI sections for theme selection
  * (light/dark/system), per-repository sync configuration (auto-sync toggle
  * and live vs. batch sync mode), connected OAuth/PAT accounts overview,
- * and a keyboard shortcuts reference card.
+ * and a keyboard shortcuts reference.
  */
 "use client";
 
@@ -11,13 +11,13 @@ import { useEffect, useState } from "react";
 import { Loader2, Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/page-header";
+import { SegmentedControl } from "@/components/segmented-control";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { ShortcutList } from "@/features/keyboard/components/shortcut-list";
+import { devAccounts, devRepos, useDataMode } from "@/features/dev-tools/data-mode";
 
 interface ConnectedRepo {
   id: string;
@@ -41,6 +41,7 @@ interface ConnectedAccount {
  */
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const mode = useDataMode();
   const [repos, setRepos] = useState<ConnectedRepo[]>([]);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,13 +49,15 @@ export default function SettingsPage() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([
-      fetch("/api/repos").then((r) => (r.ok ? r.json() : [])),
-      fetch("/api/settings/accounts").then((r) => (r.ok ? r.json() : [])),
-    ]).then(([repoData, accountData]) => {
+    // The dev-only data toggle swaps the real data for the worst case.
+    Promise.all([devRepos(mode), devAccounts(mode)]).then(async ([repoFixture, accountFixture]) => {
+      const [repos, accounts] = await Promise.all([
+        repoFixture ?? fetch("/api/repos").then((r) => (r.ok ? r.json() : [])),
+        accountFixture ?? fetch("/api/settings/accounts").then((r) => (r.ok ? r.json() : [])),
+      ]);
       if (!cancelled) {
-        setRepos(repoData);
-        setAccounts(accountData);
+        setRepos(repos);
+        setAccounts(accounts);
         setLoading(false);
       }
     });
@@ -62,7 +65,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mode]);
 
   async function handleSyncModeToggle(repoId: string, currentMode: string) {
     const newMode = currentMode === "live" ? "batch" : "live";
@@ -73,7 +76,7 @@ export default function SettingsPage() {
     });
     if (res.ok) {
       setRepos((prev) => prev.map((r) => (r.id === repoId ? { ...r, syncMode: newMode } : r)));
-      toast(`Sync mode set to ${newMode}`);
+      toast(`Sync mode set to ${newMode === "live" ? "Live" : "Batch"}`);
     }
   }
 
@@ -92,139 +95,129 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Configure your SnapTriage experience.</p>
-      </div>
+    <div className="mx-auto max-w-3xl px-6 py-8">
+      <PageHeader
+        title="Settings"
+        description="Theme, sync behaviour, and the accounts SnapTriage signs in with."
+      />
 
-      {/* Appearance */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Appearance</CardTitle>
-          <CardDescription>Choose your preferred theme.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Button
-              variant={theme === "light" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTheme("light")}
-            >
-              <Sun className="mr-1.5 h-4 w-4" />
-              Light
-            </Button>
-            <Button
-              variant={theme === "dark" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTheme("dark")}
-            >
-              <Moon className="mr-1.5 h-4 w-4" />
-              Dark
-            </Button>
-            <Button
-              variant={theme === "system" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTheme("system")}
-            >
-              <Monitor className="mr-1.5 h-4 w-4" />
-              System
-            </Button>
+      <div className="mt-8 space-y-10">
+        {/* Appearance */}
+        <section>
+          <h2 className="text-sm font-medium">Appearance</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Choose your preferred theme.</p>
+          <div className="mt-3">
+            <SegmentedControl
+              ariaLabel="Theme"
+              value={theme === "light" || theme === "dark" ? theme : "system"}
+              onChange={setTheme}
+              options={[
+                { value: "light", label: "Light", icon: <Sun className="h-3.5 w-3.5" /> },
+                { value: "dark", label: "Dark", icon: <Moon className="h-3.5 w-3.5" /> },
+                { value: "system", label: "System", icon: <Monitor className="h-3.5 w-3.5" /> },
+              ]}
+            />
           </div>
-        </CardContent>
-      </Card>
+        </section>
 
-      {/* Sync Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Sync Settings</CardTitle>
-          <CardDescription>Configure how each repository syncs with its provider.</CardDescription>
-        </CardHeader>
-        <CardContent>
+        {/* Sync Settings */}
+        <section className="border-t pt-8">
+          <h2 className="text-sm font-medium">Sync</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            How each repository fetches issues and writes your changes back.
+          </p>
+
           {repos.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No repositories connected. Go to Repos to add one.
+            <p className="mt-4 text-sm text-muted-foreground">
+              No repositories connected yet. Add one from the Repos page to configure sync.
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="mt-4 divide-y border-y">
               {repos.map((repo) => (
-                <div key={repo.id} className="rounded-lg border p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                <div key={repo.id} className="py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
                       {repo.provider === "github" ? (
                         <GitHubIcon className="h-4 w-4 shrink-0" />
                       ) : (
                         <GitLabIcon className="h-4 w-4 shrink-0" />
                       )}
-                      <span className="text-sm font-medium">{repo.fullName}</span>
+                      <span className="truncate text-sm font-medium" title={repo.fullName}>
+                        {repo.fullName}
+                      </span>
                     </div>
-                    <Badge variant="outline" className="text-xs">
+                    <span className="shrink-0 rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground">
                       {repo.permission}
-                    </Badge>
+                    </span>
                   </div>
 
-                  <Separator className="my-3" />
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">Auto-sync</p>
-                        <p className="text-xs text-muted-foreground">
-                          Automatically fetch new issues every 5 minutes
-                        </p>
-                      </div>
-                      <Switch
-                        checked={repo.syncEnabled}
-                        onCheckedChange={() => handleSyncEnabledToggle(repo.id, repo.syncEnabled)}
-                      />
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm">Auto-sync</p>
+                      <p className="text-xs text-muted-foreground">
+                        Fetch new issues every five minutes
+                      </p>
                     </div>
+                    <Switch
+                      checked={repo.syncEnabled}
+                      onCheckedChange={() => handleSyncEnabledToggle(repo.id, repo.syncEnabled)}
+                    />
+                  </div>
 
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">Sync mode</p>
-                        <p className="text-xs text-muted-foreground">
-                          {repo.syncMode === "live"
-                            ? "Changes push to provider immediately"
-                            : "Changes are staged until you push"}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSyncModeToggle(repo.id, repo.syncMode)}
-                      >
-                        {repo.syncMode === "live" ? "Live" : "Batch"}
-                      </Button>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm">Sync mode</p>
+                      <p className="text-xs text-muted-foreground">
+                        {repo.syncMode === "live"
+                          ? "Every change goes to the provider immediately"
+                          : "Changes are staged until you push them"}
+                      </p>
                     </div>
+                    <SegmentedControl
+                      ariaLabel={`Sync mode for ${repo.fullName}`}
+                      value={repo.syncMode === "live" ? "live" : "batch"}
+                      onChange={() => handleSyncModeToggle(repo.id, repo.syncMode)}
+                      options={[
+                        {
+                          value: "live",
+                          label: "Live",
+                          icon: <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />,
+                        },
+                        {
+                          value: "batch",
+                          label: "Batch",
+                          icon: <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />,
+                        },
+                      ]}
+                    />
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </section>
 
-      {/* Connected Accounts */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Connected Accounts</CardTitle>
-          <CardDescription>OAuth and personal access token connections.</CardDescription>
-        </CardHeader>
-        <CardContent>
+        {/* Connected Accounts */}
+        <section className="border-t pt-8">
+          <h2 className="text-sm font-medium">Connected accounts</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The OAuth and token connections SnapTriage uses to reach your providers.
+          </p>
+
           {accounts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No connected accounts found.</p>
+            <p className="mt-4 text-sm text-muted-foreground">No accounts connected yet.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="mt-4 divide-y border-y">
               {accounts.map((account) => (
                 <div
                   key={`${account.provider}-${account.providerAccountId}`}
-                  className="flex items-center justify-between rounded-lg border p-3"
+                  className="flex items-center justify-between gap-3 py-3"
                 >
                   <div className="flex items-center gap-2">
                     {account.provider === "github" ? (
@@ -234,49 +227,25 @@ export default function SettingsPage() {
                     )}
                     <span className="text-sm font-medium capitalize">{account.provider}</span>
                   </div>
-                  <Badge variant="secondary" className="text-xs">
+                  <span className="rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground">
                     {account.type === "oauth" ? "OAuth" : "PAT"}
-                  </Badge>
+                  </span>
                 </div>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </section>
 
-      {/* Keyboard Shortcuts Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Keyboard Shortcuts</CardTitle>
-          <CardDescription>
-            Press <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono">?</kbd>{" "}
-            anywhere in the inbox to view all shortcuts.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <ShortcutRow keys="J / K" desc="Navigate issues" />
-            <ShortcutRow keys="1-4" desc="Set priority" />
-            <ShortcutRow keys="D" desc="Dismiss / undismiss" />
-            <ShortcutRow keys="L" desc="Edit labels" />
-            <ShortcutRow keys="A" desc="Edit assignees" />
-            <ShortcutRow keys="S" desc="Snooze" />
-            <ShortcutRow keys="Z" desc="Undo" />
-            <ShortcutRow keys="R" desc="Sync issues" />
-            <ShortcutRow keys="Shift+P" desc="Push batch changes" />
-            <ShortcutRow keys="?" desc="Show all shortcuts" />
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function ShortcutRow({ keys, desc }: { keys: string; desc: string }) {
-  return (
-    <div className="flex items-center justify-between rounded-md px-2 py-1.5">
-      <span className="text-sm text-muted-foreground">{desc}</span>
-      <kbd className="rounded border bg-muted px-1.5 py-1.5 font-mono text-xs">{keys}</kbd>
+        {/* Keyboard Shortcuts */}
+        <section className="border-t pt-8">
+          <h2 className="text-sm font-medium">Keyboard shortcuts</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Press <span className="font-mono text-xs">?</span> in the inbox to see the full overlay
+            and rebind any key.
+          </p>
+          <ShortcutList className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2" />
+        </section>
+      </div>
     </div>
   );
 }

@@ -14,7 +14,7 @@ import { authLogger } from "@/lib/logger";
  * Longest window any rate-limit scope uses.
  *
  * The shared bucket table is purged opportunistically, and that purge must
- * never remove a bucket that is still inside *some* scope's window — a short
+ * never remove a bucket that is still inside *some* scope's window. A short
  * window scope purging the table would otherwise reset the long window scopes
  * and hand every caller a fresh allowance.
  */

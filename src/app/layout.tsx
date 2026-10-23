@@ -49,6 +49,15 @@ export default async function RootLayout({
   // inline script and needs it to satisfy the strict script-src policy.
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
+  // The data toggle is development-only chrome. Importing it through this
+  // branch keeps its chunk out of the production build entirely, rather than
+  // shipping a component that would only ever render `null`. The specifier is
+  // a literal, so renaming the module breaks the build, not the runtime.
+  const DevDataToggle =
+    process.env.NODE_ENV === "development"
+      ? (await import("@/features/dev-tools/data-toggle")).DevDataToggle
+      : null;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
@@ -58,7 +67,10 @@ export default async function RootLayout({
         >
           Skip to main content
         </a>
-        <Providers nonce={nonce}>{children}</Providers>
+        <Providers nonce={nonce}>
+          {children}
+          {DevDataToggle ? <DevDataToggle /> : null}
+        </Providers>
       </body>
     </html>
   );

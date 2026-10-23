@@ -11,7 +11,7 @@ import { create } from "zustand";
 
 /**
  * Shape of the keyboard store state and actions.
- * State is intentionally flat for performance — Zustand selectors
+ * State is intentionally flat for performance; Zustand selectors
  * re-render components only when their selected slice changes.
  */
 interface KeyboardState {

@@ -1,19 +1,20 @@
 /**
  * @module repos/components/repo-manager
  *
- * Repository management page component. Shows two cards:
- * 1. **Connected Repositories** — list of tracked repos with disconnect buttons
- * 2. **Add Repository** — tabbed browser (GitHub/GitLab) to discover and connect new repos
+ * Repository management page component. Shows two panels:
+ * 1. **Connected Repositories**: list of tracked repos with disconnect buttons
+ * 2. **Add Repository**: tabbed browser (GitHub/GitLab) to discover and connect new repos
  */
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Plus, Trash2, Plug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { devAvailableRepos, devRepos, readDataMode } from "@/features/dev-tools/data-mode";
 import type { AvailableRepo } from "../fetch-available-repos";
 
 /** Shape of a connected repo record from the repos API. */
@@ -45,42 +47,36 @@ interface ConnectedRepo {
  * Handles connect/disconnect operations with optimistic UI updates.
  */
 export function RepoManager() {
-  const [connected, setConnected] = useState<ConnectedRepo[]>([]);
-  const [available, setAvailable] = useState<AvailableRepo[]>([]);
-  const [loadingConnected, setLoadingConnected] = useState(true);
-  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const queryClient = useQueryClient();
   const [activeProvider, setActiveProvider] = useState<"github" | "gitlab">("github");
   const [connectingRepo, setConnectingRepo] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/repos")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
-        if (!cancelled) {
-          setConnected(data);
-          setLoadingConnected(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // The sidebar reads the same query, so both stay in step after a change.
+  const { data: connected = [], isLoading: loadingConnected } = useQuery<ConnectedRepo[]>({
+    queryKey: ["connected-repos"],
+    queryFn: async () => {
+      // The dev-only data toggle swaps the real repos for the worst case.
+      const fixture = await devRepos(readDataMode());
+      if (fixture) return fixture;
+      return fetch("/api/repos").then((res) => (res.ok ? res.json() : []));
+    },
+    staleTime: 60_000,
+  });
 
-  async function fetchAvailable(provider: "github" | "gitlab") {
-    setLoadingAvailable(true);
-    setAvailable([]);
-    const res = await fetch(`/api/repos/available?provider=${provider}`);
-    if (res.ok) {
-      setAvailable(await res.json());
-    }
-    setLoadingAvailable(false);
-  }
+  const { data: available = [], isFetching: loadingAvailable } = useQuery<AvailableRepo[]>({
+    queryKey: ["available-repos", activeProvider],
+    queryFn: async () => {
+      const fixture = await devAvailableRepos(readDataMode());
+      if (fixture) return fixture;
+      return fetch(`/api/repos/available?provider=${activeProvider}`).then((res) =>
+        res.ok ? res.json() : []
+      );
+    },
+    staleTime: 60_000,
+  });
 
   function handleTabChange(value: string) {
-    const provider = value as "github" | "gitlab";
-    setActiveProvider(provider);
-    fetchAvailable(provider);
+    setActiveProvider(value as "github" | "gitlab");
   }
 
   async function handleConnect(repo: AvailableRepo) {
@@ -91,25 +87,25 @@ export function RepoManager() {
       body: JSON.stringify({ provider: repo.provider, owner: repo.owner, name: repo.name }),
     });
     if (res.ok) {
-      const refreshed = await fetch("/api/repos");
-      if (refreshed.ok) setConnected(await refreshed.json());
+      await queryClient.invalidateQueries({ queryKey: ["connected-repos"] });
+      await queryClient.invalidateQueries({ queryKey: ["available-repos"] });
     }
     setConnectingRepo(null);
   }
 
   async function handleDisconnect(id: string) {
     await fetch(`/api/repos/${id}`, { method: "DELETE" });
-    setConnected((prev) => prev.filter((r) => r.id !== id));
+    await queryClient.invalidateQueries({ queryKey: ["connected-repos"] });
   }
 
   const connectedFullNames = new Set(connected.map((r) => r.fullName));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Connected repos */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Connected Repositories</CardTitle>
+          <CardTitle className="text-sm font-medium">Connected repositories</CardTitle>
         </CardHeader>
         <CardContent>
           {loadingConnected ? (
@@ -118,35 +114,40 @@ export function RepoManager() {
               <Skeleton className="h-12 w-full" />
             </div>
           ) : connected.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No repositories connected yet. Browse below to add one.
-            </p>
+            <EmptyState
+              icon={<Plug className="h-5 w-5" />}
+              title="No repositories connected"
+              description="Connect one below and its issues land in your inbox."
+              className="py-10"
+            />
           ) : (
-            <div className="space-y-2">
+            <div className="divide-y border-y">
               {connected.map((repo) => (
-                <div
-                  key={repo.id}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div className="flex items-center gap-3">
+                <div key={repo.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
                     <ProviderIcon provider={repo.provider} />
-                    <div>
-                      <p className="text-sm font-medium">{repo.fullName}</p>
-                      <PermissionBadge permission={repo.permission} />
-                    </div>
+                    <span className="truncate text-sm font-medium" title={repo.fullName}>
+                      {repo.fullName}
+                    </span>
+                    <PermissionBadge permission={repo.permission} />
                   </div>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Disconnect ${repo.fullName}`}
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>Disconnect {repo.fullName}?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will remove all cached issues and triage state for this repository.
-                          You can reconnect it later, but triage data will be lost.
+                          This removes the cached issues and triage state for this repository. You
+                          can reconnect it later, but the triage data is gone.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -167,62 +168,64 @@ export function RepoManager() {
       {/* Browse available repos */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Add Repository</CardTitle>
+          <CardTitle className="text-sm font-medium">Add a repository</CardTitle>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="github" onValueChange={handleTabChange}>
             <TabsList>
               <TabsTrigger value="github">
-                <GitHubIcon className="mr-1.5 h-4 w-4" />
+                <GitHubIcon className="h-3.5 w-3.5" />
                 GitHub
               </TabsTrigger>
               <TabsTrigger value="gitlab">
-                <GitLabIcon className="mr-1.5 h-4 w-4" />
+                <GitLabIcon className="h-3.5 w-3.5" />
                 GitLab
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value={activeProvider} className="mt-4">
-              {!loadingAvailable && available.length === 0 && !loadingConnected && (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">
-                    Click a tab above to load your {activeProvider} repositories.
-                  </p>
-                </div>
-              )}
-
               {loadingAvailable && (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   <span className="ml-2 text-sm text-muted-foreground">
                     Loading repositories...
                   </span>
                 </div>
               )}
 
+              {!loadingAvailable && available.length === 0 && (
+                <EmptyState
+                  icon={<Plug className="h-5 w-5" />}
+                  title="No repositories to show"
+                  description={`Your ${activeProvider} account has no repositories SnapTriage can read.`}
+                  className="py-10"
+                />
+              )}
+
               {!loadingAvailable && available.length > 0 && (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+                <div className="max-h-96 divide-y overflow-y-auto border-y">
                   {available.map((repo) => {
                     const isConnected = connectedFullNames.has(repo.fullName);
                     return (
                       <div
                         key={repo.fullName}
-                        className="flex items-center justify-between rounded-lg border p-3"
+                        className="flex items-center justify-between gap-3 py-3"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{repo.fullName}</p>
+                          <p className="truncate text-sm font-medium" title={repo.fullName}>
+                            {repo.fullName}
+                          </p>
                           {repo.description && (
-                            <p className="text-xs text-muted-foreground truncate">
+                            <p
+                              className="truncate text-xs text-muted-foreground"
+                              title={repo.description}
+                            >
                               {repo.description}
                             </p>
                           )}
-                          <div className="mt-1 flex items-center gap-2">
+                          <div className="mt-1.5 flex items-center gap-1.5">
                             <PermissionBadge permission={repo.permission} />
-                            {repo.isPrivate && (
-                              <Badge variant="outline" className="text-xs">
-                                Private
-                              </Badge>
-                            )}
+                            {repo.isPrivate && <PrivateBadge />}
                           </div>
                         </div>
                         <Button
@@ -230,15 +233,15 @@ export function RepoManager() {
                           size="sm"
                           disabled={isConnected || connectingRepo === repo.fullName}
                           onClick={() => handleConnect(repo)}
-                          className="ml-3 shrink-0"
+                          className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
                         >
                           {connectingRepo === repo.fullName ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : isConnected ? (
                             "Connected"
                           ) : (
                             <>
-                              <Plus className="mr-1 h-4 w-4" />
+                              <Plus className="h-3.5 w-3.5" />
                               Add
                             </>
                           )}
@@ -256,19 +259,28 @@ export function RepoManager() {
   );
 }
 
-/** Color-coded badge showing repo permission level (admin/write/read). */
+/** Chip showing repo permission level (admin/write/read). */
 function PermissionBadge({ permission }: { permission: string }) {
-  const variant =
-    permission === "admin" ? "default" : permission === "write" ? "secondary" : "outline";
   return (
-    <Badge variant={variant} className="text-xs">
+    <span className="shrink-0 rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground">
       {permission}
-    </Badge>
+    </span>
+  );
+}
+
+/** Chip marking a repository as private. */
+function PrivateBadge() {
+  return (
+    <span className="shrink-0 rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground">
+      private
+    </span>
   );
 }
 
 /** Renders the GitHub or GitLab icon based on provider name. */
 function ProviderIcon({ provider }: { provider: string }) {
-  if (provider === "github") return <GitHubIcon className="h-4 w-4 shrink-0" />;
+  if (provider === "github") {
+    return <GitHubIcon className="h-4 w-4 shrink-0" />;
+  }
   return <GitLabIcon className="h-4 w-4 shrink-0" />;
 }

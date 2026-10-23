@@ -86,7 +86,7 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
     >
       <CommandInput placeholder="Search collaborators..." />
       <CommandList>
-        <CommandEmpty>
+        <CommandEmpty className="py-6 text-xs text-muted-foreground">
           {isLoading ? "Loading collaborators..." : "No collaborators found."}
         </CommandEmpty>
         <CommandGroup>
