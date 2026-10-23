@@ -34,17 +34,18 @@ interface DemoIssue {
   provider: "github" | "gitlab";
   /** Provider labels. */
   labels: string[];
-  /** When the issue was last touched. */
-  updatedAt: string;
+  /**
+   * Age shown in the row.
+   *
+   * This is fixed copy rather than a timestamp on purpose. A timestamp derived
+   * from the clock while rendering drifts between the server and the browser
+   * and breaks hydration; the demo rows do not need to age.
+   */
+  updatedLabel: string;
   /** Priority 0-3, or `null` when the issue has none. */
   priority: number | null;
   /** Whether the issue has been dismissed. */
   dismissed: boolean;
-}
-
-/** ISO timestamp `hours` in the past, for the demo rows. */
-function hoursAgo(hours: number): string {
-  return new Date(Date.now() - hours * 3600_000).toISOString();
 }
 
 /** A change that the demo can take back. */
@@ -66,7 +67,7 @@ const DEMO_ISSUES: DemoIssue[] = [
     repo: "chiranjeevi-max/SnapTriage",
     provider: "github",
     labels: ["bug"],
-    updatedAt: hoursAgo(2),
+    updatedLabel: "2h",
     priority: 1,
     dismissed: false,
   },
@@ -77,7 +78,7 @@ const DEMO_ISSUES: DemoIssue[] = [
     repo: "acme/design-system",
     provider: "github",
     labels: ["enhancement", "component"],
-    updatedAt: hoursAgo(4),
+    updatedLabel: "4h",
     priority: null,
     dismissed: false,
   },
@@ -88,7 +89,7 @@ const DEMO_ISSUES: DemoIssue[] = [
     repo: "acme/console",
     provider: "github",
     labels: ["bug"],
-    updatedAt: hoursAgo(6),
+    updatedLabel: "6h",
     priority: 0,
     dismissed: false,
   },
@@ -99,7 +100,7 @@ const DEMO_ISSUES: DemoIssue[] = [
     repo: "acme/console",
     provider: "gitlab",
     labels: ["feature"],
-    updatedAt: hoursAgo(26),
+    updatedLabel: "1d",
     priority: null,
     dismissed: false,
   },
@@ -110,7 +111,7 @@ const DEMO_ISSUES: DemoIssue[] = [
     repo: "northwind/api",
     provider: "github",
     labels: ["bug", "ui"],
-    updatedAt: hoursAgo(26),
+    updatedLabel: "1d",
     priority: 2,
     dismissed: false,
   },
@@ -121,7 +122,7 @@ const DEMO_ISSUES: DemoIssue[] = [
     repo: "northwind/api",
     provider: "gitlab",
     labels: ["docs"],
-    updatedAt: hoursAgo(50),
+    updatedLabel: "2d",
     priority: null,
     dismissed: false,
   },
@@ -132,7 +133,7 @@ const DEMO_ISSUES: DemoIssue[] = [
     repo: "acme/console",
     provider: "github",
     labels: ["test"],
-    updatedAt: hoursAgo(72),
+    updatedLabel: "3d",
     priority: 3,
     dismissed: false,
   },
@@ -223,7 +224,7 @@ function TriageQueue({ mode }: { mode: DataMode }) {
             repo: issue.repo,
             provider: issue.provider === "gitlab" ? "gitlab" : "github",
             labels: issue.labels,
-            updatedAt: issue.updatedAt,
+            updatedLabel: formatRelativeTime(issue.updatedAt),
             priority: issue.triage?.priority ?? null,
             dismissed: issue.triage?.dismissed ?? false,
           }))
@@ -506,7 +507,7 @@ function TriageQueue({ mode }: { mode: DataMode }) {
               </span>
 
               <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                {formatRelativeTime(issue.updatedAt)}
+                {issue.updatedLabel}
               </span>
             </button>
           );
