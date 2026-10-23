@@ -10,9 +10,9 @@ export const dynamic = "force-dynamic";
  * - **HTTP Methods:** GET
  * - **Auth:** Required (session-based)
  * - **Query params:**
- *   - `repoId` (optional) — filter issues to a specific repo
- *   - `state` (optional, default `"open"`) — issue state filter
- *   - `hideDismissed` (optional) — hide dismissed issues when `"true"`
+ *   - `repoId` (optional): filter issues to a specific repo
+ *   - `state` (optional, default `"open"`): issue state filter
+ *   - `hideDismissed` (optional): hide dismissed issues when `"true"`
  */
 import { NextResponse } from "next/server";
 import { eq, and, desc, inArray } from "drizzle-orm";
@@ -54,7 +54,7 @@ export async function GET(req: Request) {
     return NextResponse.json([]);
   }
 
-  // Build conditions — always filter by state and user's repos
+  // Build conditions; always filter by state and user's repos
   const repoIdSet = new Set(repoIds);
   const conditions = and(
     eq(issues.state, state),

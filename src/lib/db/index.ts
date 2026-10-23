@@ -29,12 +29,12 @@ function createDb(): DbClient {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (databaseUrl) {
-    // Serverless Postgres via Neon — used on Vercel
+    // Serverless Postgres via Neon, used on Vercel
     const sql = neon(databaseUrl);
     return drizzleNeon(sql, { schema });
   }
 
-  // Local SQLite — used in development and Docker self-host
+  // Local SQLite, used in development and Docker self-host
   const sqlitePath = process.env.SQLITE_PATH ?? "./data/snaptriage.db";
   // Ensure the parent directory exists (e.g. ./data/) before SQLite tries to open the file.
   // This is needed both on first run and during Next.js build-time static analysis.

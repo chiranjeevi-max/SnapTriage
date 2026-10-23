@@ -3,10 +3,10 @@
  *
  * TanStack Query hooks for fetching and managing issue data from the API.
  *
- * - {@link useIssues} — Polls `/api/issues` every 5 minutes with optional repo/state filters
- * - {@link useIssue} — Fetches one issue with its description, for the detail pane
- * - {@link useSync} — Triggers a manual sync and invalidates issue + status queries on success
- * - {@link useSyncStatus} — Polls `/api/sync/status` every minute for last-sync timestamps
+ * - {@link useIssues}: Polls `/api/issues` every 5 minutes with optional repo/state filters
+ * - {@link useIssue}: Fetches one issue with its description, for the detail pane
+ * - {@link useSync}: Triggers a manual sync and invalidates issue + status queries on success
+ * - {@link useSyncStatus}: Polls `/api/sync/status` every minute for last-sync timestamps
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { devIssues, readDataMode } from "@/features/dev-tools/data-mode";

@@ -265,7 +265,7 @@ describe("getProviderToken", () => {
      * @dependencies typedDb.select (mocked), decrypt (mocked)
      * @scenario decrypt raises an error that is not a TokenDecryptionError
      * @expectedOutput The error propagates. Only errors this module can explain
-     *                 as "stored token unusable" should be absorbed — anything
+     *                 as "stored token unusable" should be absorbed; anything
      *                 else indicates a real fault and must stay visible.
      */
     it("should rethrow unexpected decryption errors", async () => {
@@ -291,7 +291,7 @@ describe("getProviderToken", () => {
      * @scenario A stored token cannot be decrypted
      * @expectedOutput A warning is recorded with the user and provider, so an
      *                 operator can see which integration lost its credential.
-     *                 Only identity context — never the token value.
+     *                 Only identity context, never the token value.
      */
     it("should log an unusable stored token without leaking the value", async () => {
       const { TokenDecryptionError } = await import("@/lib/crypto");

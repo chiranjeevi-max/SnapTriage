@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * - **HTTP Methods:** GET
  * - **Auth:** Required (session-based); a valid provider token must be on file
  * - **Query params:**
- *   - `provider` (required) — `"github"` or `"gitlab"`
+ *   - `provider` (required): `"github"` or `"gitlab"`
  */
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";

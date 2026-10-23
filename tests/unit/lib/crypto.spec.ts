@@ -30,7 +30,7 @@ describe("crypto", () => {
   describe("encrypt", () => {
     /**
      * @target encrypt
-     * @dependencies Node crypto (native — not mocked)
+     * @dependencies Node crypto (native, not mocked)
      * @scenario Valid plaintext is provided with AUTH_SECRET set
      * @expectedOutput A `v1:`-prefixed string of 3 hex segments (v1:iv:authTag:ciphertext)
      */
@@ -62,7 +62,7 @@ describe("crypto", () => {
      * @target encrypt
      * @dependencies getEncryptionKey, AUTH_SECRET env var
      * @scenario AUTH_SECRET is missing from environment
-     * @expectedOutput Throws an Error (not a specific message — type-based assertion)
+     * @expectedOutput Throws an Error (not a specific message; type-based assertion)
      */
     it("should throw when AUTH_SECRET is not set", async () => {
       delete process.env.AUTH_SECRET;
@@ -109,7 +109,7 @@ describe("crypto", () => {
      * @target decrypt
      * @dependencies None
      * @scenario A versioned string whose segment count does not match the format
-     * @expectedOutput Throws TokenDecryptionError — a truncated or padded record
+     * @expectedOutput Throws TokenDecryptionError: a truncated or padded record
      *                 is malformed, not a plaintext fallback
      */
     it("should reject a versioned string with the wrong number of segments", () => {
@@ -230,7 +230,7 @@ describe("crypto", () => {
     /**
      * @target crypto module initialisation
      * @dependencies AUTH_SALT env var
-     * @scenario AUTH_SALT is present but empty — the shape produced by copying
+     * @scenario AUTH_SALT is present but empty; the shape produced by copying
      *           `.env.example` verbatim
      * @expectedOutput Module init throws, so a silently inactive salt cannot be
      *                 mistaken for a configured one
@@ -292,7 +292,7 @@ describe("crypto", () => {
      * @dependencies Node crypto (native)
      * @scenario A record stored in the old layout and encrypted with the
      *           pre-bump PBKDF2 work factor
-     * @expectedOutput The plaintext is returned — the legacy key is still a
+     * @expectedOutput The plaintext is returned: the legacy key is still a
      *                 candidate for records that carry no version tag.
      */
     it("should decrypt an unversioned record written with the legacy work factor", async () => {

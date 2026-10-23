@@ -75,7 +75,7 @@ describe("mergePendingChanges", () => {
     expect(pending.labels?.add).toContain("bug");
     expect(pending.labels?.add).toContain("urgent");
 
-    // Step 3: remove "bug" — cancels the previous add
+    // Step 3: remove "bug"; this cancels the previous add
     pending = mergePendingChanges(pending, { labels: { remove: ["bug"] } });
     expect(pending.labels?.add).toEqual(["urgent"]);
     expect(pending.labels?.remove).toEqual([]);

@@ -7,8 +7,8 @@
  * to /inbox.
  *
  * It also mints the per-request nonce that backs the Content-Security-Policy
- * for every page response. The policy is strict about scripts — Next.js emits
- * the RSC payload inline — so the nonce has to be attached to the request
+ * for every page response. The policy is strict about scripts (Next.js emits
+ * the RSC payload inline), so the nonce has to be attached to the request
  * headers before rendering, not only to the response.
  *
  * Auth.js v5 `auth()` wraps the handler so session data is available on

@@ -4,11 +4,11 @@
  * Drizzle ORM schema definitions for the SnapTriage SQLite database.
  *
  * Tables are organized into three groups:
- * 1. **Auth.js tables** — `users`, `accounts`, `sessions`, `verificationTokens`
+ * 1. **Auth.js tables**: `users`, `accounts`, `sessions`, `verificationTokens`
  *    (required by NextAuth / Auth.js adapter)
- * 2. **Application tables** — `accessTokens`, `repos`, `issues`
+ * 2. **Application tables**: `accessTokens`, `repos`, `issues`
  *    (PAT storage, tracked repositories, cached issue data)
- * 3. **Triage tables** — `triageState`, `syncLog`
+ * 3. **Triage tables**: `triageState`, `syncLog`
  *    (per-user triage decisions and sync audit trail)
  */
 import {
@@ -167,7 +167,7 @@ export const webhookDeliveries = sqliteTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    // `${provider}:${deliveryId}` — provider-scoped so GitHub and GitLab IDs
+    // `${provider}:${deliveryId}` is provider-scoped so GitHub and GitLab IDs
     // cannot collide with each other.
     deliveryId: text("delivery_id").notNull().unique(),
     provider: text("provider").notNull(),

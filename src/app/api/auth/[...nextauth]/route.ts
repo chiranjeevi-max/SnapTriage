@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  *
  * - **Endpoint:** `/api/auth/*`
  * - **HTTP Methods:** GET, POST (handled internally by Auth.js)
- * - **Auth:** Public — this IS the authentication entry-point
+ * - **Auth:** Public; this IS the authentication entry-point
  */
 import { handlers } from "@/auth";
 

@@ -20,7 +20,7 @@ Any access tokens (both OAuth and PAT) are encrypted at rest in the database usi
 
 To protect the PAT login endpoint from brute-force attacks, SnapTriage rate-limits attempts by IP.
 - Limits a single IP to 5 attempts (successful or failed) within a 15-minute window, per scope: `pat:validate` for the token endpoint and `pat:signin` for the sign-in callback, so one flow cannot exhaust the other's allowance.
-- The client address comes from `x-forwarded-for`, and only the entries written by the app's own proxies are believed: `TRUSTED_PROXY_HOPS` states how many proxies append to that chain. With the default of `0` — the app exposed directly — no forwarding header is believable and all such traffic shares a single bucket.
+- The client address comes from `x-forwarded-for`, and only the entries written by the app's own proxies are believed: `TRUSTED_PROXY_HOPS` states how many proxies append to that chain. With the default of `0` (the app exposed directly), no forwarding header is believable and all such traffic shares a single bucket.
 - Counters live in the shared `rate_limit_bucket` table, so the limit holds across app instances. Expired rows are purged on each check, using the longest window in use, so a short-window scope can never reset a long-window one.
 - If the database is unreachable, it falls back to an in-memory limiter with a capped map size, so protection stays on.
 

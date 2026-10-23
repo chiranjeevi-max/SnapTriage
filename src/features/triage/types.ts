@@ -93,7 +93,7 @@ export function mergePendingChanges(
     }
     for (const l of incoming.labels.remove ?? []) {
       if (addSet.has(l)) {
-        addSet.delete(l); // cancel pending addition — no need to remove what was never applied
+        addSet.delete(l); // cancel pending addition; no need to remove what was never applied
       } else {
         removeSet.add(l);
       }

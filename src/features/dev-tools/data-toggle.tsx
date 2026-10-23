@@ -5,7 +5,7 @@
  *
  * It rests as a small chip in the bottom-right corner showing the current
  * mode, so it covers as little of the page under review as possible. Hovering
- * it — or tabbing to it — expands the full segmented control; leaving the
+ * it (or tabbing to it) expands the full segmented control; leaving the
  * control, or moving focus out of it, collapses it again.
  */
 "use client";
@@ -47,8 +47,8 @@ export function DevDataToggle() {
     }
   }
 
-  // A pointer leaving the control closes it, unless focus is still inside —
-  // a keyboard user must not lose the control out from under them.
+  // A pointer leaving the control closes it, unless focus is still inside.
+  // A keyboard user must not lose the control out from under them.
   function handlePointerLeave() {
     if (!containerRef.current?.contains(document.activeElement)) {
       setExpanded(false);

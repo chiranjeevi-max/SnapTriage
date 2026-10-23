@@ -2,8 +2,8 @@
  * @module repos/components/repo-manager
  *
  * Repository management page component. Shows two panels:
- * 1. **Connected Repositories** — list of tracked repos with disconnect buttons
- * 2. **Add Repository** — tabbed browser (GitHub/GitLab) to discover and connect new repos
+ * 1. **Connected Repositories**: list of tracked repos with disconnect buttons
+ * 2. **Add Repository**: tabbed browser (GitHub/GitLab) to discover and connect new repos
  */
 "use client";
 

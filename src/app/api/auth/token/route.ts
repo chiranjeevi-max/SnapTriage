@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
  *
  * - **Endpoint:** `/api/auth/token`
  * - **HTTP Methods:** POST
- * - **Auth:** Public — used during PAT-based sign-in flow
+ * - **Auth:** Public; used during PAT-based sign-in flow
  */
 import { NextResponse } from "next/server";
 import { validateToken } from "@/features/auth/validate-token";

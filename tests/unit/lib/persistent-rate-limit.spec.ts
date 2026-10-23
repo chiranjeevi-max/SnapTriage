@@ -77,7 +77,7 @@ describe("checkPersistentRateLimit", () => {
      * @scenario A bucket whose window has long since elapsed is present
      * @expectedOutput Any subsequent check deletes it. The purge predicate must
      *                 bind a value the driver accepts and that compares correctly
-     *                 against an integer-millis column — binding a Date here
+     *                 against an integer-millis column; binding a Date here
      *                 throws in better-sqlite3 and silently disables the cleanup,
      *                 letting the table grow without bound.
      */
@@ -140,7 +140,7 @@ describe("checkPersistentRateLimit", () => {
      * @expectedOutput The long-window bucket survives. Purging on the calling
      *                 scope's window would delete a bucket that is still inside
      *                 another scope's window and hand that scope a fresh
-     *                 allowance — the limiter would be bypassable by sending
+     *                 allowance; the limiter would be bypassable by sending
      *                 one extra request to the short-window endpoint.
      */
     it("does not purge a long-window bucket from a short-window scope", async () => {

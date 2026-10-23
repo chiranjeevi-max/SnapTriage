@@ -2,8 +2,8 @@
  * @module auth/components/login-form
  *
  * Sign-in form with two paths:
- * 1. **OAuth** — one-click buttons for GitHub and GitLab
- * 2. **PAT** — manual Personal Access Token entry with a provider toggle
+ * 1. **OAuth**: one-click buttons for GitHub and GitLab
+ * 2. **PAT**: manual Personal Access Token entry with a provider toggle
  *
  * The PAT flow validates the token server-side via `/api/auth/token`
  * before initiating a Credentials sign-in.
@@ -83,7 +83,7 @@ export function LoginForm() {
         return;
       }
 
-      // Token validated — sign in with credentials
+      // Token validated; sign in with credentials
       await signIn("credentials", {
         token: token.trim(),
         provider,

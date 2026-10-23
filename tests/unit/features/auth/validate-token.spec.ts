@@ -10,7 +10,7 @@ import {
   validateToken,
 } from "@/features/auth/validate-token";
 
-// RCS-001: Stub the global fetch rather than mocking a module — fetch is a
+// RCS-001: Stub the global fetch rather than mocking a module. Fetch is a
 // built-in used directly inside module functions.
 const mockFetch = vi.fn();
 

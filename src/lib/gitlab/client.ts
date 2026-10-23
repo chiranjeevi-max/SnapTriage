@@ -184,7 +184,7 @@ export const gitlabProvider: IssueProvider = {
     }
 
     if (needsAssignees && currentIssue) {
-      // GitLab uses user IDs for assignees — resolve usernames to IDs
+      // GitLab uses user IDs for assignees; resolve usernames to IDs
       const existingAssignees = new Set<string>(
         ((currentIssue.assignees as Array<{ username: string }>) ?? []).map((a) => a.username)
       );

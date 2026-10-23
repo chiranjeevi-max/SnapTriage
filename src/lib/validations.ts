@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { providerLimits } from "./provider-interface";
 
-/** Schema for PATCH /api/issues/:id — triage update payload. */
+/** Schema for PATCH /api/issues/:id: triage update payload. */
 export const triagePatchSchema = z.object({
   priority: z.number().int().min(0).max(3).nullable().optional(),
   snoozedUntil: z.string().datetime().nullable().optional(),
@@ -31,7 +31,7 @@ export const triagePatchSchema = z.object({
 export type TriagePatchInput = z.infer<typeof triagePatchSchema>;
 
 /**
- * Schema for POST /api/repos — connect a new repository.
+ * Schema for POST /api/repos: connect a new repository.
  *
  * Only the coordinates the provider API is called with are accepted. The
  * repository's full name and its permission are derived server-side: a client
@@ -68,7 +68,7 @@ export const connectRepoSchema = z
 
 export type ConnectRepoInput = z.infer<typeof connectRepoSchema>;
 
-/** Schema for PATCH /api/repos/:id — repo settings update. */
+/** Schema for PATCH /api/repos/:id: repo settings update. */
 export const updateRepoSchema = z
   .object({
     syncMode: z.enum(["live", "batch"]).optional(),
@@ -80,14 +80,14 @@ export const updateRepoSchema = z
 
 export type UpdateRepoInput = z.infer<typeof updateRepoSchema>;
 
-/** Schema for POST /api/sync — trigger sync. */
+/** Schema for POST /api/sync: trigger sync. */
 export const syncTriggerSchema = z.object({
   repoId: z.string().uuid().optional(),
 });
 
 export type SyncTriggerInput = z.infer<typeof syncTriggerSchema>;
 
-/** Schema for POST /api/auth/token — PAT validation. */
+/** Schema for POST /api/auth/token: PAT validation. */
 export const tokenValidationSchema = z.object({
   token: z.string().min(1).max(512),
   provider: z.enum(["github", "gitlab"]),

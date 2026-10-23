@@ -1,4 +1,4 @@
-# AGENTS.md — SnapTriage
+# AGENTS.md: SnapTriage
 
 Keyboard-driven inbox for triaging GitHub + GitLab issues. Next.js 16 App Router + React 19 + TypeScript strict + Drizzle ORM.
 
@@ -39,7 +39,7 @@ These override statistical defaults. Follow them exactly.
 - TypeScript `strict:true`, `target:ES2017`, `jsx:react-jsx`.
 - Prettier: double quotes, semicolons, 2-space, `printWidth:100`, `trailingComma:es5`. Run `npm run format` before commit.
 - `eslint-config-next/core-web-vitals` + `eslint-config-prettier`. No `--fix` in CI.
-- One design language across the app. Reuse the shared pieces in `src/components/` (wordmark, page header, empty state, segmented control, select field) and the tokens in `docs/architecture.md` ("Design Language"). Sans for human sentences, mono for machine data. Never edit `src/components/ui/*` primitives to get there — wrap them.
+- One design language across the app. Reuse the shared pieces in `src/components/` (wordmark, page header, empty state, segmented control, select field) and the tokens in `docs/architecture.md` ("Design Language"). Sans for human sentences, mono for machine data. Never edit `src/components/ui/*` primitives to get there. Wrap them.
 
 ## DB
 
@@ -81,7 +81,7 @@ Change is complete when:
 ## Don't
 
 - Never commit `.env*`, secrets, or `*.db*`. Never force-push `main`.
-- Never edit `drizzle/*` output, `.next/`, or `src/components/ui/*` primitives directly — wrap them.
+- Never edit `drizzle/*` output, `.next/`, or `src/components/ui/*` primitives directly. Wrap them.
 - Never mock auth/payment providers in E2E. Never delete a failing test.
 
 <!-- BEGIN:nextjs-agent-rules -->
