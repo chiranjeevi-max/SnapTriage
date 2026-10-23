@@ -1,9 +1,9 @@
 /**
  * @module auth/components/login-form
  *
- * Login page component providing two authentication paths:
- * 1. **OAuth** — One-click buttons for GitHub and GitLab
- * 2. **PAT** — Manual Personal Access Token entry with provider toggle
+ * Sign-in form with two paths:
+ * 1. **OAuth** — one-click buttons for GitHub and GitLab
+ * 2. **PAT** — manual Personal Access Token entry with a provider toggle
  *
  * The PAT flow validates the token server-side via `/api/auth/token`
  * before initiating a Credentials sign-in.
@@ -12,13 +12,32 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { SegmentedControl } from "@/components/segmented-control";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
+
+/** Providers that accept a personal access token. */
+const tokenProviders = ["github", "gitlab"] as const;
+
+/** Provider of a personal access token. */
+type TokenProvider = (typeof tokenProviders)[number];
+
+/** What a token has to look like and be able to do, per provider. */
+const tokenHints: Record<TokenProvider, { placeholder: string; hint: string }> = {
+  github: {
+    placeholder: "ghp_...",
+    hint: "Needs the repo scope so SnapTriage can read and update issues.",
+  },
+  gitlab: {
+    placeholder: "glpat-...",
+    hint: "Needs the api scope so SnapTriage can read and update issues.",
+  },
+};
 
 /**
  * Full-page login form with OAuth and PAT sign-in options.
@@ -26,9 +45,22 @@ import { GitHubIcon } from "@/components/icons/github-icon";
  */
 export function LoginForm() {
   const [token, setToken] = useState("");
-  const [provider, setProvider] = useState<"github" | "gitlab">("github");
+  const [provider, setProvider] = useState<TokenProvider>("github");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const hint = tokenHints[provider];
+
+  /** Starts an OAuth sign-in, reporting a misconfigured provider instead of failing silently. */
+  async function handleOAuth(target: TokenProvider) {
+    setError(null);
+    try {
+      await signIn(target, { redirectTo: "/inbox" });
+    } catch {
+      const name = target === "github" ? "GitHub" : "GitLab";
+      setError(`${name} sign-in is not configured on this deployment.`);
+    }
+  }
 
   /** Validates the PAT server-side, then initiates a Credentials sign-in. */
   async function handleTokenSubmit(e: React.FormEvent) {
@@ -47,7 +79,7 @@ export function LoginForm() {
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error || "Invalid token");
+        setError(data.error || "That token was not accepted.");
         return;
       }
 
@@ -58,87 +90,94 @@ export function LoginForm() {
         redirectTo: "/inbox",
       });
     } catch {
-      setError("Something went wrong");
+      setError("Could not reach the server. Try again.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold">SnapTriage</CardTitle>
-        <CardDescription>Sign in to start triaging issues</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* OAuth buttons */}
+    <div className="space-y-6">
+      <div className="grid gap-2.5">
         <Button
           variant="outline"
-          className="w-full"
-          onClick={() => signIn("github", { redirectTo: "/inbox" })}
+          size="lg"
+          className="w-full justify-start gap-2.5"
+          onClick={() => handleOAuth("github")}
         >
-          <GitHubIcon className="mr-2 h-4 w-4" />
+          <GitHubIcon className="h-4 w-4" />
           Continue with GitHub
         </Button>
-
         <Button
           variant="outline"
-          className="w-full"
-          onClick={() => signIn("gitlab", { redirectTo: "/inbox" })}
+          size="lg"
+          className="w-full justify-start gap-2.5"
+          onClick={() => handleOAuth("gitlab")}
         >
-          <GitLabIcon className="mr-2 h-4 w-4" />
+          <GitLabIcon className="h-4 w-4" />
           Continue with GitLab
         </Button>
+      </div>
 
-        <div className="relative">
-          <Separator />
-          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-            OR
-          </span>
+      <div className="relative">
+        <Separator />
+        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-muted-foreground">
+          or
+        </span>
+      </div>
+
+      <form onSubmit={handleTokenSubmit} className="space-y-4">
+        <div className="space-y-2">
+          <span className="text-sm font-medium">Token provider</span>
+          <SegmentedControl
+            ariaLabel="Token provider"
+            value={provider}
+            onChange={setProvider}
+            options={tokenProviders.map((option) => ({
+              value: option,
+              label: option === "github" ? "GitHub" : "GitLab",
+              icon:
+                option === "github" ? (
+                  <GitHubIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <GitLabIcon className="h-3.5 w-3.5" />
+                ),
+            }))}
+          />
         </div>
 
-        {/* PAT form */}
-        <form onSubmit={handleTokenSubmit} className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="provider">Provider</Label>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant={provider === "github" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setProvider("github")}
-              >
-                GitHub
-              </Button>
-              <Button
-                type="button"
-                variant={provider === "gitlab" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setProvider("gitlab")}
-              >
-                GitLab
-              </Button>
-            </div>
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="token">Personal access token</Label>
+          <Input
+            id="token"
+            type="password"
+            placeholder={hint.placeholder}
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            aria-describedby="token-hint"
+            aria-invalid={error ? true : undefined}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <p id="token-hint" className="text-xs leading-relaxed text-muted-foreground">
+            {hint.hint}
+          </p>
+        </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="token">Personal Access Token</Label>
-            <Input
-              id="token"
-              type="password"
-              placeholder="ghp_... or glpat-..."
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-            />
-          </div>
+        {error && (
+          <p
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-destructive"
+          >
+            <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
+            {error}
+          </p>
+        )}
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
-          <Button type="submit" className="w-full" disabled={loading || !token.trim()}>
-            {loading ? "Validating..." : "Sign in with Token"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        <Button type="submit" className="w-full" disabled={loading || !token.trim()}>
+          {loading ? "Checking token..." : "Continue with token"}
+        </Button>
+      </form>
+    </div>
   );
 }

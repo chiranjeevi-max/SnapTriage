@@ -10,7 +10,7 @@
  * - Unbound key rejection
  */
 import { describe, it, expect } from "vitest";
-import { matchShortcut, shortcuts } from "@/features/keyboard/shortcut-registry";
+import { matchShortcut, formatKey, shortcuts } from "@/features/keyboard/shortcut-registry";
 
 /**
  * Creates a minimal mock KeyboardEvent for testing shortcut matching
@@ -132,6 +132,25 @@ describe("shortcut-registry", () => {
     it("matches Shift+P to batch-push", () => {
       const result = matchShortcut(makeKeyboardEvent("P", { shiftKey: true }));
       expect(result?.id).toBe("batch-push");
+    });
+  });
+
+  describe("formatKey", () => {
+    it("renders the Enter key as an arrow", () => {
+      const enter = shortcuts.find((shortcut) => shortcut.id === "open-detail");
+      expect(formatKey(enter!)).toBe("↵");
+    });
+
+    it("abbreviates the Escape key", () => {
+      const escape = shortcuts.find((shortcut) => shortcut.id === "close-detail");
+      expect(formatKey(escape!)).toBe("Esc");
+    });
+
+    it("upper-cases letter keys and keeps shifted keys as they are", () => {
+      const dismiss = shortcuts.find((shortcut) => shortcut.id === "dismiss");
+      const batch = shortcuts.find((shortcut) => shortcut.id === "batch-push");
+      expect(formatKey(dismiss!)).toBe("D");
+      expect(formatKey(batch!)).toBe("P");
     });
   });
 });

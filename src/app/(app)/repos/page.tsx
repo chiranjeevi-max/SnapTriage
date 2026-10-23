@@ -4,18 +4,19 @@
  * the {@link RepoManager} component where users can connect, disconnect, and
  * configure GitHub and GitLab repositories for issue syncing.
  */
+import { PageHeader } from "@/components/page-header";
 import { RepoManager } from "@/features/repos/components/repo-manager";
 
 export default function ReposPage() {
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Repositories</h1>
-        <p className="text-muted-foreground">
-          Connect GitHub and GitLab repos to start triaging issues.
-        </p>
+    <div className="mx-auto max-w-4xl px-6 py-8">
+      <PageHeader
+        title="Repositories"
+        description="Connect the GitHub and GitLab repositories you want to triage."
+      />
+      <div className="mt-8">
+        <RepoManager />
       </div>
-      <RepoManager />
     </div>
   );
 }

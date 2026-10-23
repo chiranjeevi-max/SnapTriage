@@ -4,19 +4,34 @@
  * TanStack Query hooks for fetching and managing issue data from the API.
  *
  * - {@link useIssues} — Polls `/api/issues` every 5 minutes with optional repo/state filters
+ * - {@link useIssue} — Fetches one issue with its description, for the detail pane
  * - {@link useSync} — Triggers a manual sync and invalidates issue + status queries on success
  * - {@link useSyncStatus} — Polls `/api/sync/status` every minute for last-sync timestamps
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { devIssues, readDataMode } from "@/features/dev-tools/data-mode";
 
-/** Issue record joined with its per-user triage state (nullable when untriaged). */
-export interface IssueWithTriage {
+/** Triage state recorded for one issue, or null when it has never been triaged. */
+export interface IssueTriage {
+  id: string;
+  priority: number | null;
+  snoozedUntil: string | null;
+  dismissed: boolean;
+}
+
+/**
+ * The issue fields the queue needs.
+ *
+ * The description is not part of it: descriptions are large and only the pane
+ * showing one issue needs one, so it is fetched per issue instead of
+ * travelling with every poll.
+ */
+export interface IssueSummary {
   id: string;
   repoId: string;
   provider: string;
   number: number;
   title: string;
-  body: string | null;
   author: string | null;
   authorAvatar: string | null;
   state: string;
@@ -27,12 +42,16 @@ export interface IssueWithTriage {
   createdAt: string;
   updatedAt: string;
   fetchedAt: string;
-  triage: {
-    id: string;
-    priority: number | null;
-    snoozedUntil: string | null;
-    dismissed: boolean;
-  } | null;
+}
+
+/** A queue entry: the issue summary plus the triage state. */
+export interface IssueWithTriage extends IssueSummary {
+  triage: IssueTriage | null;
+}
+
+/** A full issue: the queue entry plus the description. */
+export interface IssueDetail extends IssueWithTriage {
+  body: string | null;
 }
 
 /** Default polling interval for issue refetching (5 minutes). */
@@ -51,6 +70,9 @@ export function useIssues(repoId?: string, state: string = "open") {
   return useQuery<IssueWithTriage[]>({
     queryKey: ["issues", repoId ?? "all", state],
     queryFn: async () => {
+      // The dev-only data toggle swaps the real issues for the worst case.
+      const fixture = await devIssues(readDataMode());
+      if (fixture) return fixture;
       const res = await fetch(`/api/issues?${params}`);
       if (!res.ok) throw new Error("Failed to fetch issues");
       return res.json();
@@ -104,5 +126,26 @@ export function useSyncStatus() {
       return res.json();
     },
     refetchInterval: 60_000, // 1 minute
+  });
+}
+
+/**
+ * Fetches a single issue with its description by ID.
+ * Used by the detail pane, which loads the body separately from the queue.
+ * @param id - Database ID of the issue.
+ * @returns TanStack Query result containing the issue.
+ */
+export function useIssue(id?: string) {
+  return useQuery<IssueDetail | null>({
+    queryKey: ["issue", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const fixture = await devIssues(readDataMode());
+      if (fixture) return fixture.find((i) => i.id === id) ?? null;
+      const res = await fetch(`/api/issues/${id}`);
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch issue");
+      return res.json();
+    },
   });
 }

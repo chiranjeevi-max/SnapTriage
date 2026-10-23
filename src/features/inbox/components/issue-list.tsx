@@ -8,11 +8,15 @@
 "use client";
 
 import { useEffect, useRef, memo } from "react";
+import Link from "next/link";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CircleDot, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { priorityLabels } from "@/features/triage/priority";
 import type { IssueWithTriage } from "../use-issues";
 
 const EMPTY_SELECTED = new Set<string>();
@@ -22,17 +26,9 @@ interface IssueListProps {
   selectedIndex: number;
   onSelect: (issue: IssueWithTriage) => void;
   isLoading: boolean;
-  selectedIds?: ReadonlySet<string>;
+  selectedIds?: Set<string>;
   onToggleSelected?: (issueId: string) => void;
 }
-
-/** Priority label config mapping P0-P3 to display text and color classes. */
-const priorityLabels: Record<number, { label: string; className: string }> = {
-  0: { label: "P0", className: "bg-red-500/20 text-red-400 border-red-500/30" },
-  1: { label: "P1", className: "bg-orange-500/20 text-orange-400 border-orange-500/30" },
-  2: { label: "P2", className: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" },
-  3: { label: "P3", className: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
-};
 
 /**
  * Scrollable issue list with loading skeletons and empty state.
@@ -78,13 +74,17 @@ export function IssueList({
 
   if (issues.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/40" />
-        <p className="text-sm font-medium text-muted-foreground">No issues found</p>
-        <p className="mt-1 text-xs text-muted-foreground/60">
-          Connect a repo and sync to see issues here.
-        </p>
-      </div>
+      <EmptyState
+        icon={<MessageSquare className="h-5 w-5" />}
+        title="No issues to triage"
+        description="Connect a repository and sync it, and the queue fills up here."
+        action={
+          <Button asChild size="sm" variant="outline">
+            <Link href="/repos">Connect a repository</Link>
+          </Button>
+        }
+        className="h-full"
+      />
     );
   }
 
@@ -147,7 +147,7 @@ const IssueRow = memo(function IssueRow({
   }, [isSelected]);
 
   return (
-    <div className="flex items-start gap-2">
+    <div className="group flex items-start gap-2">
       {onToggleSelected && (
         <input
           type="checkbox"
@@ -156,7 +156,7 @@ const IssueRow = memo(function IssueRow({
           aria-checked={isSelectedForBulk}
           onClick={(event) => event.stopPropagation()}
           onChange={() => onToggleSelected(issue.id)}
-          className="mt-3 h-4 w-4 shrink-0 accent-primary"
+          className="mt-3 h-4 w-4 shrink-0 accent-primary opacity-0 transition-opacity checked:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
         />
       )}
       <button
@@ -166,14 +166,16 @@ const IssueRow = memo(function IssueRow({
         onClick={() => onSelect(issue)}
         className={cn(
           "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
-          isSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50 text-foreground"
+          isSelected
+            ? "bg-accent text-accent-foreground"
+            : "text-foreground/80 hover:bg-accent/50 hover:text-foreground"
         )}
         style={{ contentVisibility: "auto", containIntrinsicSize: "76px" }}
       >
         <CircleDot
           className={cn(
             "mt-0.5 h-4 w-4 shrink-0",
-            issue.state === "open" ? "text-green-500" : "text-muted-foreground"
+            issue.state === "open" ? "text-emerald-500" : "text-muted-foreground/60"
           )}
         />
         <div className="min-w-0 flex-1">
@@ -181,27 +183,32 @@ const IssueRow = memo(function IssueRow({
             {priority && (
               <Badge
                 variant="outline"
-                className={cn("shrink-0 text-[10px] px-1.5 py-0", priority.className)}
+                className={cn("shrink-0 px-1.5 py-0 text-[10px] leading-4", priority.className)}
               >
                 {priority.label}
               </Badge>
             )}
-            <span className="truncate text-sm font-medium">{issue.title}</span>
+            <span className="truncate text-sm font-medium" title={issue.title}>
+              {issue.title}
+            </span>
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-            <span>#{issue.number}</span>
+            <span className="font-mono">#{issue.number}</span>
             {issue.author && <span>by {issue.author}</span>}
-            <span>{formatRelativeTime(issue.updatedAt)}</span>
+            <span className="font-mono">{formatRelativeTime(issue.updatedAt)}</span>
           </div>
           {issue.labels.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {issue.labels.slice(0, 3).map((label) => (
-                <Badge key={label} variant="secondary" className="text-[10px] px-1.5 py-0">
+                <span
+                  key={label}
+                  className="rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground"
+                >
                   {label}
-                </Badge>
+                </span>
               ))}
               {issue.labels.length > 3 && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[10px] text-muted-foreground/70">
                   +{issue.labels.length - 3}
                 </span>
               )}

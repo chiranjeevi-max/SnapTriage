@@ -14,25 +14,17 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { useKeyboardStore } from "../keyboard-store";
 import {
   shortcuts,
-  type Shortcut,
-  getShortcutKey,
   setShortcutOverride,
   resetShortcutOverrides,
+  formatKey,
+  categoryLabels,
+  categoryOrder,
 } from "../shortcut-registry";
 import { Kbd } from "./kbd";
-
-/** Human-readable labels for shortcut categories. */
-const categoryLabels: Record<Shortcut["category"], string> = {
-  navigation: "Navigation",
-  triage: "Triage",
-  utility: "Utility",
-};
-
-/** Display order for shortcut categories in the overlay. */
-const categoryOrder: Shortcut["category"][] = ["navigation", "triage", "utility"];
 
 /** Modal dialog showing all keyboard shortcuts grouped by category. */
 export function ShortcutOverlay() {
@@ -66,32 +58,32 @@ export function ShortcutOverlay() {
     <Dialog open={overlayOpen} onOpenChange={toggleOverlay}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Keyboard Shortcuts</DialogTitle>
+          <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>
-            Navigate and triage issues without leaving the keyboard.
+            Navigate and triage issues without leaving the keyboard. Click a key to rebind it.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="space-y-5">
           {grouped.map((group) => (
             <div key={group.label}>
-              <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-                {group.label}
-              </h3>
-              <div className="space-y-1">
+              <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.label}</h3>
+              <div className="space-y-0.5">
                 {group.shortcuts.map((shortcut) => (
                   <div
                     key={shortcut.id}
-                    className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm"
+                    className="flex items-center justify-between gap-4 rounded-md px-2 py-1.5 text-sm"
                   >
-                    <span>{shortcut.description}</span>
+                    <span className="text-muted-foreground">{shortcut.description}</span>
                     <button
                       type="button"
                       onClick={() => setEditingId(shortcut.id)}
-                      className="rounded border px-2 py-0.5"
+                      className="rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                       aria-label={`Rebind ${shortcut.description}`}
                     >
                       {editingId === shortcut.id ? (
-                        "Press a key..."
+                        <span className="rounded border border-dashed border-border px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                          Press a key...
+                        </span>
                       ) : (
                         <Kbd>{formatKey(shortcut)}</Kbd>
                       )}
@@ -102,26 +94,16 @@ export function ShortcutOverlay() {
             </div>
           ))}
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={resetShortcutOverrides}
-          className="text-xs text-muted-foreground underline"
+          className="h-7 self-start px-2 text-xs text-muted-foreground"
         >
-          Reset keyboard shortcuts
-        </button>
+          Reset shortcuts
+        </Button>
       </DialogContent>
     </Dialog>
   );
-}
-
-/**
- * Formats a shortcut key for display (e.g., Enter → "↵", Escape → "Esc").
- * @param shortcut - The shortcut definition.
- */
-function formatKey(shortcut: Shortcut): string {
-  const key = getShortcutKey(shortcut);
-  if (key === "Enter") return "\u21B5";
-  if (key === "Escape") return "Esc";
-  if (shortcut.shift && key === shortcut.key) return key;
-  return key.toUpperCase();
 }

@@ -39,9 +39,9 @@ export function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+        <Button variant="ghost" className="relative h-8 w-8 rounded-full" aria-label="Account menu">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={session.user.image ?? undefined} alt={session.user.name ?? "User"} />
+            <AvatarImage src={session.user.image ?? undefined} alt="" />
             <AvatarFallback>{initials ?? <User className="h-4 w-4" />}</AvatarFallback>
           </Avatar>
         </Button>
@@ -56,13 +56,13 @@ export function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/settings">
-            <Settings className="mr-2 h-4 w-4" />
+            <Settings className="h-4 w-4" />
             Settings
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => signOut({ redirectTo: "/login" })}>
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="h-4 w-4" />
           Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>

@@ -9,6 +9,7 @@
 
 import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 
 export default function GlobalError({
@@ -25,18 +26,20 @@ export default function GlobalError({
   return (
     <html lang="en">
       <body>
-        <div className="flex min-h-screen items-center justify-center bg-background p-4">
-          <div className="mx-auto max-w-md text-center">
-            <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
-            <h2 className="mt-4 text-xl font-semibold">Something went wrong</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              An unexpected error occurred. Please try again.
-            </p>
-            <Button onClick={reset} className="mt-6">
-              Try again
-            </Button>
-          </div>
-        </div>
+        <main className="flex min-h-screen items-center justify-center bg-background p-6">
+          <EmptyState
+            icon={<AlertTriangle className="h-5 w-5 text-destructive" />}
+            titleAs="h1"
+            title="Something went wrong"
+            description="The app hit an error it could not recover from. Reloading usually clears it."
+            action={
+              <Button onClick={reset} size="sm">
+                Try again
+              </Button>
+            }
+            className="max-w-sm"
+          />
+        </main>
       </body>
     </html>
   );

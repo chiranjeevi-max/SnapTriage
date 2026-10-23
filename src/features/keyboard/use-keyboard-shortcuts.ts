@@ -15,19 +15,8 @@ import { useEffect } from "react";
 import { useKeyboardStore } from "./keyboard-store";
 import { matchShortcut } from "./shortcut-registry";
 import { useKeyboardActions } from "./use-keyboard-actions";
+import { isEditableElement } from "./is-editable-element";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
-
-/**
- * Checks whether the event target is an editable form element.
- * Prevents shortcut firing when the user is typing in inputs.
- */
-function isEditableElement(el: EventTarget | null): boolean {
-  if (!(el instanceof HTMLElement)) return false;
-  const tag = el.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  if (el.isContentEditable) return true;
-  return false;
-}
 
 /**
  * Attaches a global keydown listener that dispatches matched shortcuts.

@@ -3,13 +3,17 @@ export const dynamic = "force-dynamic";
 /**
  * @module /api/issues/[id]
  *
- * Handles triage operations on a single issue identified by its database ID.
- * Supports updating local triage state (priority, snooze, dismiss) and
- * provider-side changes (labels, assignees, open/close state) in either
- * live or batch sync mode.
+ * Handles a single issue identified by its database ID.
+ *
+ * `GET` returns the full issue, including its description. `PATCH` applies
+ * triage updates: local-only fields (priority, snoozedUntil, dismissed) are
+ * persisted directly in the `triageState` table, and provider-side fields
+ * (labels, assignees, open/close state) are either written back immediately
+ * (live mode) or staged in `pendingChanges` (batch mode) depending on the
+ * repo's `syncMode` or the request's `batch` flag.
  *
  * - **Endpoint:** `/api/issues/:id`
- * - **HTTP Methods:** PATCH
+ * - **HTTP Methods:** GET, PATCH
  * - **Auth:** Required (session-based); the issue must belong to one of the user's repos
  */
 import { NextResponse } from "next/server";
@@ -21,7 +25,45 @@ import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { mergePendingChanges, type PendingChanges } from "@/features/triage/types";
 import { triagePatchSchema, parseBody } from "@/lib/validations";
+import { providerLimits, type ProviderName } from "@/lib/provider-interface";
 import { apiLogger } from "@/lib/logger";
+
+/**
+ * Returns one issue with its description and triage state.
+ *
+ * The queue endpoint deliberately leaves the description out, so the pane that
+ * shows a single issue asks for it here.
+ *
+ * @param req - The incoming request.
+ * @param params - Dynamic route params containing `id` (the issue's DB primary key).
+ * @returns JSON with the issue, or an error with 401/404 status.
+ */
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  const rows = await typedDb
+    .select({ issue: issues })
+    .from(issues)
+    .innerJoin(repos, eq(repos.id, issues.repoId))
+    .where(and(eq(issues.id, id), eq(repos.userId, session.user.id)));
+
+  const issue = rows[0]?.issue;
+  if (!issue) {
+    return NextResponse.json({ error: "Issue not found" }, { status: 404 });
+  }
+
+  const triageRows = await typedDb
+    .select()
+    .from(triageState)
+    .where(and(eq(triageState.issueId, id), eq(triageState.userId, session.user.id)));
+
+  return NextResponse.json({ ...issue, triage: triageRows[0] ?? null });
+}
 
 /**
  * Applies triage updates to a single issue.
@@ -64,6 +106,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: "Issue not found" }, { status: 404 });
   }
   const { issue, repo } = row;
+
+  // The provider decides how long a label or a login may be. Checking before
+  // anything is written keeps a rejected value from changing the triage state
+  // first and failing on the write-back.
+  const limits = providerLimits[repo.provider as ProviderName];
+  const overLimit = (values: string[] | undefined, max: number) =>
+    values?.some((value) => value.length > max) ?? false;
+
+  if (overLimit(labels?.add, limits.label) || overLimit(labels?.remove, limits.label)) {
+    return NextResponse.json(
+      { error: `Label names are limited to ${limits.label} characters on ${repo.provider}` },
+      { status: 400 }
+    );
+  }
+
+  if (overLimit(assignees?.add, limits.login) || overLimit(assignees?.remove, limits.login)) {
+    return NextResponse.json(
+      { error: `Logins are limited to ${limits.login} characters on ${repo.provider}` },
+      { status: 400 }
+    );
+  }
 
   // Provider writeback requires write access on the repo.
   if (

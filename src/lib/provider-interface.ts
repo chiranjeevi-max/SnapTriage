@@ -47,6 +47,44 @@ export interface ProviderCollaborator {
 /** Permission level on a repo */
 export type RepoPermission = "admin" | "write" | "read";
 
+/**
+ * The limits the providers themselves enforce on the values SnapTriage sends.
+ *
+ * These are the providers' documented limits, not caps invented here. The app
+ * validates against them at the boundary so a write is never attempted with a
+ * value the provider will reject, and so a stored name is always a name the
+ * provider can actually have.
+ */
+export const providerLimits = {
+  github: {
+    /** Maximum length of a user or organisation login. */
+    owner: 39,
+    /** Maximum length of a repository name. */
+    name: 100,
+    /** Maximum length of `owner/name`. */
+    path: 140,
+    /** Maximum length of a label name. */
+    label: 50,
+    /** Maximum length of a user login. */
+    login: 39,
+  },
+  gitlab: {
+    /** Maximum length of a namespace path, which may be nested. */
+    owner: 255,
+    /** Maximum length of a project path. */
+    name: 255,
+    /** Maximum length of the full project path. */
+    path: 255,
+    /** Maximum length of a label name. */
+    label: 255,
+    /** Maximum length of a username. */
+    login: 255,
+  },
+} as const;
+
+/** A provider SnapTriage can talk to. */
+export type ProviderName = keyof typeof providerLimits;
+
 /** Unified interface for GitHub and GitLab API clients */
 export interface IssueProvider {
   /** Fetch issues from a repo, optionally since a given date */
