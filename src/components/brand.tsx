@@ -27,13 +27,14 @@ export function Wordmark({ href, className, size = "md" }: WordmarkProps) {
   return (
     <Link
       href={href}
-      className={cn("flex items-center gap-2.5 text-foreground", className)}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-2.5 rounded-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-4",
+        className
+      )}
       aria-label="SnapTriage home"
     >
-      <SnapMark className={size === "sm" ? "h-4 w-4" : "h-5 w-5"} />
-      <span
-        className={cn("font-semibold tracking-tight", size === "sm" ? "text-sm" : "text-[15px]")}
-      >
+      <SnapMark className={size === "sm" ? "h-5 w-5" : "h-6 w-6"} />
+      <span className={cn("font-semibold tracking-tight", size === "sm" ? "text-base" : "text-lg")}>
         SnapTriage
       </span>
     </Link>

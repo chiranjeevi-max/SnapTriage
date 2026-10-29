@@ -17,12 +17,12 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Button } from "@/components/ui/button";
 import { SelectField } from "@/components/select-field";
 import { cn } from "@/lib/utils";
-import { IssueList } from "./issue-list";
-import { IssueDetail } from "./issue-detail";
-import { useIssues } from "../use-issues";
-import { useIssueFilter } from "../use-issue-filter";
-import { filterIssues, ISSUE_FILTERS } from "../issue-filters";
-import { useSavedViews, useSaveCurrentView } from "../use-saved-views";
+import { IssueList } from "@/features/inbox/components/issue-list";
+import { IssueDetail } from "@/features/inbox/components/issue-detail";
+import { useIssues } from "@/features/inbox/use-issues";
+import { useIssueFilter } from "@/features/inbox/use-issue-filter";
+import { filterIssues, ISSUE_FILTERS } from "@/features/inbox/issue-filters";
+import { useSavedViews, useSaveCurrentView } from "@/features/inbox/use-saved-views";
 import { useBulkTriage } from "@/features/triage/use-bulk-triage";
 import { priorityOptions } from "@/features/triage/priority";
 import { useKeyboardStore, useKeyboardShortcuts, ShortcutOverlay } from "@/features/keyboard";
@@ -134,20 +134,24 @@ export function InboxView() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className={cn("triage-inbox flex h-full min-h-0 flex-col", currentIssue && "has-selection")}
+    >
       {/* Toolbar */}
       <div
-        className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b bg-muted/30 px-3 py-1.5"
+        className="inbox-toolbar flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b px-6 py-5"
         role="toolbar"
         aria-label="Inbox toolbar"
       >
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
-          <h1 className="shrink-0 text-sm font-semibold">Inbox</h1>
+        <div className="inbox-heading flex min-w-0 items-center gap-3">
+          <h1 className="mr-1 shrink-0 text-xl font-semibold tracking-tight">Inbox</h1>
           {issues && (
-            <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground">
               {filteredIssues.length} of {issues.length}
             </span>
           )}
+        </div>
+        <div className="inbox-controls flex min-w-0 flex-wrap items-center gap-2">
           <SelectField
             aria-label="Filter issues"
             value={filter}
@@ -166,7 +170,7 @@ export function InboxView() {
             <SelectField
               aria-label="Saved views"
               value=""
-              className="max-w-[12rem]"
+              className="w-full max-w-[8rem] sm:max-w-[12rem]"
               onChange={(event) => {
                 const view = savedViews.find((item) => item.id === event.target.value);
                 if (view) setFilter(view.filter);
@@ -198,85 +202,87 @@ export function InboxView() {
                   setViewName("");
                 }
               }}
-              className="h-8 w-44 rounded-md border border-input bg-background px-2 text-xs placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none"
+              className="h-9 min-w-0 max-w-full w-full sm:w-44 rounded-md border border-input bg-background px-2 text-xs placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none"
             />
           ) : (
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 px-2 text-xs text-muted-foreground"
+              className="h-9 w-9 shrink-0 gap-1.5 px-2 text-xs text-muted-foreground sm:w-auto"
               onClick={() => {
                 setViewName("");
                 setNamingView(true);
               }}
             >
               <BookmarkPlus className="h-3.5 w-3.5" />
-              Save view
+              <span className="sr-only sm:not-sr-only">Save view</span>
             </Button>
           )}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-2 gap-y-1.5">
-          {selectedIds.size > 0 && (
-            <>
-              <span
-                className="whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground"
-                aria-live="polite"
+        {selectedIds.size > 0 && (
+          <div className="inbox-bulk flex min-w-0 max-w-full flex-wrap items-center justify-start gap-x-3 gap-y-2">
+            <span
+              className="whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+              aria-live="polite"
+            >
+              {visibleSelectedIds.length} selected
+            </span>
+            <div
+              className="flex min-w-0 max-w-full flex-wrap items-center gap-2"
+              aria-busy={bulkTriage.isPending}
+            >
+              {priorityOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={bulkTriage.isPending}
+                  onClick={() => runBulk({ priority: option.value })}
+                  className={cn(
+                    "h-9 rounded-md border px-2.5 text-xs font-medium transition-opacity hover:opacity-90",
+                    option.className
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2.5 text-xs"
+                disabled={bulkTriage.isPending}
+                onClick={() => runBulk({ dismissed: true })}
               >
-                {visibleSelectedIds.length} selected
-              </span>
-              <div className="flex flex-wrap items-center gap-1" aria-busy={bulkTriage.isPending}>
-                {priorityOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    disabled={bulkTriage.isPending}
-                    onClick={() => runBulk({ priority: option.value })}
-                    className={cn(
-                      "h-7 rounded-md border px-2 text-xs font-medium transition-opacity hover:opacity-90",
-                      option.className
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  disabled={bulkTriage.isPending}
-                  onClick={() => runBulk({ dismissed: true })}
-                >
-                  Dismiss
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  disabled={bulkTriage.isPending}
-                  onClick={() => runBulk({ dismissed: false })}
-                >
-                  Undismiss
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={clearSelection}
-                >
-                  Clear
-                </Button>
-              </div>
-              <span aria-hidden="true" className="h-5 w-px bg-border" />
-            </>
-          )}
+                Dismiss
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2.5 text-xs"
+                disabled={bulkTriage.isPending}
+                onClick={() => runBulk({ dismissed: false })}
+              >
+                Undismiss
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2.5 text-xs"
+                onClick={clearSelection}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+        )}
+        <div className="inbox-sync">
           <SyncStatus />
         </div>
       </div>
 
       {/* Split pane */}
-      <ResizablePanelGroup orientation="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={40} minSize={25}>
+      <ResizablePanelGroup orientation="horizontal" className="triage-panels min-h-0 flex-1">
+        <ResizablePanel defaultSize="42%" minSize="28%">
           <IssueList
             issues={filteredIssues}
             selectedIndex={selectedIndex}
@@ -287,7 +293,7 @@ export function InboxView() {
           />
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={60} minSize={30}>
+        <ResizablePanel defaultSize="58%" minSize="32%">
           <IssueDetail issue={currentIssue} onClose={() => setSelectedIndex(-1)} />
         </ResizablePanel>
       </ResizablePanelGroup>

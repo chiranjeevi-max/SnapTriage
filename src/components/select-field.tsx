@@ -17,10 +17,10 @@ import { cn } from "@/lib/utils";
  */
 export function SelectField({ className, ...props }: React.ComponentProps<"select">) {
   return (
-    <div className="relative inline-flex items-center">
+    <div className="relative inline-flex min-w-0 max-w-full items-center">
       <select
         className={cn(
-          "h-8 appearance-none rounded-md border border-input bg-background pl-2.5 pr-7 text-xs text-foreground transition-colors",
+          "h-9 min-w-0 max-w-full appearance-none rounded-md border border-input bg-card pl-3 pr-7 text-xs text-foreground transition-colors",
           "hover:bg-accent/40 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
           "disabled:cursor-not-allowed disabled:opacity-50",
           className

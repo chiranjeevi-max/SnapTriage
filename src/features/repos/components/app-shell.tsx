@@ -57,18 +57,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="app-shell">
       {/* Sidebar */}
-      <aside
-        className="flex w-60 shrink-0 flex-col border-r bg-muted/30"
-        aria-label="Main navigation"
-      >
-        <div className="flex h-14 items-center border-b px-4">
+      <aside className="app-sidebar" aria-label="Main navigation">
+        <div className="app-brand">
           <Wordmark href="/inbox" size="sm" />
         </div>
 
         {/* Navigation */}
-        <nav className="space-y-0.5 p-2" aria-label="App navigation">
+        <nav className="app-navigation" aria-label="App navigation">
           {navItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href;
             return (
@@ -77,9 +74,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                  "app-nav-link",
                   active
-                    ? "bg-accent font-medium text-accent-foreground"
+                    ? "is-active text-foreground"
                     : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                 )}
               >
@@ -92,20 +89,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Connected repos */}
         {repos.length > 0 && (
-          <div className="mt-4 flex-1 overflow-y-auto border-t px-2 pt-4">
-            <p className="mb-2 px-2.5 text-xs font-medium text-muted-foreground">Repos</p>
+          <div className="app-repositories">
+            <p className="mb-3 flex items-center justify-between px-3 text-xs font-medium text-muted-foreground">
+              Repos <span className="font-mono tabular-nums">{repos.length}</span>
+            </p>
             <div className="space-y-0.5">
               {repos.map((repo) => (
                 <div
                   key={repo.id}
-                  className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground"
+                  className="flex min-w-0 items-start gap-2.5 rounded-md px-3 py-2 text-xs text-muted-foreground"
                 >
                   {repo.provider === "github" ? (
-                    <GitHubIcon className="h-3.5 w-3.5 shrink-0" />
+                    <GitHubIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   ) : (
-                    <GitLabIcon className="h-3.5 w-3.5 shrink-0" />
+                    <GitLabIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   )}
-                  <span className="truncate" title={repo.fullName}>
+                  <span
+                    className="min-w-0 break-all font-mono leading-relaxed"
+                    title={repo.fullName}
+                  >
                     {repo.fullName}
                   </span>
                 </div>
@@ -115,7 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
 
         {/* User menu at bottom */}
-        <div className="mt-auto border-t p-3">
+        <div className="app-sidebar-footer">
           <div className="flex items-center justify-between">
             <UserMenu />
             <div className="flex items-center gap-1">
@@ -135,7 +137,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <main id="main-content" className="flex-1 overflow-hidden">
+      <main id="main-content" className="app-shell-content">
         {children}
       </main>
     </div>

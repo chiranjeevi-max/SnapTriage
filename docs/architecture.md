@@ -64,18 +64,23 @@ it.
 repo slugs, issue numbers, counts, times, sync stamps). Display sizes get
 negative tracking, body copy stays at zero.
 
-**Surfaces.** The page canvas is `bg-background`. Chrome strips (the sidebar,
-the inbox toolbar, the batch bar) are `bg-muted/30` with a hairline. Panels are
-`bg-card` with a border. Rows inside a panel are separated by hairlines, not by
-individually bordered boxes.
+**Surfaces.** The page canvas is `bg-background`. The sidebar uses `--sidebar`; the reading pane and working controls use `bg-card`. Hairlines divide regions and rows. The selected issue uses `--selection-surface` and `--selection-rule`, so it remains distinct from pointer hover. Panels frame a tool rather than boxing each row.
 
 **Colour.** Neutral tokens carry all structure. The only saturated colour is
 real data: priority chips (`src/features/triage/priority.ts`), provider icons,
-and the live/batch status dots (emerald and amber).
+and meaningful issue state. Live and batch modes use named controls and icons.
 
 **Controls.** Panels are `rounded-xl`, controls and chips `rounded-md`, pills
-`rounded-full`. Heights: `h-8` for toolbar controls, `h-7` for dense actions,
+`rounded-full`. Heights: `h-9` for toolbar controls, `h-8` for dense actions,
 `h-11` for large buttons.
+
+The shared tokens live in `src/app/tokens.css`; `design.md` records the system.
+The desktop shell is capped at 1600px. Below 960px navigation becomes a horizontal
+bar. On phones the inbox shows the selected issue at full width; closing its
+details returns to the queue. The issue heading scales with the reading pane
+width. Virtualized rows keep an estimated height while their pane is hidden,
+so showing the queue does not shift its scroll position. Long repository names
+wrap on management screens.
 
 **Shared pieces.**
 

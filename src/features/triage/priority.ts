@@ -29,7 +29,7 @@ export const priorityLabels: Record<number, PriorityOption> = {
     value: 0,
     label: "P0",
     name: "P0 Critical",
-    className: "border-red-500/30 bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400",
+    className: "border-red-500/30 bg-red-500/10 text-red-700 dark:bg-red-500/20 dark:text-red-400",
     key: "1",
   },
   1: {
@@ -37,7 +37,7 @@ export const priorityLabels: Record<number, PriorityOption> = {
     label: "P1",
     name: "P1 High",
     className:
-      "border-orange-500/30 bg-orange-500/10 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400",
+      "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400",
     key: "2",
   },
   2: {

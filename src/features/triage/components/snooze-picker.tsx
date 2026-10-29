@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { useTriageMutation } from "../use-triage-mutation";
+import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
@@ -124,8 +124,8 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
         setShowCustom(false);
       }}
     >
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-sm">
+        <DialogHeader className="shrink-0 pr-6">
           <DialogTitle className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             Snooze issue
@@ -133,10 +133,15 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
           <DialogDescription>Choose when to be reminded about this issue.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
           {isSnoozed && (
             <>
-              <Button variant="outline" size="sm" onClick={handleUnsnooze}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11 shrink-0"
+                onClick={handleUnsnooze}
+              >
                 Unsnooze
               </Button>
               <Separator className="my-1" />
@@ -148,7 +153,7 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
               key={opt.label}
               variant="ghost"
               size="sm"
-              className="h-8 justify-start font-normal"
+              className="min-h-11 shrink-0 justify-start font-normal"
               onClick={() => handleSnooze(opt.value)}
             >
               {opt.label}
@@ -159,20 +164,25 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 justify-start font-normal text-muted-foreground"
+              className="min-h-11 shrink-0 justify-start font-normal text-muted-foreground"
               onClick={() => setShowCustom(true)}
             >
-              Custom...
+              Custom…
             </Button>
           ) : (
-            <div className="flex gap-2">
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row">
               <Input
                 type="datetime-local"
                 value={customDate}
                 onChange={(e) => setCustomDate(e.target.value)}
-                className="flex-1"
+                className="h-10 min-w-0 w-full flex-1"
               />
-              <Button size="sm" onClick={handleCustomSubmit} disabled={!customDate}>
+              <Button
+                size="sm"
+                className="h-10 shrink-0"
+                onClick={handleCustomSubmit}
+                disabled={!customDate}
+              >
                 Set
               </Button>
             </div>

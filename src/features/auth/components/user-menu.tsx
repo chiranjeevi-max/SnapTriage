@@ -39,29 +39,40 @@ export function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-8 w-8 rounded-full" aria-label="Account menu">
+        <Button
+          variant="ghost"
+          className="relative h-11 w-11 rounded-full sm:h-8 sm:w-8"
+          aria-label="Account menu"
+        >
           <Avatar className="h-8 w-8">
             <AvatarImage src={session.user.image ?? undefined} alt="" />
             <AvatarFallback>{initials ?? <User className="h-4 w-4" />}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <div className="flex items-center gap-2 p-2">
-          <div className="flex flex-col space-y-0.5">
-            <p className="text-sm font-medium">{session.user.name}</p>
-            <p className="text-xs text-muted-foreground">{session.user.email}</p>
+      <DropdownMenuContent
+        align="end"
+        className="w-64 max-w-[var(--radix-dropdown-menu-content-available-width)]"
+      >
+        <div className="flex min-w-0 items-center gap-2 p-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <p className="break-words text-sm font-medium [overflow-wrap:anywhere]">
+              {session.user.name}
+            </p>
+            <p className="break-all text-xs leading-relaxed text-muted-foreground">
+              {session.user.email}
+            </p>
           </div>
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
+        <DropdownMenuItem asChild className="min-h-11">
           <Link href="/settings">
             <Settings className="h-4 w-4" />
             Settings
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut({ redirectTo: "/login" })}>
+        <DropdownMenuItem className="min-h-11" onClick={() => signOut({ redirectTo: "/login" })}>
           <LogOut className="h-4 w-4" />
           Sign out
         </DropdownMenuItem>

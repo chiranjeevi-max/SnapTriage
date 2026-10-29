@@ -39,16 +39,14 @@ export function EmptyState({
     <div
       className={cn("flex flex-col items-center justify-center px-6 py-14 text-center", className)}
     >
-      <div className="flex h-11 w-11 items-center justify-center rounded-full border bg-muted/40 text-muted-foreground">
-        {icon}
-      </div>
+      <div className="flex h-8 w-8 items-center justify-center text-muted-foreground">{icon}</div>
       {titleAs === "h1" ? (
-        <h1 className="mt-4 text-base font-medium">{title}</h1>
+        <h1 className="mt-4 text-lg font-medium">{title}</h1>
       ) : (
-        <p className="mt-4 text-sm font-medium">{title}</p>
+        <p className="mt-4 text-base font-medium">{title}</p>
       )}
       {description && (
-        <p className="mt-1.5 max-w-[42ch] text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-1.5 max-w-[42ch] text-sm leading-relaxed text-muted-foreground">
           {description}
         </p>
       )}

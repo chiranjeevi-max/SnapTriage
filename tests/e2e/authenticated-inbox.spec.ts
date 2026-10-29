@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 
 /**
+ * @module tests/e2e/authenticated-inbox
+ *
  * Authenticated end-to-end coverage.
  *
  * Runs only when `E2E_GITHUB_PAT` contains a valid GitHub personal access token.
@@ -19,8 +21,8 @@ test.describe("authenticated inbox", () => {
     });
 
     await page.goto("/login");
-    await page.getByLabel("Personal Access Token").fill(githubPat!);
-    await page.getByRole("button", { name: "Sign in with Token" }).click();
+    await page.getByLabel(/personal access token/i).fill(githubPat!);
+    await page.getByRole("button", { name: "Continue with token" }).click();
 
     await page.waitForURL("**/inbox");
     await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();

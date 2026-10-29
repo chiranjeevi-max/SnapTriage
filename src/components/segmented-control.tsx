@@ -45,7 +45,10 @@ export function SegmentedControl<T extends string>({
 }: SegmentedControlProps<T>) {
   return (
     <div
-      className={cn("inline-flex rounded-md border p-0.5", className)}
+      className={cn(
+        "inline-flex max-w-full flex-wrap gap-0.5 rounded-md border bg-muted/60 p-0.5",
+        className
+      )}
       role="group"
       aria-label={ariaLabel}
     >
@@ -56,9 +59,9 @@ export function SegmentedControl<T extends string>({
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
           className={cn(
-            "inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium transition-colors",
+            "inline-flex h-auto min-h-8 items-center justify-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors active:bg-accent disabled:cursor-not-allowed disabled:opacity-50",
             value === option.value
-              ? "bg-accent text-accent-foreground"
+              ? "bg-card text-card-foreground shadow-xs"
               : "text-muted-foreground hover:text-foreground"
           )}
         >

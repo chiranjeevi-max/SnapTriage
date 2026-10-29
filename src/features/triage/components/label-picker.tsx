@@ -16,8 +16,8 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { useRepoLabels } from "../use-repo-labels";
-import { useTriageMutation } from "../use-triage-mutation";
+import { useRepoLabels } from "@/features/triage/use-repo-labels";
+import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
@@ -82,9 +82,10 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
       onOpenChange={onOpenChange}
       title="Labels"
       description="Search and toggle labels"
+      className="flex max-h-[calc(100dvh-2rem)] flex-col [&_[data-slot=command]]:min-h-0"
     >
-      <CommandInput placeholder="Search labels..." />
-      <CommandList>
+      <CommandInput placeholder="Search labels..." className="min-w-0 pr-10" />
+      <CommandList className="min-h-0 max-h-[min(20rem,60dvh)] flex-1">
         <CommandEmpty className="py-6 text-xs text-muted-foreground">
           {isLoading ? "Loading labels..." : "No labels found."}
         </CommandEmpty>
@@ -96,20 +97,23 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
                 key={label.name}
                 value={label.name}
                 onSelect={() => toggleLabel(label.name)}
+                className="min-h-11 gap-3"
               >
-                <div className="flex items-center gap-2 flex-1">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
                   {label.color && (
                     <span
-                      className="h-3 w-3 rounded-full shrink-0"
+                      className="mt-1 h-3 w-3 shrink-0 rounded-full"
                       style={{ backgroundColor: `#${label.color}` }}
                     />
                   )}
-                  <span>{label.name}</span>
-                  {label.description && (
-                    <span className="text-xs text-muted-foreground truncate">
-                      {label.description}
-                    </span>
-                  )}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="break-words [overflow-wrap:anywhere]">{label.name}</span>
+                    {label.description && (
+                      <span className="line-clamp-2 break-words text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+                        {label.description}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <Check
                   className={cn("h-4 w-4 shrink-0", isApplied ? "opacity-100" : "opacity-0")}

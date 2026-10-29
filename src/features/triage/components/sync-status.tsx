@@ -43,14 +43,14 @@ export function SyncStatus() {
           size="sm"
           onClick={() => sync.mutate(undefined)}
           disabled={sync.isPending}
-          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+          className="h-9 gap-2 rounded-md border bg-card px-3 text-xs text-muted-foreground"
         >
           {sync.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
           ) : (
             <RefreshCw className="h-3.5 w-3.5" />
           )}
-          <span className="font-mono">{formatSyncTime(lastSynced)}</span>
+          <span>{formatSyncTime(lastSynced)}</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent className="flex items-center gap-1.5">

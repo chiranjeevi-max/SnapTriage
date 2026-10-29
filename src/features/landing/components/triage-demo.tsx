@@ -18,7 +18,7 @@ import { isEditableElement } from "@/features/keyboard/is-editable-element";
 import { priorityLabels } from "@/features/triage/priority";
 import { devIssues, useDataMode, type DataMode } from "@/features/dev-tools/data-mode";
 import { cn, formatRelativeTime } from "@/lib/utils";
-import { useSpringNumber } from "../use-spring";
+import { useSpringNumber } from "@/features/landing/use-spring";
 
 /** One issue in the demo queue. */
 interface DemoIssue {
@@ -307,8 +307,8 @@ function TriageQueue({ mode }: { mode: DataMode }) {
       );
       setStatus(
         next === null
-          ? `Cleared priority · ${issue.repo}#${issue.number}`
-          : `Set priority to P${next} · ${issue.repo}#${issue.number}`
+          ? `Cleared priority: ${issue.repo}#${issue.number}`
+          : `Set priority to P${next}: ${issue.repo}#${issue.number}`
       );
       setCanUndo(true);
     },
@@ -327,7 +327,7 @@ function TriageQueue({ mode }: { mode: DataMode }) {
     setIssues((current) =>
       current.map((item, index) => (index === selectedIndex ? { ...item, dismissed: next } : item))
     );
-    setStatus(`${next ? "Dismissed" : "Undismissed"} issue · ${issue.repo}#${issue.number}`);
+    setStatus(`${next ? "Dismissed" : "Undismissed"} issue: ${issue.repo}#${issue.number}`);
     setCanUndo(true);
   }, [issues, selectedIndex]);
 
@@ -391,20 +391,21 @@ function TriageQueue({ mode }: { mode: DataMode }) {
   const hiddenIssueCount = issues.length - visibleIssues.length;
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-card/70 shadow-sm backdrop-blur-sm">
-      <div className="flex items-center justify-between gap-4 border-b px-4 py-2.5">
+    <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b bg-muted/30 px-4 py-3">
         <p className="flex min-w-0 items-baseline gap-2 text-sm font-medium">
           <span className="shrink-0">Inbox</span>
-          <span className="shrink-0 font-mono text-xs font-normal tabular-nums text-muted-foreground">
-            {NUMBER_FORMAT.format(issues.length)} open
+          <span className="shrink-0 text-xs font-normal text-muted-foreground">
+            <span className="font-mono tabular-nums">{NUMBER_FORMAT.format(issues.length)}</span>{" "}
+            open
           </span>
           {hiddenIssueCount > 0 && (
-            <span className="truncate font-mono text-[11px] font-normal text-muted-foreground/80">
+            <span className="truncate text-xs font-normal text-muted-foreground">
               showing first {visibleIssues.length}
             </span>
           )}
         </p>
-        <div className="hidden items-center gap-4 text-[11px] text-muted-foreground sm:flex">
+        <div className="hidden items-center gap-3 text-xs text-muted-foreground sm:flex lg:hidden xl:flex">
           {HINTS.map((hint) => (
             <span key={hint.label} className="flex items-center gap-1.5">
               {hint.keys.map((key) => (
@@ -422,12 +423,12 @@ function TriageQueue({ mode }: { mode: DataMode }) {
         tabIndex={0}
         aria-label="SnapTriage inbox demo"
         aria-activedescendant={`demo-option-${selectedIndex}`}
-        className="relative rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
+        className="relative p-1.5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foreground"
       >
         <div
           ref={indicatorRef}
           aria-hidden="true"
-          className="absolute left-1.5 right-1.5 top-0 rounded-md bg-accent"
+          className="absolute left-1.5 right-1.5 top-0 rounded-md bg-[var(--selection-surface)]"
           style={{ height: indicator?.height ?? 0 }}
         />
         {visibleIssues.map((issue, index) => {
@@ -446,8 +447,8 @@ function TriageQueue({ mode }: { mode: DataMode }) {
               data-issue-index={index}
               onClick={() => setSelectedIndex(index)}
               className={cn(
-                "relative flex h-12 w-full min-w-0 items-center gap-3 rounded-md px-2.5 text-start transition-colors",
-                selected ? "text-foreground" : "text-foreground/75 hover:bg-accent/40",
+                "relative flex h-16 w-full min-w-0 items-center gap-3 rounded-md px-2.5 text-start transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foreground active:bg-accent motion-reduce:transition-none",
+                selected ? "text-foreground" : "text-foreground hover:bg-accent/40",
                 issue.dismissed && "opacity-40"
               )}
             >
@@ -462,26 +463,33 @@ function TriageQueue({ mode }: { mode: DataMode }) {
                 )}
               </span>
 
-              <span
-                title={issue.title}
-                className={cn(
-                  // The floor keeps the title readable when every other field
-                  // in the row is at its cap; the caps elsewhere guarantee the
-                  // row can still fit it.
-                  "min-w-[10rem] flex-1 truncate text-sm",
-                  issue.dismissed && "line-through"
-                )}
-              >
-                {issue.title}
+              <span className="min-w-0 flex-1">
+                <span
+                  title={issue.title}
+                  className={cn("block truncate text-sm", issue.dismissed && "line-through")}
+                >
+                  {issue.title}
+                </span>
+                <span className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+                  {issue.provider === "github" ? (
+                    <GitHubIcon className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <GitLabIcon className="h-3 w-3 shrink-0" />
+                  )}
+                  <span title={issue.repo} className="truncate">
+                    {issue.repo}
+                  </span>
+                  <span className="shrink-0 tabular-nums">#{issue.number}</span>
+                </span>
               </span>
 
               {issue.labels.length > 0 && (
-                <span className="hidden min-w-0 shrink items-center gap-1 overflow-hidden lg:flex">
+                <span className="hidden min-w-0 shrink items-center gap-1 overflow-hidden 2xl:flex">
                   {shownLabels.map((label) => (
                     <span
                       key={label}
                       title={label}
-                      className="max-w-[8rem] shrink-0 truncate rounded border px-1.5 py-px font-mono text-[10px] text-muted-foreground"
+                      className="max-w-[8rem] shrink-0 truncate rounded border px-1.5 py-px text-xs text-muted-foreground"
                     >
                       {label}
                     </span>
@@ -494,18 +502,6 @@ function TriageQueue({ mode }: { mode: DataMode }) {
                 </span>
               )}
 
-              <span className="hidden shrink-0 items-center gap-1.5 font-mono text-xs text-muted-foreground sm:flex">
-                {issue.provider === "github" ? (
-                  <GitHubIcon className="h-3.5 w-3.5" />
-                ) : (
-                  <GitLabIcon className="h-3.5 w-3.5" />
-                )}
-                <span title={issue.repo} className="max-w-[10rem] truncate">
-                  {issue.repo}
-                </span>
-                <span className="tabular-nums">#{issue.number}</span>
-              </span>
-
               <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
                 {issue.updatedLabel}
               </span>
@@ -514,12 +510,14 @@ function TriageQueue({ mode }: { mode: DataMode }) {
         })}
       </div>
 
-      <div className="flex items-center justify-between gap-3 border-t px-4 py-2.5">
-        <p role="status" className="truncate font-mono text-[11px] text-muted-foreground">
+      <div className="flex min-h-11 items-center justify-between gap-3 border-t px-4 py-3">
+        <p role="status" className="truncate text-xs text-muted-foreground">
           {status}
         </p>
         {canUndo && (
-          <p className="shrink-0 font-mono text-[11px] text-muted-foreground">press Z to undo</p>
+          <p className="shrink-0 text-xs text-muted-foreground">
+            press <Kbd>Z</Kbd> to undo
+          </p>
         )}
       </div>
     </div>
