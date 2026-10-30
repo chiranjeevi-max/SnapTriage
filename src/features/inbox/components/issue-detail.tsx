@@ -28,8 +28,8 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/empty-state";
 import { cn, formatRelativeTime } from "@/lib/utils";
-import type { IssueWithTriage, IssueDetail } from "../use-issues";
-import { useIssue } from "../use-issues";
+import type { IssueWithTriage, IssueDetail } from "@/features/inbox/use-issues";
+import { useIssue } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { priorityOptions } from "@/features/triage/priority";
 import { useKeyboardStore, Kbd } from "@/features/keyboard";
@@ -100,31 +100,33 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="issue-detail flex h-full min-w-0 flex-col bg-card">
       {/* Header */}
-      <div className="flex items-start justify-between gap-2 border-b px-4 py-3.5">
+      <div className="relative flex shrink-0 items-start gap-3 border-b px-6 py-6">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex min-h-9 items-center gap-2 pr-20">
             <CircleDot
               className={cn(
                 "h-4 w-4 shrink-0",
-                resolvedIssue.state === "open" ? "text-emerald-500" : "text-muted-foreground/60"
+                resolvedIssue.state === "open"
+                  ? "text-[var(--state-open)]"
+                  : "text-muted-foreground/60"
               )}
             />
             <span className="font-mono text-xs text-muted-foreground">#{issue.number}</span>
             {isSnoozed && (
-              <Badge variant="secondary" className="gap-1 text-[10px] leading-4">
+              <Badge variant="secondary" className="gap-1 text-xs leading-4">
                 <Clock className="h-3 w-3" />
                 {snoozeTimeLeft(currentIssue.triage!.snoozedUntil!)}
               </Badge>
             )}
           </div>
-          <h2 className="mt-1.5 text-lg font-semibold leading-tight tracking-[-0.01em]">
+          <h2 className="issue-detail-title mt-4 max-w-[40ch] font-semibold leading-snug tracking-[-0.025em]">
             {resolvedIssue.title}
           </h2>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {resolvedIssue.author && (
-              <span className="flex items-center gap-1">
+              <span className="flex min-w-0 max-w-full items-center gap-1 [overflow-wrap:anywhere]">
                 {resolvedIssue.authorAvatar ? (
                   <Image
                     src={resolvedIssue.authorAvatar}
@@ -140,17 +142,17 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
                 {resolvedIssue.author}
               </span>
             )}
-            <span className="font-mono">
+            <span>
               opened{" "}
               {formatRelativeTime(resolvedIssue.createdAt, { suffix: true, nowLabel: "just now" })}
             </span>
-            <span className="font-mono">
+            <span>
               updated{" "}
               {formatRelativeTime(resolvedIssue.updatedAt, { suffix: true, nowLabel: "just now" })}
             </span>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="absolute right-4 top-6 flex shrink-0 items-center gap-1">
           <Button variant="ghost" size="icon" asChild>
             <a href={resolvedIssue.url} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-4 w-4" />
@@ -165,7 +167,7 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
       </div>
 
       {/* Triage actions */}
-      <div className="border-b px-4 py-3">
+      <div className="shrink-0 border-b px-6 py-4">
         <p className="mb-2 text-xs font-medium text-muted-foreground">Priority</p>
         <div className="flex flex-wrap gap-1.5">
           {priorityOptions.map((opt) => (
@@ -174,7 +176,7 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
                 <button
                   onClick={() => handlePriority(opt.value)}
                   className={cn(
-                    "rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+                    "h-8 rounded-md border px-2.5 text-xs font-medium transition-colors active:bg-accent disabled:cursor-not-allowed disabled:opacity-50",
                     currentPriority === opt.value
                       ? opt.className
                       : "border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground"
@@ -197,7 +199,7 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
                 variant={resolvedIssue.triage?.dismissed ? "secondary" : "outline"}
                 size="sm"
                 onClick={handleDismiss}
-                className="h-7 gap-1.5 px-2 text-xs"
+                className="h-8 gap-1.5 px-2.5 text-xs"
               >
                 {resolvedIssue.triage?.dismissed ? "Undismiss" : "Dismiss"}
               </Button>
@@ -213,7 +215,7 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 gap-1.5 px-2 text-xs"
+                className="h-8 gap-1.5 px-2.5 text-xs"
                 onClick={() => setLabelPickerOpen(true)}
               >
                 <Tag className="h-3 w-3" />
@@ -231,7 +233,7 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 gap-1.5 px-2 text-xs"
+                className="h-8 gap-1.5 px-2.5 text-xs"
                 onClick={() => setAssigneePickerOpen(true)}
               >
                 <UserPlus className="h-3 w-3" />
@@ -249,7 +251,7 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 gap-1.5 px-2 text-xs"
+                className="h-8 gap-1.5 px-2.5 text-xs"
                 onClick={() => setSnoozePickerOpen(true)}
               >
                 <Clock className="h-3 w-3" />
@@ -266,7 +268,7 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
 
       {/* Labels & Assignees */}
       {(resolvedIssue.labels.length > 0 || resolvedIssue.assignees.length > 0) && (
-        <div className="border-b px-4 py-3">
+        <div className="shrink-0 border-b px-6 py-4">
           {resolvedIssue.labels.length > 0 && (
             <div className="mb-2">
               <p className="mb-1.5 text-xs font-medium text-muted-foreground">Labels</p>
@@ -274,7 +276,7 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
                 {resolvedIssue.labels.map((label) => (
                   <span
                     key={label}
-                    className="rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground"
+                    className="max-w-full break-all rounded bg-muted px-2 py-1 text-xs leading-4 text-muted-foreground"
                   >
                     {label}
                   </span>
@@ -287,7 +289,11 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
               <p className="mb-1.5 text-xs font-medium text-muted-foreground">Assignees</p>
               <div className="flex flex-wrap gap-1">
                 {resolvedIssue.assignees.map((assignee) => (
-                  <Badge key={assignee} variant="outline" className="text-[10px] leading-4">
+                  <Badge
+                    key={assignee}
+                    variant="outline"
+                    className="max-w-full whitespace-normal break-words text-xs leading-4 [overflow-wrap:anywhere]"
+                  >
                     {assignee}
                   </Badge>
                 ))}
@@ -305,8 +311,8 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
           pane instead of scrolling inside it. Pinning that wrapper to the
           viewport width breaks the loop; `contain: inline-size` on the body
           (globals.css) keeps the same guarantee if the wrapper ever changes. */}
-      <ScrollArea className="flex-1 [&_[data-slot=scroll-area-viewport]>div]:w-full">
-        <div className="p-4">
+      <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:w-full">
+        <div className="mx-auto w-full max-w-[var(--reading-width)] p-6">
           {resolvedIssue.body ? (
             <div className="issue-body">
               <Markdown remarkPlugins={[remarkGfm]}>{resolvedIssue.body}</Markdown>

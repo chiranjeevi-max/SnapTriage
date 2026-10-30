@@ -1,6 +1,14 @@
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full
+ * nav: adaptive workbench sidebar · signature: keyboard queue and reading pane · states: existing loading, empty, error and full
+ * axes: pale-neutral/geist/semantic-data · posture: restrained · finish-review: subagent, two findings corrected · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R5 V4 · weakest: H, separate queue navigation from issue actions */
+/* Hallmark · waive 39b · live inbox options contain two lines of issue data; the small fixture control is development-only · taller queue rows preserve readable titles and repository identities */
+/* Hallmark · answered F18 · shadcn data-slot attributes mark UI primitives, not photograph slots; the icon controls keep their intended dimensions */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./tokens.css";
+@import "./base.css" layer(base);
 
 @custom-variant dark (&:is(.dark *));
 
@@ -45,77 +53,6 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
-}
-
-:root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --hero-glow: oklch(0.55 0.03 260 / 0.1);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --hero-glow: oklch(0.85 0.03 260 / 0.09);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
@@ -215,5 +152,220 @@
   .landing-chrome {
     background-color: var(--background) !important;
     backdrop-filter: none !important;
+  }
+}
+/* Shared workbench composition. The shell stays capped on wide displays. */
+@layer components {
+  .app-shell {
+    display: flex;
+    width: 100%;
+    max-width: var(--shell-width);
+    height: 100dvh;
+    margin-inline: auto;
+    overflow: clip;
+    border-inline: 1px solid var(--border);
+  }
+  .app-sidebar {
+    display: flex;
+    flex: 0 0 var(--sidebar-width);
+    min-width: 0;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--sidebar);
+  }
+  .app-brand {
+    display: flex;
+    min-height: 88px;
+    align-items: center;
+    padding-inline: var(--space-lg);
+  }
+  .app-navigation {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    padding-inline: var(--space-sm);
+    padding-bottom: var(--space-lg);
+  }
+  .app-nav-link {
+    display: flex;
+    min-height: 40px;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+    transition:
+      background-color var(--dur-micro),
+      color var(--dur-micro);
+  }
+  .app-nav-link.is-active {
+    border-color: var(--border);
+    background: var(--card);
+    box-shadow: var(--shadow-control);
+  }
+  .app-repositories {
+    min-height: 0;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    padding: var(--space-lg) var(--space-sm);
+  }
+  .app-sidebar-footer {
+    margin-top: auto;
+    padding: var(--space-md);
+    border-top: 1px solid var(--border);
+  }
+  .app-shell-content {
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .inbox-controls {
+    flex: 1;
+  }
+  .inbox-sync {
+    margin-left: auto;
+  }
+  .inbox-bulk {
+    order: 4;
+    flex-basis: 100%;
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--border);
+  }
+  .issue-row:has(.is-selected) {
+    background: var(--selection-surface);
+    box-shadow: inset 2px 0 var(--selection-rule);
+  }
+  .issue-row-button.is-selected {
+    background: var(--selection-surface);
+  }
+  .issue-row-button:focus-visible {
+    position: relative;
+    z-index: var(--z-base);
+    outline-offset: -3px;
+  }
+  .issue-body {
+    font-size: var(--text-sm);
+    line-height: 1.75;
+  }
+  .issue-detail {
+    container-type: inline-size;
+    overflow-x: clip;
+    overflow-y: auto;
+  }
+  .issue-detail-title {
+    font-size: clamp(var(--text-lg), 4cqi, var(--text-2xl));
+  }
+  .issue-detail > [data-slot="scroll-area"] {
+    min-height: 240px;
+  }
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--foreground);
+    outline-offset: 3px;
+    transition-duration: 0s;
+  }
+  button:disabled,
+  input:disabled,
+  select:disabled {
+    cursor: not-allowed;
+  }
+  button[aria-busy="true"] {
+    cursor: progress;
+  }
+  button:active,
+  a:active {
+    transform: translateY(1px);
+  }
+  button:disabled {
+    transform: none;
+  }
+}
+
+@media (max-width: 60rem) {
+  .app-shell {
+    flex-direction: column;
+    border-inline: 0;
+  }
+  .app-sidebar {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .app-brand {
+    min-height: 64px;
+    padding-inline: var(--space-md);
+  }
+  .app-sidebar-footer {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+    padding: var(--space-xs);
+    border: 0;
+  }
+  .app-navigation {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    padding: 0 var(--space-xs) var(--space-xs);
+  }
+  .app-nav-link {
+    flex: 1;
+    justify-content: center;
+  }
+  .app-repositories {
+    display: none;
+  }
+}
+
+@media (max-width: 40rem) {
+  .inbox-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+  }
+  .inbox-heading {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .inbox-sync {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .inbox-controls {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    flex-wrap: nowrap;
+  }
+  .inbox-bulk {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+  .inbox-controls:has(input) {
+    flex-wrap: wrap;
+  }
+
+  .triage-panels > [data-slot="resizable-handle"] {
+    display: none;
+  }
+  .triage-panels > [data-slot="resizable-panel"] {
+    flex: 1 1 100% !important;
+  }
+  .triage-panels > [data-slot="resizable-panel"]:last-child {
+    display: none !important;
+  }
+  .triage-inbox.has-selection .triage-panels > [data-slot="resizable-panel"]:first-child {
+    display: none !important;
+  }
+  .triage-inbox.has-selection .triage-panels > [data-slot="resizable-panel"]:last-child {
+    display: flex !important;
+  }
+  .issue-row input[type="checkbox"] {
+    opacity: 1;
   }
 }

@@ -28,14 +28,14 @@ export function PageHeader({ title, description, actions, className }: PageHeade
   return (
     <header
       className={cn(
-        "flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-start sm:justify-between",
+        "flex flex-col gap-4 border-b pb-8 sm:flex-row sm:items-start sm:justify-between",
         className
       )}
     >
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-[-0.02em]">{title}</h1>
+        <h1 className="text-[28px] font-semibold tracking-[-0.035em]">{title}</h1>
         {description && (
-          <p className="mt-1.5 max-w-[60ch] text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-muted-foreground">
             {description}
           </p>
         )}

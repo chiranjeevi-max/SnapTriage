@@ -1,7 +1,7 @@
 /**
  * @module repos/components/repo-manager
  *
- * Repository management page component. Shows two panels:
+ * Repository management page component. Shows two working sections:
  * 1. **Connected Repositories**: list of tracked repos with disconnect buttons
  * 2. **Add Repository**: tabbed browser (GitHub/GitLab) to discover and connect new repos
  */
@@ -9,9 +9,8 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Trash2, Plug } from "lucide-react";
+import { Loader2, Plus, Trash2, Plug, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
@@ -29,7 +28,7 @@ import {
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { devAvailableRepos, devRepos, readDataMode } from "@/features/dev-tools/data-mode";
-import type { AvailableRepo } from "../fetch-available-repos";
+import type { AvailableRepo } from "@/features/repos/fetch-available-repos";
 
 /** Shape of a connected repo record from the repos API. */
 interface ConnectedRepo {
@@ -101,35 +100,49 @@ export function RepoManager() {
   const connectedFullNames = new Set(connected.map((r) => r.fullName));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {/* Connected repos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Connected repositories</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <section className="grid gap-5 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] lg:gap-8">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight">Connected repositories</h2>
+        </div>
+        <div className="min-w-0">
           {loadingConnected ? (
-            <div className="space-y-3">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
+            <div className="space-y-3" aria-label="Loading connected repositories">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
             </div>
           ) : connected.length === 0 ? (
             <EmptyState
               icon={<Plug className="h-5 w-5" />}
               title="No repositories connected"
               description="Connect one below and its issues land in your inbox."
-              className="py-10"
+              className="items-start border-y py-8 text-left"
             />
           ) : (
             <div className="divide-y border-y">
               {connected.map((repo) => (
-                <div key={repo.id} className="flex items-center justify-between gap-3 py-3">
-                  <div className="flex min-w-0 items-center gap-2.5">
+                <div
+                  key={repo.id}
+                  className="flex flex-col items-start justify-between gap-3 py-4 sm:flex-row"
+                >
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
                     <ProviderIcon provider={repo.provider} />
-                    <span className="truncate text-sm font-medium" title={repo.fullName}>
-                      {repo.fullName}
-                    </span>
-                    <PermissionBadge permission={repo.permission} />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className="break-words font-mono text-sm font-medium [overflow-wrap:anywhere]"
+                        title={repo.fullName}
+                      >
+                        {repo.fullName}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <PermissionBadge permission={repo.permission} />
+                        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <RefreshCw className="h-3 w-3" />
+                          Auto-sync {repo.syncEnabled ? "on" : "off"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -137,14 +150,16 @@ export function RepoManager() {
                         variant="ghost"
                         size="icon-sm"
                         aria-label={`Disconnect ${repo.fullName}`}
-                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive active:bg-muted"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Disconnect {repo.fullName}?</AlertDialogTitle>
+                        <AlertDialogTitle className="pr-6 [overflow-wrap:anywhere]">
+                          Disconnect {repo.fullName}?
+                        </AlertDialogTitle>
                         <AlertDialogDescription>
                           This removes the cached issues and triage state for this repository. You
                           can reconnect it later, but the triage data is gone.
@@ -162,17 +177,17 @@ export function RepoManager() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {/* Browse available repos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Add a repository</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <section className="grid gap-5 border-t pt-10 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] lg:gap-8">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight">Add a repository</h2>
+        </div>
+        <div className="min-w-0">
           <Tabs defaultValue="github" onValueChange={handleTabChange}>
-            <TabsList>
+            <TabsList className="h-10 gap-1 rounded-md border bg-muted/50 p-1">
               <TabsTrigger value="github">
                 <GitHubIcon className="h-3.5 w-3.5" />
                 GitHub
@@ -183,13 +198,11 @@ export function RepoManager() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value={activeProvider} className="mt-4">
+            <TabsContent value={activeProvider} className="mt-5">
               {loadingAvailable && (
                 <div className="flex items-center justify-center py-10">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-sm text-muted-foreground">
-                    Loading repositories...
-                  </span>
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" />
+                  <span className="ml-2 text-sm text-muted-foreground">Loading repositories…</span>
                 </div>
               )}
 
@@ -203,27 +216,30 @@ export function RepoManager() {
               )}
 
               {!loadingAvailable && available.length > 0 && (
-                <div className="max-h-96 divide-y overflow-y-auto border-y">
+                <div className="max-h-[32rem] divide-y overflow-y-auto border-y">
                   {available.map((repo) => {
                     const isConnected = connectedFullNames.has(repo.fullName);
                     return (
                       <div
                         key={repo.fullName}
-                        className="flex items-center justify-between gap-3 py-3"
+                        className="flex flex-col items-start justify-between gap-3 py-4 sm:flex-row"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium" title={repo.fullName}>
+                          <p
+                            className="break-words font-mono text-sm font-medium [overflow-wrap:anywhere]"
+                            title={repo.fullName}
+                          >
                             {repo.fullName}
                           </p>
                           {repo.description && (
                             <p
-                              className="truncate text-xs text-muted-foreground"
+                              className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground"
                               title={repo.description}
                             >
                               {repo.description}
                             </p>
                           )}
-                          <div className="mt-1.5 flex items-center gap-1.5">
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
                             <PermissionBadge permission={repo.permission} />
                             {repo.isPrivate && <PrivateBadge />}
                           </div>
@@ -233,10 +249,10 @@ export function RepoManager() {
                           size="sm"
                           disabled={isConnected || connectingRepo === repo.fullName}
                           onClick={() => handleConnect(repo)}
-                          className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
+                          className="h-8 shrink-0 gap-1.5 px-3 text-xs active:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {connectingRepo === repo.fullName ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
                           ) : isConnected ? (
                             "Connected"
                           ) : (
@@ -253,8 +269,8 @@ export function RepoManager() {
               )}
             </TabsContent>
           </Tabs>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }
@@ -262,7 +278,7 @@ export function RepoManager() {
 /** Chip showing repo permission level (admin/write/read). */
 function PermissionBadge({ permission }: { permission: string }) {
   return (
-    <span className="shrink-0 rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground">
+    <span className="shrink-0 rounded border bg-muted/40 px-2 py-0.5 text-xs leading-4 text-muted-foreground">
       {permission}
     </span>
   );
@@ -271,7 +287,7 @@ function PermissionBadge({ permission }: { permission: string }) {
 /** Chip marking a repository as private. */
 function PrivateBadge() {
   return (
-    <span className="shrink-0 rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground">
+    <span className="shrink-0 rounded border bg-muted/40 px-2 py-0.5 text-xs leading-4 text-muted-foreground">
       private
     </span>
   );
@@ -280,7 +296,7 @@ function PrivateBadge() {
 /** Renders the GitHub or GitLab icon based on provider name. */
 function ProviderIcon({ provider }: { provider: string }) {
   if (provider === "github") {
-    return <GitHubIcon className="h-4 w-4 shrink-0" />;
+    return <GitHubIcon className="mt-0.5 h-4 w-4 shrink-0" />;
   }
-  return <GitLabIcon className="h-4 w-4 shrink-0" />;
+  return <GitLabIcon className="mt-0.5 h-4 w-4 shrink-0" />;
 }

@@ -6,14 +6,14 @@
  * The app and the landing page show the same bindings, so both read them from
  * {@link shortcuts} instead of keeping their own list.
  */
-import { Kbd } from "./kbd";
+import { Kbd } from "@/features/keyboard/components/kbd";
 import {
   categoryLabels,
   categoryOrder,
   formatKey,
   shortcuts,
   type Shortcut,
-} from "../shortcut-registry";
+} from "@/features/keyboard/shortcut-registry";
 
 interface ShortcutGroupsProps {
   /** Extra classes for the grid. */
@@ -62,11 +62,17 @@ export function ShortcutList({ categories, className }: ShortcutListProps) {
     : shortcuts;
 
   return (
-    <dl className={className ?? "grid grid-cols-2 gap-x-6 gap-y-2.5"}>
+    <dl
+      className={
+        className ?? "grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-x-6 gap-y-3"
+      }
+    >
       {visible.map((shortcut) => (
-        <div key={shortcut.id} className="flex items-center justify-between gap-3">
-          <dt className="truncate text-sm text-muted-foreground">{shortcut.description}</dt>
-          <dd>
+        <div key={shortcut.id} className="flex min-w-0 items-start justify-between gap-3">
+          <dt className="min-w-0 break-words text-sm leading-relaxed text-muted-foreground">
+            {shortcut.description}
+          </dt>
+          <dd className="shrink-0 pt-0.5">
             <Kbd>{formatKey(shortcut)}</Kbd>
           </dd>
         </div>

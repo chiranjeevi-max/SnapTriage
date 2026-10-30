@@ -9,12 +9,12 @@ import { RepoManager } from "@/features/repos/components/repo-manager";
 
 export default function ReposPage() {
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
+    <div className="mx-auto w-full max-w-5xl px-6 py-10 sm:px-10">
       <PageHeader
         title="Repositories"
         description="Connect the GitHub and GitLab repositories you want to triage."
       />
-      <div className="mt-8">
+      <div className="mt-10">
         <RepoManager />
       </div>
     </div>

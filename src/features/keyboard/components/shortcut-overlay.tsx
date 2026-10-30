@@ -15,7 +15,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useKeyboardStore } from "../keyboard-store";
+import { useKeyboardStore } from "@/features/keyboard/keyboard-store";
 import {
   shortcuts,
   setShortcutOverride,
@@ -23,8 +23,8 @@ import {
   formatKey,
   categoryLabels,
   categoryOrder,
-} from "../shortcut-registry";
-import { Kbd } from "./kbd";
+} from "@/features/keyboard/shortcut-registry";
+import { Kbd } from "@/features/keyboard/components/kbd";
 
 /** Modal dialog showing all keyboard shortcuts grouped by category. */
 export function ShortcutOverlay() {
@@ -56,14 +56,14 @@ export function ShortcutOverlay() {
 
   return (
     <Dialog open={overlayOpen} onOpenChange={toggleOverlay}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-5 overflow-hidden p-5 sm:max-w-md sm:p-6">
+        <DialogHeader className="shrink-0 pr-6">
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>
             Navigate and triage issues without leaving the keyboard. Click a key to rebind it.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-5">
+        <div className="min-h-0 space-y-5 overflow-y-auto">
           {grouped.map((group) => (
             <div key={group.label}>
               <h3 className="mb-2 text-xs font-medium text-muted-foreground">{group.label}</h3>
@@ -71,18 +71,20 @@ export function ShortcutOverlay() {
                 {group.shortcuts.map((shortcut) => (
                   <div
                     key={shortcut.id}
-                    className="flex items-center justify-between gap-4 rounded-md px-2 py-1.5 text-sm"
+                    className="flex min-w-0 items-center justify-between gap-3 rounded-md px-2 text-sm"
                   >
-                    <span className="text-muted-foreground">{shortcut.description}</span>
+                    <span className="min-w-0 break-words text-muted-foreground">
+                      {shortcut.description}
+                    </span>
                     <button
                       type="button"
                       onClick={() => setEditingId(shortcut.id)}
-                      className="rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                      className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md px-2 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                       aria-label={`Rebind ${shortcut.description}`}
                     >
                       {editingId === shortcut.id ? (
                         <span className="rounded border border-dashed border-border px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                          Press a key...
+                          Press a key…
                         </span>
                       ) : (
                         <Kbd>{formatKey(shortcut)}</Kbd>
@@ -99,7 +101,7 @@ export function ShortcutOverlay() {
           variant="ghost"
           size="sm"
           onClick={resetShortcutOverrides}
-          className="h-7 self-start px-2 text-xs text-muted-foreground"
+          className="min-h-11 shrink-0 self-start px-2 text-xs text-muted-foreground"
         >
           Reset shortcuts
         </Button>

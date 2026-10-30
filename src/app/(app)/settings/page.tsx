@@ -8,7 +8,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Moon, Sun, Monitor } from "lucide-react";
+import { Loader2, Moon, Sun, Monitor, Zap, Layers } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
@@ -95,155 +95,166 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <div className="mx-auto w-full max-w-5xl px-6 py-10 sm:px-10">
       <PageHeader
         title="Settings"
         description="Theme, sync behaviour, and the accounts SnapTriage signs in with."
       />
 
-      <div className="mt-8 space-y-10">
+      <div className="mt-2 divide-y">
         {/* Appearance */}
-        <section>
-          <h2 className="text-sm font-medium">Appearance</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Choose your preferred theme.</p>
-          <div className="mt-3">
+        <section className="grid gap-5 py-8 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] lg:gap-8">
+          <div className="min-w-0">
+            <h2 className="text-base font-medium">Appearance</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Choose your preferred theme.
+            </p>
+          </div>
+          <div className="min-w-0 lg:pt-0.5">
             <SegmentedControl
               ariaLabel="Theme"
               value={theme === "light" || theme === "dark" ? theme : "system"}
               onChange={setTheme}
               options={[
-                { value: "light", label: "Light", icon: <Sun className="h-3.5 w-3.5" /> },
-                { value: "dark", label: "Dark", icon: <Moon className="h-3.5 w-3.5" /> },
-                { value: "system", label: "System", icon: <Monitor className="h-3.5 w-3.5" /> },
+                { value: "light", label: "Light", icon: <Sun className="h-4 w-4" /> },
+                { value: "dark", label: "Dark", icon: <Moon className="h-4 w-4" /> },
+                { value: "system", label: "System", icon: <Monitor className="h-4 w-4" /> },
               ]}
             />
           </div>
         </section>
 
         {/* Sync Settings */}
-        <section className="border-t pt-8">
-          <h2 className="text-sm font-medium">Sync</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            How each repository fetches issues and writes your changes back.
-          </p>
-
-          {repos.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">
-              No repositories connected yet. Add one from the Repos page to configure sync.
+        <section className="grid gap-5 py-8 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] lg:gap-8">
+          <div className="min-w-0">
+            <h2 className="text-base font-medium">Sync</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              How each repository fetches issues and writes your changes back.
             </p>
-          ) : (
-            <div className="mt-4 divide-y border-y">
-              {repos.map((repo) => (
-                <div key={repo.id} className="py-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      {repo.provider === "github" ? (
-                        <GitHubIcon className="h-4 w-4 shrink-0" />
-                      ) : (
-                        <GitLabIcon className="h-4 w-4 shrink-0" />
-                      )}
-                      <span className="truncate text-sm font-medium" title={repo.fullName}>
-                        {repo.fullName}
+          </div>
+
+          <div className="min-w-0">
+            {repos.length === 0 ? (
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                No repositories connected yet. Add one from the Repos page to configure sync.
+              </p>
+            ) : (
+              <div className="divide-y">
+                {repos.map((repo) => (
+                  <div key={repo.id} className="py-6 first:pt-0 last:pb-0">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-2.5">
+                        {repo.provider === "github" ? (
+                          <GitHubIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                        ) : (
+                          <GitLabIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                        )}
+                        <span
+                          className="min-w-0 break-words font-mono text-sm font-medium [overflow-wrap:anywhere]"
+                          title={repo.fullName}
+                        >
+                          {repo.fullName}
+                        </span>
+                      </div>
+                      <span className="shrink-0 rounded-md border px-2 py-1 text-xs text-muted-foreground">
+                        {repo.permission}
                       </span>
                     </div>
-                    <span className="shrink-0 rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground">
-                      {repo.permission}
-                    </span>
-                  </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm">Auto-sync</p>
-                      <p className="text-xs text-muted-foreground">
-                        Fetch new issues every five minutes
-                      </p>
+                    <div className="mt-6 flex items-center justify-between gap-6">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">Auto-sync</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          Fetch new issues every five minutes
+                        </p>
+                      </div>
+                      <Switch
+                        aria-label={`Auto-sync for ${repo.fullName}`}
+                        checked={repo.syncEnabled}
+                        onCheckedChange={() => handleSyncEnabledToggle(repo.id, repo.syncEnabled)}
+                      />
                     </div>
-                    <Switch
-                      checked={repo.syncEnabled}
-                      onCheckedChange={() => handleSyncEnabledToggle(repo.id, repo.syncEnabled)}
-                    />
-                  </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm">Sync mode</p>
-                      <p className="text-xs text-muted-foreground">
-                        {repo.syncMode === "live"
-                          ? "Every change goes to the provider immediately"
-                          : "Changes are staged until you push them"}
-                      </p>
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+                      <div className="min-w-0 flex-1 basis-48">
+                        <p className="text-sm font-medium">Sync mode</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          {repo.syncMode === "live"
+                            ? "Every change goes to the provider immediately"
+                            : "Changes are staged until you push them"}
+                        </p>
+                      </div>
+                      <SegmentedControl
+                        ariaLabel={`Sync mode for ${repo.fullName}`}
+                        value={repo.syncMode === "live" ? "live" : "batch"}
+                        onChange={() => handleSyncModeToggle(repo.id, repo.syncMode)}
+                        options={[
+                          { value: "live", label: "Live", icon: <Zap className="h-4 w-4" /> },
+                          { value: "batch", label: "Batch", icon: <Layers className="h-4 w-4" /> },
+                        ]}
+                      />
                     </div>
-                    <SegmentedControl
-                      ariaLabel={`Sync mode for ${repo.fullName}`}
-                      value={repo.syncMode === "live" ? "live" : "batch"}
-                      onChange={() => handleSyncModeToggle(repo.id, repo.syncMode)}
-                      options={[
-                        {
-                          value: "live",
-                          label: "Live",
-                          icon: <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />,
-                        },
-                        {
-                          value: "batch",
-                          label: "Batch",
-                          icon: <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />,
-                        },
-                      ]}
-                    />
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Connected Accounts */}
-        <section className="border-t pt-8">
-          <h2 className="text-sm font-medium">Connected accounts</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            The OAuth and token connections SnapTriage uses to reach your providers.
-          </p>
-
-          {accounts.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">No accounts connected yet.</p>
-          ) : (
-            <div className="mt-4 divide-y border-y">
-              {accounts.map((account) => (
-                <div
-                  key={`${account.provider}-${account.providerAccountId}`}
-                  className="flex items-center justify-between gap-3 py-3"
-                >
-                  <div className="flex items-center gap-2">
-                    {account.provider === "github" ? (
-                      <GitHubIcon className="h-4 w-4" />
-                    ) : (
-                      <GitLabIcon className="h-4 w-4" />
-                    )}
-                    <span className="text-sm font-medium capitalize">{account.provider}</span>
+        <section className="grid gap-5 py-8 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] lg:gap-8">
+          <div className="min-w-0">
+            <h2 className="text-base font-medium">Connected accounts</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              The OAuth and token connections SnapTriage uses to reach your providers.
+            </p>
+          </div>
+          <div className="min-w-0">
+            {accounts.length === 0 ? (
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                No accounts connected yet.
+              </p>
+            ) : (
+              <div className="divide-y">
+                {accounts.map((account) => (
+                  <div
+                    key={`${account.provider}-${account.providerAccountId}`}
+                    className="flex items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {account.provider === "github" ? (
+                        <GitHubIcon className="h-4 w-4" />
+                      ) : (
+                        <GitLabIcon className="h-4 w-4" />
+                      )}
+                      <span className="text-sm font-medium capitalize">{account.provider}</span>
+                    </div>
+                    <span className="rounded-md border px-2 py-1 text-xs text-muted-foreground">
+                      {account.type === "oauth" ? "OAuth" : "PAT"}
+                    </span>
                   </div>
-                  <span className="rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground">
-                    {account.type === "oauth" ? "OAuth" : "PAT"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Keyboard Shortcuts */}
-        <section className="border-t pt-8">
-          <h2 className="text-sm font-medium">Keyboard shortcuts</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Press <span className="font-mono text-xs">?</span> in the inbox to see the full overlay
-            and rebind any key.
-          </p>
-          <ShortcutList className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2" />
+        <section className="grid gap-5 py-8 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] lg:gap-8">
+          <div className="min-w-0">
+            <h2 className="text-base font-medium">Keyboard shortcuts</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Press <span className="font-mono text-xs">?</span> in the inbox to see the full
+              overlay and rebind any key.
+            </p>
+          </div>
+          <ShortcutList className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-x-6 gap-y-3" />
         </section>
       </div>
     </div>

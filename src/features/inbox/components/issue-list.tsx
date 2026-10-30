@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, memo } from "react";
 import Link from "next/link";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { measureElement, useVirtualizer } from "@tanstack/react-virtual";
 import { CircleDot, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,9 +17,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { priorityLabels } from "@/features/triage/priority";
-import type { IssueWithTriage } from "../use-issues";
+import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
 const EMPTY_SELECTED = new Set<string>();
+const ESTIMATED_ROW_HEIGHT = 76;
 
 interface IssueListProps {
   issues: IssueWithTriage[];
@@ -32,7 +33,7 @@ interface IssueListProps {
 
 /**
  * Scrollable issue list with loading skeletons and empty state.
- * Each row auto-scrolls into view when selected via keyboard navigation.
+ * The virtualizer keeps the keyboard selection in view.
  */
 export function IssueList({
   issues,
@@ -46,7 +47,10 @@ export function IssueList({
   const virtualizer = useVirtualizer({
     count: isLoading ? 0 : issues.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 76,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    // Hidden panes report zero; caching that makes restored rows shift the queue.
+    measureElement: (element, entry, instance) =>
+      measureElement(element, entry, instance) || ESTIMATED_ROW_HEIGHT,
     overscan: 6,
   });
 
@@ -89,7 +93,7 @@ export function IssueList({
   }
 
   return (
-    <div ref={parentRef} className="h-full overflow-auto p-1" role="listbox">
+    <div ref={parentRef} className="h-full overflow-auto" role="listbox" aria-label="Issue queue">
       <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
         {virtualizer.getVirtualItems().map((virtualItem) => {
           const issue = issues[virtualItem.index];
@@ -137,17 +141,10 @@ const IssueRow = memo(function IssueRow({
   isSelectedForBulk: boolean;
   onToggleSelected?: (issueId: string) => void;
 }) {
-  const ref = useRef<HTMLButtonElement>(null);
   const priority = issue.triage?.priority != null ? priorityLabels[issue.triage.priority] : null;
 
-  useEffect(() => {
-    if (isSelected) {
-      ref.current?.scrollIntoView({ block: "nearest" });
-    }
-  }, [isSelected]);
-
   return (
-    <div className="group flex items-start gap-2">
+    <div className="issue-row group relative flex items-start gap-1 border-b border-border/70">
       {onToggleSelected && (
         <input
           type="checkbox"
@@ -156,26 +153,23 @@ const IssueRow = memo(function IssueRow({
           aria-checked={isSelectedForBulk}
           onClick={(event) => event.stopPropagation()}
           onChange={() => onToggleSelected(issue.id)}
-          className="mt-3 h-4 w-4 shrink-0 accent-primary opacity-0 transition-opacity checked:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
+          className="ml-3 mt-5 h-4 w-4 shrink-0 accent-primary opacity-50 transition-opacity checked:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
         />
       )}
       <button
-        ref={ref}
         role="option"
         aria-selected={isSelected}
         onClick={() => onSelect(issue)}
         className={cn(
-          "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
-          isSelected
-            ? "bg-accent text-accent-foreground"
-            : "text-foreground/80 hover:bg-accent/50 hover:text-foreground"
+          "issue-row-button flex min-w-0 flex-1 items-start gap-3 px-4 py-4 text-left transition-colors",
+          isSelected ? "is-selected text-foreground" : "text-foreground hover:bg-muted/50"
         )}
         style={{ contentVisibility: "auto", containIntrinsicSize: "76px" }}
       >
         <CircleDot
           className={cn(
             "mt-0.5 h-4 w-4 shrink-0",
-            issue.state === "open" ? "text-emerald-500" : "text-muted-foreground/60"
+            issue.state === "open" ? "text-[var(--state-open)]" : "text-muted-foreground/60"
           )}
         />
         <div className="min-w-0 flex-1">
@@ -183,18 +177,25 @@ const IssueRow = memo(function IssueRow({
             {priority && (
               <Badge
                 variant="outline"
-                className={cn("shrink-0 px-1.5 py-0 text-[10px] leading-4", priority.className)}
+                className={cn("shrink-0 px-1.5 py-0 text-xs leading-4", priority.className)}
               >
                 {priority.label}
               </Badge>
             )}
-            <span className="truncate text-sm font-medium" title={issue.title}>
+            <span
+              className="line-clamp-2 break-words text-sm font-medium leading-relaxed [overflow-wrap:anywhere]"
+              title={issue.title}
+            >
               {issue.title}
             </span>
           </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span className="font-mono">#{issue.number}</span>
-            {issue.author && <span>by {issue.author}</span>}
+            {issue.author && (
+              <span className="max-w-40 truncate" title={issue.author}>
+                by {issue.author}
+              </span>
+            )}
             <span className="font-mono">{formatRelativeTime(issue.updatedAt)}</span>
           </div>
           {issue.labels.length > 0 && (
@@ -202,15 +203,13 @@ const IssueRow = memo(function IssueRow({
               {issue.labels.slice(0, 3).map((label) => (
                 <span
                   key={label}
-                  className="rounded border px-1.5 py-px font-mono text-[10px] leading-4 text-muted-foreground"
+                  className="max-w-full truncate rounded bg-muted px-1.5 py-px text-xs leading-4 text-muted-foreground"
                 >
                   {label}
                 </span>
               ))}
               {issue.labels.length > 3 && (
-                <span className="text-[10px] text-muted-foreground/70">
-                  +{issue.labels.length - 3}
-                </span>
+                <span className="text-xs text-muted-foreground/70">+{issue.labels.length - 3}</span>
               )}
             </div>
           )}

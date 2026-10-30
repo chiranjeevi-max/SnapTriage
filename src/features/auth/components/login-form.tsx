@@ -97,12 +97,12 @@ export function LoginForm() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="grid gap-2.5">
         <Button
           variant="outline"
           size="lg"
-          className="w-full justify-start gap-2.5"
+          className="h-11 w-full justify-start gap-3 bg-card px-4"
           onClick={() => handleOAuth("github")}
         >
           <GitHubIcon className="h-4 w-4" />
@@ -111,7 +111,7 @@ export function LoginForm() {
         <Button
           variant="outline"
           size="lg"
-          className="w-full justify-start gap-2.5"
+          className="h-11 w-full justify-start gap-3 bg-card px-4"
           onClick={() => handleOAuth("gitlab")}
         >
           <GitLabIcon className="h-4 w-4" />
@@ -126,9 +126,9 @@ export function LoginForm() {
         </span>
       </div>
 
-      <form onSubmit={handleTokenSubmit} className="space-y-4">
-        <div className="space-y-2">
-          <span className="text-sm font-medium">Token provider</span>
+      <form onSubmit={handleTokenSubmit} className="space-y-5">
+        <div className="grid justify-items-start gap-3">
+          <span className="block text-sm font-medium">Token provider</span>
           <SegmentedControl
             ariaLabel="Token provider"
             value={provider}
@@ -150,6 +150,7 @@ export function LoginForm() {
           <Label htmlFor="token">Personal access token</Label>
           <Input
             id="token"
+            className="h-11 bg-card px-3"
             type="password"
             placeholder={hint.placeholder}
             value={token}
@@ -174,7 +175,7 @@ export function LoginForm() {
           </p>
         )}
 
-        <Button type="submit" className="w-full" disabled={loading || !token.trim()}>
+        <Button type="submit" className="h-11 w-full" disabled={loading || !token.trim()}>
           {loading ? "Checking token..." : "Continue with token"}
         </Button>
       </form>

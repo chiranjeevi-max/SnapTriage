@@ -16,30 +16,30 @@ export default async function LoginPage() {
   if (session) redirect("/inbox");
 
   return (
-    <main id="main-content" className="relative flex min-h-screen flex-col">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 -top-32 h-[420px] bg-[radial-gradient(60%_50%_at_50%_0%,var(--hero-glow),transparent_70%)]"
-      />
-
-      <header className="relative flex items-center justify-between px-5 py-5">
+    <main
+      id="main-content"
+      className="relative mx-auto flex min-h-dvh max-w-[var(--shell-width)] flex-col"
+    >
+      <header className="relative flex items-center justify-between border-b px-6 py-5 sm:px-10">
         <Wordmark href="/" />
         <ThemeToggle />
       </header>
 
-      <div className="relative flex flex-1 items-center justify-center px-5 pb-20">
-        <div className="w-full max-w-sm">
-          <h1 className="text-2xl font-semibold tracking-[-0.02em]">Sign in</h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+      <div className="relative mx-auto grid w-full max-w-md flex-1 content-center gap-8 px-6 py-10 sm:px-10 md:max-w-6xl md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-center md:gap-12 md:py-16 lg:gap-16 lg:px-24">
+        <div className="w-full max-w-sm justify-self-center self-center md:max-w-lg md:justify-self-end">
+          <h1 className="text-4xl font-semibold leading-tight tracking-[-0.04em]">Sign in</h1>
+          <p className="mt-5 max-w-[30ch] text-lg leading-relaxed text-muted-foreground">
             Open the triage queue for every repo you maintain.
           </p>
-          <div className="mt-8">
+        </div>
+        <div className="w-full max-w-sm justify-self-center border-t pt-8 md:justify-self-start md:border-t-0 md:border-l md:pl-10 md:pt-0">
+          <div>
             <LoginForm />
           </div>
         </div>
       </div>
 
-      <footer className="relative px-5 py-6 text-center text-xs text-muted-foreground">
+      <footer className="relative border-t px-6 py-6 text-xs text-muted-foreground sm:px-10">
         <Link
           href="/"
           className="underline-offset-4 transition-colors hover:text-foreground hover:underline"

@@ -9,7 +9,7 @@
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/features/keyboard";
-import { usePendingBatchCount, useBatchPush } from "../use-batch";
+import { usePendingBatchCount, useBatchPush } from "@/features/triage/use-batch";
 
 /**
  * Bottom status bar for batch mode. Renders the number of pending changes
@@ -24,8 +24,8 @@ export function BatchStatusBar() {
   if (!count || count === 0) return null;
 
   return (
-    <div className="flex items-center justify-between border-t bg-muted/30 px-4 py-2">
-      <span className="font-mono text-xs text-muted-foreground">
+    <div className="flex items-center justify-between border-t bg-card px-6 py-3">
+      <span className="text-xs text-muted-foreground">
         {count} pending change{count !== 1 ? "s" : ""}
       </span>
       <Button
@@ -33,7 +33,7 @@ export function BatchStatusBar() {
         variant="default"
         onClick={() => batchPush.mutate()}
         disabled={batchPush.isPending}
-        className="h-7 gap-1.5 px-2 text-xs"
+        className="h-9 gap-2 px-3 text-xs"
       >
         <Upload className="h-3.5 w-3.5" />
         Push

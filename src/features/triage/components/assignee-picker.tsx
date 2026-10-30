@@ -17,8 +17,8 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { useRepoCollaborators } from "../use-repo-collaborators";
-import { useTriageMutation } from "../use-triage-mutation";
+import { useRepoCollaborators } from "@/features/triage/use-repo-collaborators";
+import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
@@ -83,9 +83,10 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
       onOpenChange={onOpenChange}
       title="Assignees"
       description="Search and toggle assignees"
+      className="flex max-h-[calc(100dvh-2rem)] flex-col [&_[data-slot=command]]:min-h-0"
     >
-      <CommandInput placeholder="Search collaborators..." />
-      <CommandList>
+      <CommandInput placeholder="Search collaborators..." className="min-w-0 pr-10" />
+      <CommandList className="min-h-0 max-h-[min(20rem,60dvh)] flex-1">
         <CommandEmpty className="py-6 text-xs text-muted-foreground">
           {isLoading ? "Loading collaborators..." : "No collaborators found."}
         </CommandEmpty>
@@ -97,21 +98,22 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
                 key={collab.username}
                 value={collab.username}
                 onSelect={() => toggleAssignee(collab.username)}
+                className="min-h-11 gap-3"
               >
-                <div className="flex items-center gap-2 flex-1">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
                   {collab.avatar ? (
                     <Image
                       src={collab.avatar}
                       alt={collab.username}
                       width={20}
                       height={20}
-                      className="h-5 w-5 rounded-full shrink-0"
+                      className="h-5 w-5 shrink-0 rounded-full"
                       unoptimized
                     />
                   ) : (
-                    <span className="h-5 w-5 rounded-full bg-muted shrink-0" />
+                    <span className="h-5 w-5 shrink-0 rounded-full bg-muted" />
                   )}
-                  <span>{collab.username}</span>
+                  <span className="min-w-0 flex-1 break-all">{collab.username}</span>
                 </div>
                 <Check
                   className={cn("h-4 w-4 shrink-0", isAssigned ? "opacity-100" : "opacity-0")}
