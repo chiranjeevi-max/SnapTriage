@@ -1,0 +1,2 @@
+ALTER TABLE `access_token` ADD `providerAccountId` text;--> statement-breakpoint
+CREATE UNIQUE INDEX `access_token_provider_account_unique` ON `access_token` (`provider`,`providerAccountId`);

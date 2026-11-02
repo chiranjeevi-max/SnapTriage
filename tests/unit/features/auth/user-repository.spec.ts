@@ -13,20 +13,17 @@ vi.mock("@/lib/db/query", () => {
   const insertMock = vi.fn().mockReturnValue({ values: vi.fn() });
   const deleteMock = vi.fn().mockReturnValue({ where: vi.fn() });
   const selectMock = vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn() }) });
-  
+
   return {
     typedDb: {
       insert: insertMock,
       delete: deleteMock,
       select: selectMock,
-      transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => fn({ insert: insertMock, delete: deleteMock, select: selectMock })),
     },
-    runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => fn({ insert: insertMock, delete: deleteMock, select: selectMock })),
   };
 });
 
 describe("UserRepository", () => {
-  
   beforeEach(() => {
     // RCS-001: Clear all overrides before each block runs
     vi.clearAllMocks();
@@ -37,15 +34,12 @@ describe("UserRepository", () => {
      * @target storeAccessToken
      * @dependencies db queries, crypto encryption
      * @scenario Replacing an existing token for a specific user and github provider
-     * @expectedOutput Calls database delete and inserts the symmetrically encrypted AES token
+     * @expectedOutput Upserts the encrypted token together with its provider account
      */
-    it("should delete existing tokens and insert an encrypted payload", async () => {
+    it("should upsert the encrypted token with its provider account", async () => {
       // 1. Arrange
       const encryptedMangledText = "aes256:gcm:dummy=dummy";
       vi.mocked(encrypt).mockReturnValue(encryptedMangledText);
-
-      const deleteWhereSpy = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(typedDb.delete).mockReturnValue({ where: deleteWhereSpy } as never);
 
       const insertConflictSpy = vi.fn().mockResolvedValue(undefined);
       const insertValuesSpy = vi.fn().mockReturnValue({ onConflictDoUpdate: insertConflictSpy });
@@ -61,6 +55,7 @@ describe("UserRepository", () => {
         expect.objectContaining({
           userId: mockTokenPayload.userId,
           provider: mockTokenPayload.provider,
+          providerAccountId: mockTokenPayload.providerAccountId,
           token: encryptedMangledText, // Output string verification
         })
       );

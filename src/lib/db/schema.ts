@@ -86,7 +86,8 @@ export const verificationTokens = sqliteTable(
 
 /**
  * Personal Access Tokens (PATs) stored by users as an alternative to OAuth.
- * Each token is scoped to a single provider ("github" | "gitlab").
+ * Each token is scoped to a single provider ("github" | "gitlab") and records
+ * the provider account it belongs to, which is how PAT sign-in finds its user.
  */
 export const accessTokens = sqliteTable(
   "access_token",
@@ -98,13 +99,20 @@ export const accessTokens = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(), // "github" | "gitlab"
+    // The account that owns the token, as `<instance>/<id>` (`github.com/123`),
+    // since ids repeat across GitLab instances. Null only on rows stored before
+    // it was recorded.
+    providerAccountId: text("providerAccountId"),
     token: text("token").notNull(),
     label: text("label"),
     createdAt: integer("createdAt", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),
   },
-  (table) => [uniqueIndex("access_token_user_provider_unique").on(table.userId, table.provider)]
+  (table) => [
+    uniqueIndex("access_token_user_provider_unique").on(table.userId, table.provider),
+    uniqueIndex("access_token_provider_account_unique").on(table.provider, table.providerAccountId),
+  ]
 );
 
 // ─── Saved Inbox Views ────────────────────────────────────

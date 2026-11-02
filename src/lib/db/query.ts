@@ -14,16 +14,26 @@ export const typedDb: BetterSQLite3Database<typeof schema> = db as unknown as Be
   typeof schema
 >;
 
+/** A built write that has not run yet: run it synchronously or await it. */
+type PendingWrite = { run(): unknown } & PromiseLike<unknown>;
+
 /**
- * Run writes with a transaction when the driver supports it.
- * The Neon HTTP driver cannot use interactive transactions, so fall back to
- * direct (non-transactional) writes there.
+ * Runs writes in one transaction when the driver supports it.
+ *
+ * The caller builds the writes and they only execute here. better-sqlite3
+ * transactions must be synchronous: handed an async callback, it rolls back
+ * and throws while the statements the callback awaited still run afterwards,
+ * outside any transaction. The Neon HTTP driver cannot hold an interactive
+ * transaction, so there the writes run in order without one.
+ *
+ * @param writes - Unexecuted Drizzle insert, update or delete queries.
  */
-export async function runTransaction<T>(
-  callback: (tx: BetterSQLite3Database<typeof schema>) => Promise<T>
-): Promise<T> {
+export async function runTransaction(writes: PendingWrite[]): Promise<void> {
   if (process.env.DATABASE_URL) {
-    return callback(typedDb);
+    for (const write of writes) await write;
+    return;
   }
-  return typedDb.transaction(callback as never);
+  typedDb.transaction(() => {
+    for (const write of writes) write.run();
+  });
 }
