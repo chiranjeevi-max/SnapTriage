@@ -44,8 +44,30 @@ function createDb(): DbClient {
   // This is needed both on first run and during Next.js build-time static analysis.
   mkdirSync(resolve(dirname(sqlitePath)), { recursive: true });
   const sqlite = new Database(sqlitePath);
-  sqlite.pragma("journal_mode = WAL");
+  enableWal(sqlite);
   return drizzleSqlite(sqlite, { schema });
+}
+
+/**
+ * Switches a SQLite file to WAL, a setting the file keeps.
+ *
+ * `next build` opens a new file from several workers at once. The switch
+ * upgrades a read lock to a write lock, and SQLite refuses that upgrade outright,
+ * rather than waiting, while another connection is committing its own switch.
+ * `BEGIN IMMEDIATE` asks for the write lock afresh, which does wait out the busy
+ * timeout, so the retry after it finds the file already in WAL.
+ */
+function enableWal(sqlite: Database.Database) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      sqlite.pragma("journal_mode = WAL");
+      return;
+    } catch (error) {
+      const busy = error instanceof Database.SqliteError && error.code === "SQLITE_BUSY";
+      if (!busy || attempt === 3) throw error;
+      sqlite.exec("BEGIN IMMEDIATE; ROLLBACK");
+    }
+  }
 }
 
 /** Singleton database client used throughout the application. */
