@@ -55,7 +55,8 @@ function createDb(): DbClient {
  * upgrades a read lock to a write lock, and SQLite refuses that upgrade outright,
  * rather than waiting, while another connection is committing its own switch.
  * `BEGIN IMMEDIATE` asks for the write lock afresh, which does wait out the busy
- * timeout, so the retry after it finds the file already in WAL.
+ * timeout, so the retry after it finds the file already in WAL. A wait that
+ * times out leaves the decision to the next of the three attempts.
  */
 function enableWal(sqlite: Database.Database) {
   for (let attempt = 1; ; attempt++) {
@@ -63,11 +64,18 @@ function enableWal(sqlite: Database.Database) {
       sqlite.pragma("journal_mode = WAL");
       return;
     } catch (error) {
-      const busy = error instanceof Database.SqliteError && error.code === "SQLITE_BUSY";
-      if (!busy || attempt === 3) throw error;
+      if (!isBusy(error) || attempt === 3) throw error;
+    }
+    try {
       sqlite.exec("BEGIN IMMEDIATE; ROLLBACK");
+    } catch (error) {
+      if (!isBusy(error)) throw error;
     }
   }
+}
+
+function isBusy(error: unknown) {
+  return error instanceof Database.SqliteError && error.code === "SQLITE_BUSY";
 }
 
 /** Singleton database client used throughout the application. */

@@ -9,7 +9,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const driver = vi.hoisted(() => {
   process.env.SQLITE_PATH = ":memory:";
   delete process.env.DATABASE_URL;
-  return { failures: 0, code: "SQLITE_BUSY", calls: [] as string[] };
+  return {
+    failures: 0,
+    code: "SQLITE_BUSY",
+    waitFailures: 0,
+    waitCode: "SQLITE_BUSY",
+    calls: [] as string[],
+  };
 });
 
 vi.mock("better-sqlite3", async (importOriginal) => {
@@ -27,6 +33,10 @@ vi.mock("better-sqlite3", async (importOriginal) => {
       }
       exec(source: string) {
         driver.calls.push(source);
+        if (driver.waitFailures > 0) {
+          driver.waitFailures--;
+          throw new SqliteError("database is locked", driver.waitCode);
+        }
       }
     },
   };
@@ -37,6 +47,8 @@ describe("the SQLite client", () => {
     vi.resetModules();
     driver.calls = [];
     driver.code = "SQLITE_BUSY";
+    driver.waitFailures = 0;
+    driver.waitCode = "SQLITE_BUSY";
   });
 
   it("waits out a connection switching the file to WAL, then switches", async () => {
@@ -64,5 +76,29 @@ describe("the SQLite client", () => {
 
     await expect(import("@/lib/db")).rejects.toMatchObject({ code: "SQLITE_IOERR" });
     expect(driver.calls).toEqual(["journal_mode = WAL"]);
+  });
+
+  it("keeps its remaining attempts when a wait for the lock times out", async () => {
+    driver.failures = 2;
+    driver.waitFailures = 1;
+
+    await import("@/lib/db");
+
+    expect(driver.calls).toEqual([
+      "journal_mode = WAL",
+      "BEGIN IMMEDIATE; ROLLBACK",
+      "journal_mode = WAL",
+      "BEGIN IMMEDIATE; ROLLBACK",
+      "journal_mode = WAL",
+    ]);
+  });
+
+  it("does not retry other errors while waiting", async () => {
+    driver.failures = 1;
+    driver.waitFailures = 1;
+    driver.waitCode = "SQLITE_IOERR";
+
+    await expect(import("@/lib/db")).rejects.toMatchObject({ code: "SQLITE_IOERR" });
+    expect(driver.calls).toEqual(["journal_mode = WAL", "BEGIN IMMEDIATE; ROLLBACK"]);
   });
 });
