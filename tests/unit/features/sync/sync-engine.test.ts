@@ -133,6 +133,7 @@ describe("sync engine", () => {
     const { syncRepo } = await import("@/features/sync/sync-engine");
     const { typedDb } = await import("@/lib/db/query");
     const { issues } = await import("@/lib/db/schema");
+    await typedDb.delete(issues).where(eq(issues.repoId, "sync-repo-a"));
     await syncRepo("sync-repo-a", "sync-user");
     const [stored] = await typedDb
       .select({ id: issues.id })
