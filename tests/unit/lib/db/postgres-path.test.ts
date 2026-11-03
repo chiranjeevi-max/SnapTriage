@@ -8,7 +8,7 @@ const databaseUrl = process.env.DATABASE_URL;
 describe.skipIf(!databaseUrl)("Postgres path", () => {
   beforeAll(async () => {
     const { db } = await import("@/lib/db");
-    await migrate(db as never, { migrationsFolder: join(process.cwd(), "drizzle") });
+    await migrate(db as never, { migrationsFolder: join(process.cwd(), "drizzle-pg") });
   });
 
   it("connects and queries through the Postgres client", async () => {

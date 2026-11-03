@@ -40,7 +40,7 @@ jobs:
       - name: Database migration drift check
         run: |
           npm run db:generate
-          git diff --exit-code -- drizzle/
+          git diff --exit-code -- drizzle/ drizzle-pg/
 
       - name: Build
         run: npm run build

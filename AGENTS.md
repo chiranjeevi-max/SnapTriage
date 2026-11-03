@@ -44,8 +44,8 @@ These override statistical defaults. Follow them exactly.
 
 ## DB
 
-- Default is SQLite (`SQLITE_PATH`, default `./data/snaptriage.db`, WAL). Setting `DATABASE_URL` switches to Neon Postgres. Same Drizzle schema (`src/lib/db/schema.ts`).
-- Never hand-edit `drizzle/*.sql`. Change schema, run `db:generate`, include migration.
+- Default is SQLite (`SQLITE_PATH`, default `./data/snaptriage.db`, WAL). Setting `DATABASE_URL` switches to Neon Postgres. The app queries both through `src/lib/db/schema.ts`; Postgres migrations come from its copy, `schema.pg.ts`.
+- Never hand-edit `drizzle/*.sql` or `drizzle-pg/*.sql`. Change both schemas, run `db:generate`, include both migrations.
 - Details: `src/lib/db/AGENTS.md`.
 
 ## API / Auth
@@ -81,8 +81,8 @@ Change is complete when:
 
 ## Don't
 
-- Never commit `.env*`, secrets, or `*.db*`. Never force-push `main`.
-- Never edit `drizzle/*` output, `.next/`, or `src/components/ui/*` primitives directly. Wrap them.
+- Never commit `.env*` other than the `.env.example` template, which holds placeholders only. Never commit secrets or `*.db*`. Never force-push `main`.
+- Never edit `drizzle/*` or `drizzle-pg/*` output, `.next/`, or `src/components/ui/*` primitives directly. Wrap them.
 - Never mock auth/payment providers in E2E. Never delete a failing test.
 
 <!-- BEGIN:nextjs-agent-rules -->

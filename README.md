@@ -76,7 +76,7 @@ Open [http://localhost:3000](http://localhost:3000). Signed-out visitors get the
 
 ### Vercel
 
-Requires a Postgres database (e.g. [Neon](https://neon.tech)) since SQLite is not compatible with serverless environments. Set `DATABASE_URL` in your environment variables.
+Requires a Postgres database (e.g. [Neon](https://neon.tech)) since SQLite is not compatible with serverless environments. Set `DATABASE_URL` in your environment variables, then run `npm run db:migrate` with the same `DATABASE_URL` to create the tables, and again whenever an update brings new migrations. It expects a database without those tables; to adopt one whose tables were created by hand, see [Vercel (Serverless)](docs/architecture.md#vercel-serverless).
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fchiranjeevi-max%2Fsnaptriage&env=AUTH_SECRET,AUTH_GITHUB_ID,AUTH_GITHUB_SECRET&envDescription=Required%20environment%20variables&project-name=snaptriage)
 
@@ -131,8 +131,8 @@ SnapTriage is production-ready today. What's next:
 | `npm test` | Run unit tests |
 | `npm run test:e2e` | Run E2E tests |
 | `npm run format` | Format with Prettier |
-| `npm run db:generate` | Generate Drizzle migrations |
-| `npm run db:migrate` | Run migrations |
+| `npm run db:generate` | Generate Drizzle migrations for SQLite and Postgres |
+| `npm run db:migrate` | Run migrations (on Postgres when `DATABASE_URL` is set) |
 | `npm run db:studio` | Open Drizzle Studio |
 
 </details>

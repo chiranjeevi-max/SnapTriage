@@ -37,6 +37,14 @@ interface SyncResult {
 }
 
 /**
+ * The value an upsert proposed for a column. Quoted, since Postgres folds an
+ * unquoted name such as `authorAvatar` to lower case.
+ */
+function excluded(column: { name: string }) {
+  return sql`excluded.${sql.identifier(column.name)}`;
+}
+
+/**
  * Sync a single repository: fetch issues from the upstream provider since the
  * last sync time, upsert them into the local database, and log the sync result.
  *
@@ -106,17 +114,17 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
           .onConflictDoUpdate({
             target: [issues.repoId, issues.providerIssueId],
             set: {
-              number: sql`excluded.number`,
-              title: sql`excluded.title`,
-              body: sql`excluded.body`,
-              author: sql`excluded.author`,
-              authorAvatar: sql`excluded.authorAvatar`,
-              state: sql`excluded.state`,
-              labels: sql`excluded.labels`,
-              assignees: sql`excluded.assignees`,
-              url: sql`excluded.url`,
-              updatedAt: sql`excluded.updatedAt`,
-              fetchedAt: sql`excluded.fetchedAt`,
+              number: excluded(issues.number),
+              title: excluded(issues.title),
+              body: excluded(issues.body),
+              author: excluded(issues.author),
+              authorAvatar: excluded(issues.authorAvatar),
+              state: excluded(issues.state),
+              labels: excluded(issues.labels),
+              assignees: excluded(issues.assignees),
+              url: excluded(issues.url),
+              updatedAt: excluded(issues.updatedAt),
+              fetchedAt: excluded(issues.fetchedAt),
             },
           });
       }

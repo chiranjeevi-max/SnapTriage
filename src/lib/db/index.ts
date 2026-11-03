@@ -15,7 +15,7 @@ import { dirname, resolve } from "path";
 import Database from "better-sqlite3";
 import { drizzle as drizzleSqlite, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { drizzle as drizzleNeon, type NeonHttpDatabase } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { neon, types } from "@neondatabase/serverless";
 import * as schema from "./schema";
 
 /** Union type representing either SQLite or Neon (Postgres) Drizzle client. */
@@ -29,7 +29,11 @@ function createDb(): DbClient {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (databaseUrl) {
-    // Serverless Postgres via Neon, used on Vercel
+    // Serverless Postgres via Neon, used on Vercel. Rows are read through the
+    // SQLite column types, which take epoch milliseconds as numbers, so bigint
+    // must parse to one; Neon's default is a string. The values stay far below
+    // 2^53. Neon's HTTP queries only read this global parser registry.
+    types.setTypeParser(types.builtins.INT8, Number);
     const sql = neon(databaseUrl);
     return drizzleNeon(sql, { schema });
   }
@@ -40,8 +44,38 @@ function createDb(): DbClient {
   // This is needed both on first run and during Next.js build-time static analysis.
   mkdirSync(resolve(dirname(sqlitePath)), { recursive: true });
   const sqlite = new Database(sqlitePath);
-  sqlite.pragma("journal_mode = WAL");
+  enableWal(sqlite);
   return drizzleSqlite(sqlite, { schema });
+}
+
+/**
+ * Switches a SQLite file to WAL, a setting the file keeps.
+ *
+ * `next build` opens a new file from several workers at once. The switch
+ * upgrades a read lock to a write lock, and SQLite refuses that upgrade outright,
+ * rather than waiting, while another connection is committing its own switch.
+ * `BEGIN IMMEDIATE` asks for the write lock afresh, which does wait out the busy
+ * timeout, so the retry after it finds the file already in WAL. A wait that
+ * times out leaves the decision to the next of the three attempts.
+ */
+function enableWal(sqlite: Database.Database) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      sqlite.pragma("journal_mode = WAL");
+      return;
+    } catch (error) {
+      if (!isBusy(error) || attempt === 3) throw error;
+    }
+    try {
+      sqlite.exec("BEGIN IMMEDIATE; ROLLBACK");
+    } catch (error) {
+      if (!isBusy(error)) throw error;
+    }
+  }
+}
+
+function isBusy(error: unknown) {
+  return error instanceof Database.SqliteError && error.code === "SQLITE_BUSY";
 }
 
 /** Singleton database client used throughout the application. */
