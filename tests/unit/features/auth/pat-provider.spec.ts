@@ -349,16 +349,35 @@ describe("authorizePat", () => {
     expect(user).toMatchObject({ id: "stored-email", email: "primary@corp.example.com" });
   });
 
-  it("creates one user when two first sign-ins for an account overlap", async () => {
+  it("signs both overlapping first sign-ins for an account into one new user", async () => {
     stubProviders({ "ghp-race": { id: 1100, email: null } });
 
-    const results = await Promise.all([
+    const [first, second] = await Promise.all([
       authorizePat({ token: "ghp-race", provider: "github" }, signInRequest()),
       authorizePat({ token: "ghp-race", provider: "github" }, signInRequest()),
     ]);
 
-    const userIds = new Set(results.flatMap((user) => (user?.id ? [user.id] : [])));
-    expect(userIds.size).toBe(1);
+    expect(first?.id).toEqual(expect.any(String));
+    expect(second?.id).toBe(first?.id);
     expect(await usersNamed("user1100")).toHaveLength(1);
+  });
+
+  it("refuses and logs a sign-in whose new user cannot be stored", async () => {
+    const takenId = "00000000-0000-4000-8000-000000000001";
+    await typedDb.insert(users).values({ id: takenId, name: "Taken id" });
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(takenId);
+    const logged = vi.spyOn(authLogger, "error");
+    stubProviders({ "ghp-unstorable": { id: 1500, email: null } });
+
+    const user = await authorizePat(
+      { token: "ghp-unstorable", provider: "github" },
+      signInRequest()
+    );
+
+    expect(user).toBeNull();
+    expect(logged).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "github" }),
+      "Failed PAT Auth"
+    );
   });
 });

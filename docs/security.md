@@ -18,8 +18,8 @@ Because new PAT users carry no address, a later OAuth sign-in with the same acco
 
 ```sql
 UPDATE access_token
-SET providerAccountId = 'git.new.example.com/' || substr(providerAccountId, length('gitlab.old.example.com/') + 1)
-WHERE provider = 'gitlab' AND providerAccountId LIKE 'gitlab.old.example.com/%';
+SET "providerAccountId" = 'git.new.example.com/' || substr("providerAccountId", length('gitlab.old.example.com/') + 1)
+WHERE provider = 'gitlab' AND "providerAccountId" LIKE 'gitlab.old.example.com/%';
 ```
 
 ### Token Encryption at Rest

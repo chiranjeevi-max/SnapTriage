@@ -166,36 +166,42 @@ export async function authorizePat(
       token,
       label: `${provider}-pat`,
     };
-    const userId = await findPatOwner(provider, validatedUser, ip);
+    let userId = await findPatOwner(provider, validatedUser, ip);
 
-    if (userId) {
-      const user = await updateUser(userId, {
+    if (!userId) {
+      // A new user starts without an address. It decides nothing here, and Auth.js
+      // refuses any OAuth sign-in whose address another user already holds.
+      const user = {
+        id: crypto.randomUUID(),
         name: validatedUser.name,
-        image: validatedUser.image,
-      });
-      await storeAccessToken({ userId, ...pat });
-      return {
-        id: userId,
-        name: validatedUser.name,
-        email: user?.email ?? null,
+        email: null,
         image: validatedUser.image,
       };
+      try {
+        await createUserWithAccessToken(user, pat);
+        authLogger.info(
+          { ip: ip ?? "unattributed", provider, userId: user.id },
+          "Created a user for a new PAT account"
+        );
+        return user;
+      } catch (error) {
+        // An overlapping first sign-in for the account may have stored its token first.
+        userId = await findUserIdByAccessToken(provider, pat.providerAccountId);
+        if (!userId) throw error;
+      }
     }
 
-    // A new user starts without an address. It decides nothing here, and Auth.js
-    // refuses any OAuth sign-in whose address another user already holds.
-    const user = {
-      id: crypto.randomUUID(),
+    const user = await updateUser(userId, {
       name: validatedUser.name,
-      email: null,
+      image: validatedUser.image,
+    });
+    await storeAccessToken({ userId, ...pat });
+    return {
+      id: userId,
+      name: validatedUser.name,
+      email: user?.email ?? null,
       image: validatedUser.image,
     };
-    await createUserWithAccessToken(user, pat);
-    authLogger.info(
-      { ip: ip ?? "unattributed", provider, userId: user.id },
-      "Created a user for a new PAT account"
-    );
-    return user;
   } catch (error) {
     // The class only: a message can carry the token (as an invalid header value)
     // or, on Neon, every bound query parameter.
