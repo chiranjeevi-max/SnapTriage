@@ -7,8 +7,9 @@
  * - A Drizzle ORM adapter backed by the app's SQLite/Postgres database
  * - A Credentials provider for Personal Access Token (PAT) sign-in
  *
- * PAT flow: validate token against GitHub/GitLab API, upsert user in DB,
- * store the PAT in the `accessTokens` table, and return a session.
+ * PAT flow: validate token against GitHub/GitLab API, find the user that owns
+ * the provider account (creating one on first sign-in), store the PAT in the
+ * `accessTokens` table, and return a session.
  *
  * Exports `handlers` (route handler), `auth` (session getter), `signIn`, `signOut`.
  */

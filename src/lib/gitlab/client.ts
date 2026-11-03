@@ -7,10 +7,11 @@
  * environment variable. Uses `PRIVATE-TOKEN` header authentication.
  *
  * Key GitLab-specific behaviors:
- * - Labels are replaced in full (not added/removed individually)
- * - Assignees require user ID resolution from usernames
+ * - Label changes are sent as deltas (`add_labels` / `remove_labels`)
+ * - Assignees are set as a full list of user IDs, resolved from usernames
  * - Access levels are numeric (30 = Developer/write, 40 = Maintainer/admin)
  */
+import { z } from "zod";
 import type {
   IssueProvider,
   ProviderIssue,
@@ -56,6 +57,12 @@ async function timedFetch(input: RequestInfo, init?: RequestInit): Promise<Respo
     clearTimeout(timeout);
   }
 }
+
+/** The fields this client reads from a GitLab user, on issues and in user search alike. */
+const gitlabUserSchema = z.object({ id: z.number(), username: z.string() });
+
+/** The part of a GitLab issue that assignee updates are computed from. */
+const issueAssigneesSchema = z.object({ assignees: z.array(gitlabUserSchema) });
 
 /** GitLab implementation of the {@link IssueProvider} interface. */
 export const gitlabProvider: IssueProvider = {
@@ -132,9 +139,11 @@ export const gitlabProvider: IssueProvider = {
 
   /**
    * Applies triage changes to a GitLab issue.
-   * Unlike GitHub, GitLab requires full label replacement and user ID resolution
-   * for assignees, so this method fetches current issue state before updating.
-   * Fetches the issue only once even when both labels and assignees change.
+   * Label changes go out as `add_labels` / `remove_labels`, which GitLab applies
+   * to the issue's labels as they are when the update lands. Assignees have no
+   * such delta: `assignee_ids` replaces the whole list, so it is rebuilt from
+   * the issue, and a username that cannot be resolved fails the update rather
+   * than being dropped from it.
    * @param owner - Project namespace.
    * @param repo - Project name.
    * @param issueNumber - The issue IID on GitLab.
@@ -143,89 +152,68 @@ export const gitlabProvider: IssueProvider = {
    */
   async updateIssue(owner, repo, issueNumber, token, changes) {
     const baseUrl = getBaseUrl();
-    const project = projectPath(owner, repo);
+    const issueUrl = `${baseUrl}/api/v4/projects/${projectPath(owner, repo)}/issues/${issueNumber}`;
+    const context = { provider: "gitlab", operation: "updateIssue", owner, repo };
     const params: Record<string, string> = {};
+
+    // GitLab reads label lists as comma-separated, so a comma would split one name in two.
+    const labelNames = [...(changes.labels?.add ?? []), ...(changes.labels?.remove ?? [])];
+    if (labelNames.some((name) => name.includes(","))) {
+      throw new Error("GitLab label names cannot contain commas");
+    }
 
     if (changes.state) {
       params.state_event = changes.state === "open" ? "reopen" : "close";
     }
 
-    const needsLabels = !!(changes.labels?.add?.length || changes.labels?.remove?.length);
-    const needsAssignees = !!(changes.assignees?.add?.length || changes.assignees?.remove?.length);
+    if (changes.labels?.add?.length) params.add_labels = changes.labels.add.join(",");
+    if (changes.labels?.remove?.length) params.remove_labels = changes.labels.remove.join(",");
 
-    // Fetch current issue state once if needed for labels or assignees
-    let currentIssue: Record<string, unknown> | null = null;
-    if (needsLabels || needsAssignees) {
-      const issueRes = await timedFetch(
-        `${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}`,
-        {
-          headers: headers(token),
-        }
-      );
+    const assignees = changes.assignees;
+    if (assignees && (assignees.add?.length || assignees.remove?.length)) {
+      const issueRes = await timedFetch(issueUrl, { headers: headers(token) });
       if (!issueRes.ok) {
         const body = await issueRes.text().catch(() => "");
-        throw new ProviderApiError(issueRes.status, body, {
-          provider: "gitlab",
-          operation: "updateIssue",
-          owner,
-          repo,
-        });
+        throw new ProviderApiError(issueRes.status, body, context);
       }
-      currentIssue = await issueRes.json();
-    }
+      const current = issueAssigneesSchema.safeParse(await issueRes.json());
+      if (!current.success) throw new Error("GitLab returned an issue in an unexpected shape");
 
-    // GitLab sets labels as a full replacement
-    if (needsLabels && currentIssue) {
-      const currentLabels: string[] = (currentIssue.labels as string[]) ?? [];
-      const newLabels = new Set(currentLabels);
-      for (const l of changes.labels?.add ?? []) newLabels.add(l);
-      for (const l of changes.labels?.remove ?? []) newLabels.delete(l);
-      params.labels = Array.from(newLabels).join(",");
-    }
+      // Current assignees come with their ids; only added usernames are looked up.
+      const ids = new Map(current.data.assignees.map((user) => [user.username, user.id]));
+      for (const username of assignees.remove ?? []) ids.delete(username);
+      for (const username of assignees.add ?? []) {
+        if (ids.has(username)) continue;
 
-    if (needsAssignees && currentIssue) {
-      // GitLab uses user IDs for assignees; resolve usernames to IDs
-      const existingAssignees = new Set<string>(
-        ((currentIssue.assignees as Array<{ username: string }>) ?? []).map((a) => a.username)
-      );
-      for (const u of changes.assignees?.remove ?? []) existingAssignees.delete(u);
-      for (const u of changes.assignees?.add ?? []) existingAssignees.add(u);
-
-      // Resolve usernames to IDs
-      const currentAssigneeIds: number[] = [];
-      for (const username of existingAssignees) {
         const userRes = await timedFetch(
           `${baseUrl}/api/v4/users?username=${encodeURIComponent(username)}`,
           { headers: headers(token) }
         );
-        if (userRes.ok) {
-          const users = await userRes.json();
-          if (users.length > 0) currentAssigneeIds.push(users[0].id);
+        if (!userRes.ok) {
+          const body = await userRes.text().catch(() => "");
+          throw new ProviderApiError(userRes.status, body, context);
         }
+        const found = z.array(gitlabUserSchema).safeParse(await userRes.json());
+        if (!found.success) throw new Error("GitLab returned a user search in an unexpected shape");
+        const [user] = found.data;
+        if (!user) throw new Error(`GitLab has no user named ${username}`);
+        ids.set(username, user.id);
       }
-      params.assignee_ids = currentAssigneeIds.join(",");
+      params.assignee_ids = [...ids.values()].join(",");
     }
 
     if (Object.keys(params).length > 0) {
-      const updateRes = await timedFetch(
-        `${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}`,
-        {
-          method: "PUT",
-          headers: {
-            ...headers(token),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(params),
-        }
-      );
+      const updateRes = await timedFetch(issueUrl, {
+        method: "PUT",
+        headers: {
+          ...headers(token),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(params),
+      });
       if (!updateRes.ok) {
         const body = await updateRes.text().catch(() => "");
-        throw new ProviderApiError(updateRes.status, body, {
-          provider: "gitlab",
-          operation: "updateIssue",
-          owner,
-          repo,
-        });
+        throw new ProviderApiError(updateRes.status, body, context);
       }
     }
   },

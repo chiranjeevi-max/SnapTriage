@@ -13,6 +13,7 @@ export const mockUser = {
 export const mockTokenPayload = {
   userId: "USR-001",
   provider: "github",
+  providerAccountId: "1001",
   token: "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
   label: "Test GitHub Token",
 };

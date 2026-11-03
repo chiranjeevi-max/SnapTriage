@@ -19,6 +19,7 @@ describe("POST /api/auth/token", () => {
   it("should return 200 and user data on successful validation", async () => {
     const mockUser = {
       id: "1",
+      instance: "github.com",
       name: "Test User",
       email: "test@example.com",
       image: "https://avatar.url",
@@ -89,7 +90,9 @@ describe("POST /api/auth/token", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error).toBe('token: Invalid input: expected string, received undefined; provider: Invalid option: expected one of "github"|"gitlab"');
+    expect(data.error).toBe(
+      'token: Invalid input: expected string, received undefined; provider: Invalid option: expected one of "github"|"gitlab"'
+    );
   });
 
   it("should return 401 when encountering an unexpected error in the route handler", async () => {
@@ -116,6 +119,7 @@ describe("POST /api/auth/token rate limiting", () => {
     vi.mocked(checkPersistentRateLimit).mockResolvedValue(false);
     vi.mocked(validateToken).mockResolvedValue({
       id: "1",
+      instance: "github.com",
       name: "U",
       email: "u@example.com",
       image: null,
