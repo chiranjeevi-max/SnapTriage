@@ -4,7 +4,7 @@
  * (GitHub/GitLab), upserting them into the local database, and pushing pending
  * batch changes back to the provider. This module runs exclusively on the server.
  */
-import { eq, and, inArray, sql, type InferSelectModel } from "drizzle-orm";
+import { eq, and, getTableColumns, inArray, sql, type InferSelectModel } from "drizzle-orm";
 import { typedDb, runTransaction } from "@/lib/db/query";
 import { issues, repos, syncLog, triageState } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
@@ -14,6 +14,12 @@ import { syncLogger } from "@/lib/logger";
 
 /** Maximum number of repos to sync in parallel. */
 const SYNC_CONCURRENCY = 3;
+
+/**
+ * Issues written per upsert statement: as many as fit in SQLite's limit of
+ * 32,766 bound parameters, since each row binds one parameter per column.
+ */
+const UPSERT_BATCH_SIZE = Math.floor(32_766 / Object.keys(getTableColumns(issues)).length);
 
 /**
  * Result of syncing a single repository.
@@ -71,7 +77,9 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
       new Map(fetched.map((issue) => [issue.providerIssueId, issue])).values()
     );
 
-    // Bulk upsert fetched issues so sync avoids N sequential updates.
+    // Upsert in batches rather than one statement per issue. A failed batch
+    // leaves earlier ones written, which is harmless: lastSyncedAt only moves
+    // once every batch is in, so the retry fetches and rewrites them all.
     if (uniqueFetched.length > 0) {
       const values = uniqueFetched.map((issue) => ({
         repoId,
@@ -91,25 +99,27 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
         fetchedAt: new Date(),
       }));
 
-      await typedDb
-        .insert(issues)
-        .values(values)
-        .onConflictDoUpdate({
-          target: [issues.repoId, issues.providerIssueId],
-          set: {
-            number: sql`excluded.number`,
-            title: sql`excluded.title`,
-            body: sql`excluded.body`,
-            author: sql`excluded.author`,
-            authorAvatar: sql`excluded.authorAvatar`,
-            state: sql`excluded.state`,
-            labels: sql`excluded.labels`,
-            assignees: sql`excluded.assignees`,
-            url: sql`excluded.url`,
-            updatedAt: sql`excluded.updatedAt`,
-            fetchedAt: sql`excluded.fetchedAt`,
-          },
-        });
+      for (let start = 0; start < values.length; start += UPSERT_BATCH_SIZE) {
+        await typedDb
+          .insert(issues)
+          .values(values.slice(start, start + UPSERT_BATCH_SIZE))
+          .onConflictDoUpdate({
+            target: [issues.repoId, issues.providerIssueId],
+            set: {
+              number: sql`excluded.number`,
+              title: sql`excluded.title`,
+              body: sql`excluded.body`,
+              author: sql`excluded.author`,
+              authorAvatar: sql`excluded.authorAvatar`,
+              state: sql`excluded.state`,
+              labels: sql`excluded.labels`,
+              assignees: sql`excluded.assignees`,
+              url: sql`excluded.url`,
+              updatedAt: sql`excluded.updatedAt`,
+              fetchedAt: sql`excluded.fetchedAt`,
+            },
+          });
+      }
     }
 
     // Update repo lastSyncedAt
@@ -221,12 +231,7 @@ export async function pushBatchChanges(
       // Skip if no provider changes to push
       if (Object.keys(issueUpdate).length === 0) {
         // Just clear the batch pending flag
-        await runTransaction(async (tx) => {
-          await tx
-            .update(triageState)
-            .set({ batchPending: false, pendingChanges: {}, updatedAt: new Date() })
-            .where(eq(triageState.id, row.id));
-        });
+        await clearBatchPendingQuery(row.id, userId);
         pushed++;
         continue;
       }
@@ -275,17 +280,12 @@ export async function pushBatchChanges(
       if (changes.state) {
         localUpdate.state = changes.state;
       }
-      await runTransaction(async (tx) => {
-        if (Object.keys(localUpdate).length > 0) {
-          await tx.update(issues).set(localUpdate).where(eq(issues.id, row.issueId));
-        }
-
-        // Clear batch pending
-        await tx
-          .update(triageState)
-          .set({ batchPending: false, pendingChanges: {}, updatedAt: new Date() })
-          .where(eq(triageState.id, row.id));
-      });
+      // localUpdate covers the same fields as issueUpdate, so it is never empty
+      // here. It commits together with the cleared flag.
+      await runTransaction([
+        typedDb.update(issues).set(localUpdate).where(eq(issues.id, row.issueId)),
+        clearBatchPendingQuery(row.id, userId),
+      ]);
 
       pushed++;
     } catch (err) {
@@ -298,4 +298,17 @@ export async function pushBatchChanges(
   }
 
   return { pushed, failed };
+}
+
+/**
+ * Builds, without running, the write that marks a user's triage row as pushed.
+ *
+ * @param triageId - The triage state row whose staged changes were sent.
+ * @param userId - The user the row belongs to.
+ */
+function clearBatchPendingQuery(triageId: string, userId: string) {
+  return typedDb
+    .update(triageState)
+    .set({ batchPending: false, pendingChanges: {}, updatedAt: new Date() })
+    .where(and(eq(triageState.id, triageId), eq(triageState.userId, userId)));
 }

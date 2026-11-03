@@ -34,6 +34,7 @@ These override statistical defaults. Follow them exactly.
 9. Provider writes must propagate failures; live sync and batch push must surface provider errors rather than swallowing them. UPSERT keys are issue `(repoId, providerIssueId)` and access token `(userId, provider)`.
 10. Keep PAT rate limiting on the shared `rate_limit_bucket` table and purge expired rows; do not reintroduce per-instance-only limits. Keys carry their scope (`pat:validate:<ip>`), and the purge horizon must be the longest window in use so one scope cannot reset another.
 11. Webhook auth is header-borne only: `X-Hub-Signature-256` (HMAC over the raw body) for GitHub, `X-Gitlab-Token` for GitLab. Never accept a secret in a query string.
+12. PAT sign-in identifies the user by the token's provider account, stored as `<instance>/<id>` in `access_token.providerAccountId` since GitLab ids repeat across instances. Provider-reported emails can be unverified, so an email only nominates a legacy row with a null `providerAccountId`, claimed when its stored token resolves to the same account.
 ## Style
 
 - TypeScript `strict:true`, `target:ES2017`, `jsx:react-jsx`.
@@ -64,7 +65,7 @@ These override statistical defaults. Follow them exactly.
 |---|---|
 | sync modes, deployment, providers | `docs/architecture.md` |
 | design language, shared UI pieces, `?data=` fixtures | `docs/architecture.md` ("Design Language") |
-| tokens, CSP, rate limit | `docs/security.md` |
+| tokens, PAT sign-in identity, CSP, rate limit | `docs/security.md` |
 | setup, PR checks | `CONTRIBUTING.md` |
 | env vars | `.env.example` |
 | human overview | `README.md` |

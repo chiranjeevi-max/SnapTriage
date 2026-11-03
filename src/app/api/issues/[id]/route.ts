@@ -128,6 +128,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     );
   }
 
+  // GitLab reads label lists as comma-separated, so a comma would split one name in two.
+  const labelNames = [...(labels?.add ?? []), ...(labels?.remove ?? [])];
+  if (repo.provider === "gitlab" && labelNames.some((name) => name.includes(","))) {
+    return NextResponse.json(
+      { error: "Label names cannot contain commas on gitlab" },
+      { status: 400 }
+    );
+  }
+
   // Provider writeback requires write access on the repo.
   if (
     (labels || assignees || state) &&
