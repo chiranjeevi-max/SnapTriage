@@ -11,6 +11,7 @@ import { typedDb } from "@/lib/db/query";
 import { accessTokens, accounts, rateLimitBuckets, users } from "@/lib/db/schema";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { authorizePat } from "@/features/auth/pat-provider";
+import { authLogger } from "@/lib/logger";
 
 vi.hoisted(() => {
   process.env.SQLITE_PATH = ":memory:";
@@ -81,6 +82,40 @@ describe("authorizePat", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("does not hand an OAuth user's legacy row to another account at the same instance", async () => {
+    // The old email match could store an impostor's token on an OAuth user's row.
+    await typedDb
+      .insert(users)
+      .values({ id: "oauth-victim", name: "Victim", email: "taken@example.com" });
+    await typedDb.insert(accounts).values({
+      userId: "oauth-victim",
+      type: "oauth",
+      provider: "github",
+      providerAccountId: "2000",
+    });
+    await seedLegacyPat("oauth-victim", "github", encrypt("ghp-impostor-old"));
+    stubProviders({
+      "ghp-impostor-old": { id: 2100, email: "taken@example.com" },
+      "ghp-impostor-new": { id: 2100, email: "taken@example.com" },
+    });
+
+    expect(await signIn("ghp-impostor-new", "github")).not.toBe("oauth-victim");
+  });
+
+  it("keeps a malformed token out of the failure log", async () => {
+    const logged = vi.spyOn(authLogger, "error");
+    stubProviders({});
+
+    const user = await authorizePat(
+      { token: "ghp-line\nbreak", provider: "github" },
+      signInRequest()
+    );
+
+    expect(user).toBeNull();
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("ghp-line");
   });
 
   it("does not sign in to another user who has the same email", async () => {

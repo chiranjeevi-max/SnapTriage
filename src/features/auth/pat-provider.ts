@@ -20,6 +20,7 @@ import {
   findUserByEmail,
   findUserIdByAccessToken,
   findUserIdByOAuthAccount,
+  hasOAuthLink,
   storeAccessToken,
   updateUser,
 } from "@/features/auth/user-repository";
@@ -72,7 +73,8 @@ async function findPatOwner(
  *
  * The email address only nominates a candidate. An OAuth link from the same
  * account to the candidate proves the claim; otherwise the candidate's stored
- * token must still resolve to the same account.
+ * token must still resolve to the same account, and no OAuth link of theirs may
+ * name another one.
  */
 async function claimLegacyPat(
   provider: TokenProvider,
@@ -87,15 +89,28 @@ async function claimLegacyPat(
   if (stored === null) return null;
   if (candidate.id === linked) return candidate.id;
 
-  try {
-    const owner = await validateToken(decrypt(stored), provider);
-    if (owner.id === account.id) return candidate.id;
-  } catch (error) {
-    // An unreadable or rejected token proves nothing about the account. Any
-    // other failure means the check could not run, and refusing this sign-in
-    // beats splitting the user in two.
-    if (!(error instanceof TokenDecryptionError || error instanceof InvalidTokenError)) {
-      throw error;
+  // At the OAuth instance the candidate's own OAuth link names another account,
+  // so the stored token can only have come from the old email match.
+  const contradicted =
+    account.instance === OAUTH_INSTANCES[provider] && (await hasOAuthLink(candidate.id, provider));
+
+  if (!contradicted) {
+    try {
+      const owner = await validateToken(decrypt(stored), provider);
+      if (owner.id === account.id) {
+        authLogger.info(
+          { ip: ip ?? "unattributed", provider, userId: candidate.id },
+          "Claimed a legacy PAT for its provider account"
+        );
+        return candidate.id;
+      }
+    } catch (error) {
+      // An unreadable or rejected token proves nothing about the account. Any
+      // other failure means the check could not run, and refusing this sign-in
+      // beats splitting the user in two.
+      if (!(error instanceof TokenDecryptionError || error instanceof InvalidTokenError)) {
+        throw error;
+      }
     }
   }
 
@@ -182,8 +197,16 @@ export async function authorizePat(
     );
     return user;
   } catch (error) {
-    const errMessage = error instanceof Error ? error.message : "Unknown error";
-    authLogger.error({ provider, error: errMessage }, "Failed PAT Auth");
+    // The class only: a message can carry the token (as an invalid header value)
+    // or, on Neon, every bound query parameter.
+    authLogger.error(
+      {
+        ip: ip ?? "unattributed",
+        provider,
+        error: error instanceof Error ? error.name : "unknown",
+      },
+      "Failed PAT Auth"
+    );
     return null;
   }
 }

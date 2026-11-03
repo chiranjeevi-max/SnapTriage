@@ -82,6 +82,20 @@ export async function findUserIdByOAuthAccount(
 }
 
 /**
+ * Whether a user has an OAuth link to a provider.
+ * @param userId - The user's ID.
+ * @param provider - Git provider name.
+ */
+export async function hasOAuthLink(userId: string, provider: string): Promise<boolean> {
+  const links = await typedDb
+    .select({ userId: accounts.userId })
+    .from(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.provider, provider)))
+    .limit(1);
+  return links.length > 0;
+}
+
+/**
  * Returns the PAT a user stored for a provider before provider accounts were
  * recorded, still encrypted.
  *
