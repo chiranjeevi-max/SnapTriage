@@ -81,7 +81,7 @@ Change is complete when:
 
 ## Don't
 
-- Never commit `.env*`, secrets, or `*.db*`. Never force-push `main`.
+- Never commit `.env*` other than the `.env.example` template, which holds placeholders only. Never commit secrets or `*.db*`. Never force-push `main`.
 - Never edit `drizzle/*` or `drizzle-pg/*` output, `.next/`, or `src/components/ui/*` primitives directly. Wrap them.
 - Never mock auth/payment providers in E2E. Never delete a failing test.
 
