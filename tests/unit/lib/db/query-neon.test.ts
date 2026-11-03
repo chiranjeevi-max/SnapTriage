@@ -29,7 +29,10 @@ const neon = vi.hoisted(() => {
   return { client, requests };
 });
 
-vi.mock("@neondatabase/serverless", () => ({ neon: () => neon.client }));
+vi.mock("@neondatabase/serverless", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@neondatabase/serverless")>()),
+  neon: () => neon.client,
+}));
 
 describe("runTransaction on Neon", () => {
   it("sends every write in one transaction request", async () => {

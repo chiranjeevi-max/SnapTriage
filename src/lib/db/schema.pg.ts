@@ -83,11 +83,15 @@ export const accessTokens = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
+    providerAccountId: text("providerAccountId"),
     token: text("token").notNull(),
     label: text("label"),
     createdAt: epochMs("createdAt").notNull(),
   },
-  (table) => [uniqueIndex("access_token_user_provider_unique").on(table.userId, table.provider)]
+  (table) => [
+    uniqueIndex("access_token_user_provider_unique").on(table.userId, table.provider),
+    uniqueIndex("access_token_provider_account_unique").on(table.provider, table.providerAccountId),
+  ]
 );
 
 export const savedViews = pgTable(
