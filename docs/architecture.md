@@ -40,6 +40,7 @@ Webhook updates (optional): a GitHub or GitLab webhook calling `/api/webhooks/[p
 ### Vercel (Serverless)
 - Requires `Postgres` since SQLite is not compatible with stateless serverless functions.
 - Neon is the recommended Postgres provider.
+- `npm run db:migrate` with `DATABASE_URL` set applies the Postgres migrations in `drizzle-pg/`, generated from `src/lib/db/schema.pg.ts`. The app itself still queries through the SQLite schema, so that copy stores what the SQLite columns write.
 
 ## Design Language
 

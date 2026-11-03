@@ -108,6 +108,45 @@ describe("sync engine", () => {
     expect(rows).toHaveLength(1);
   }, 30000);
 
+  it("refreshes a stored issue from a later sync", async () => {
+    const { syncRepo } = await import("@/features/sync/sync-engine");
+    const { typedDb } = await import("@/lib/db/query");
+    const { issues } = await import("@/lib/db/schema");
+    vi.mocked(fetch).mockResolvedValueOnce(
+      Response.json([
+        {
+          id: 999,
+          number: 1,
+          title: "Renamed issue",
+          body: "new body",
+          user: { login: "bob", avatar_url: "https://example.com/bob.png" },
+          state: "closed",
+          labels: [{ name: "p1" }],
+          assignees: [],
+          html_url: "https://github.com/octocat/repo-a/issues/1",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-03T00:00:00.000Z",
+        },
+      ])
+    );
+
+    await syncRepo("sync-repo-a", "sync-user");
+
+    const rows = await typedDb.select().from(issues).where(eq(issues.repoId, "sync-repo-a"));
+    expect(rows).toEqual([
+      expect.objectContaining({
+        title: "Renamed issue",
+        body: "new body",
+        author: "bob",
+        authorAvatar: "https://example.com/bob.png",
+        state: "closed",
+        labels: ["p1"],
+        assignees: [],
+        updatedAt: new Date("2026-01-03T00:00:00.000Z"),
+      }),
+    ]);
+  }, 30000);
+
   it("syncs multiple repos concurrently", async () => {
     const { syncAllRepos } = await import("@/features/sync/sync-engine");
     const { typedDb } = await import("@/lib/db/query");
