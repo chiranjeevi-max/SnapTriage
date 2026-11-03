@@ -123,10 +123,9 @@ export async function findLegacyAccessToken(
 /**
  * Creates a user together with their first Personal Access Token.
  *
- * Both rows are written by one `runTransaction` call. On SQLite they commit
- * together, so a token that cannot be stored, including one that lost a race
- * for the same provider account, leaves no user behind; Neon writes them in
- * order.
+ * Both rows are written by one `runTransaction` call and commit together, so
+ * a token that cannot be stored, including one that lost a race for the same
+ * provider account, leaves no user behind.
  *
  * @param user - User fields including pre-generated ID.
  * @param pat - The token to store for the new user.

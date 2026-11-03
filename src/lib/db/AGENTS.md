@@ -5,7 +5,7 @@ Dual-driver Drizzle layer. SQLite default, Neon Postgres when `DATABASE_URL` is 
 ## Rules
 
 - Import `typedDb` from `src/lib/db/query.ts` + `* as schema`. Never import raw `db` or add casts.
-- Writes that must land together go through `runTransaction(writes)`: build the queries and pass them unawaited. SQLite runs them in one synchronous transaction; Neon has no interactive transactions and runs them in order.
+- Writes that must land together go through `runTransaction(writes)`: build the queries and pass them unawaited. SQLite runs them in one synchronous transaction; Neon has no interactive transactions, so they go out as one batch that Neon commits as a whole.
 - Schema source is `src/lib/db/schema.ts` (singular tables, UUID `crypto.randomUUID()` PKs, `timestamp_ms`, JSON `labels/assignees/pendingChanges`).
 - Scope all app reads/writes by `userId`. Rely on `onDelete:cascade` (`repo→issue→triage_state`, `user→account/session/access_token`).
 - `DATABASE_URL` empty = SQLite at `SQLITE_PATH` (`./data/snaptriage.db`, `mkdir -p` + WAL in `index.ts`). Set = Postgres. `drizzle.config.ts` mirrors this switch.

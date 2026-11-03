@@ -281,7 +281,7 @@ export async function pushBatchChanges(
         localUpdate.state = changes.state;
       }
       // localUpdate covers the same fields as issueUpdate, so it is never empty
-      // here. On SQLite it commits together with the cleared flag.
+      // here. It commits together with the cleared flag.
       await runTransaction([
         typedDb.update(issues).set(localUpdate).where(eq(issues.id, row.issueId)),
         clearBatchPendingQuery(row.id, userId),
