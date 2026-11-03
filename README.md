@@ -76,7 +76,7 @@ Open [http://localhost:3000](http://localhost:3000). Signed-out visitors get the
 
 ### Vercel
 
-Requires a Postgres database (e.g. [Neon](https://neon.tech)) since SQLite is not compatible with serverless environments. Set `DATABASE_URL` in your environment variables, then run `npm run db:migrate` with the same `DATABASE_URL` to create the tables, and again whenever an update brings new migrations.
+Requires a Postgres database (e.g. [Neon](https://neon.tech)) since SQLite is not compatible with serverless environments. Set `DATABASE_URL` in your environment variables, then run `npm run db:migrate` with the same `DATABASE_URL` to create the tables, and again whenever an update brings new migrations. It expects a database without those tables; to adopt one whose tables were created by hand, see [Vercel (Serverless)](docs/architecture.md#vercel-serverless).
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fchiranjeevi-max%2Fsnaptriage&env=AUTH_SECRET,AUTH_GITHUB_ID,AUTH_GITHUB_SECRET&envDescription=Required%20environment%20variables&project-name=snaptriage)
 

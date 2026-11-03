@@ -41,6 +41,15 @@ Webhook updates (optional): a GitHub or GitLab webhook calling `/api/webhooks/[p
 - Requires `Postgres` since SQLite is not compatible with stateless serverless functions.
 - Neon is the recommended Postgres provider.
 - `npm run db:migrate` with `DATABASE_URL` set applies the Postgres migrations in `drizzle-pg/`, generated from `src/lib/db/schema.pg.ts`. The app itself still queries through the SQLite schema, so that copy stores what the SQLite columns write.
+- `db:migrate` runs every migration newer than the last one recorded in `drizzle.__drizzle_migrations`, all in one transaction. A database whose tables were created by hand has none recorded, so `0000` stops at the first table that already exists and nothing changes. To adopt one, export its data, drop its tables, migrate, and load the data back. If `pg_dump --schema-only` shows exactly what `drizzle-pg/0000_jittery_dreadnoughts.sql` creates, you can instead record that migration as applied and migrate on from there:
+
+  ```sql
+  CREATE SCHEMA IF NOT EXISTS drizzle;
+  CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL, created_at bigint);
+  -- The file's SHA-256 and its "when" in drizzle-pg/meta/_journal.json.
+  INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+  VALUES ('9093841b1621d9a6c68465cd8b7d55729e2f6457050469dbd55f53be909f397d', 1793682804053);
+  ```
 
 ## Design Language
 
