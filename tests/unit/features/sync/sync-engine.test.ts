@@ -133,6 +133,11 @@ describe("sync engine", () => {
     const { syncRepo } = await import("@/features/sync/sync-engine");
     const { typedDb } = await import("@/lib/db/query");
     const { issues } = await import("@/lib/db/schema");
+    await syncRepo("sync-repo-a", "sync-user");
+    const [stored] = await typedDb
+      .select({ id: issues.id })
+      .from(issues)
+      .where(eq(issues.repoId, "sync-repo-a"));
     vi.mocked(fetch).mockResolvedValueOnce(
       Response.json([
         {
@@ -156,6 +161,7 @@ describe("sync engine", () => {
     const rows = await typedDb.select().from(issues).where(eq(issues.repoId, "sync-repo-a"));
     expect(rows).toEqual([
       expect.objectContaining({
+        id: stored?.id,
         title: "Renamed issue",
         body: "new body",
         author: "bob",
