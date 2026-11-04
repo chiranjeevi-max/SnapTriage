@@ -126,11 +126,14 @@ SnapTriage is production-ready today. What's next:
 |---------|-------------|
 | `npm run dev` | Start dev server |
 | `npm run build` | Production build |
+| `npm run start` | Serve the production build |
 | `npm run lint` | Run ESLint |
 | `npm run typecheck` | TypeScript type check |
-| `npm test` | Run unit tests |
+| `npm test` | Run unit tests once |
+| `npm run test:watch` | Run unit tests in watch mode |
 | `npm run test:e2e` | Run E2E tests |
 | `npm run format` | Format with Prettier |
+| `npm run format:check` | Check formatting without writing |
 | `npm run db:generate` | Generate Drizzle migrations for SQLite and Postgres |
 | `npm run db:migrate` | Run migrations (on Postgres when `DATABASE_URL` is set) |
 | `npm run db:studio` | Open Drizzle Studio |
@@ -145,8 +148,8 @@ See [`.env.example`](.env.example) for the full list. Required:
 | Variable | Description |
 |----------|-------------|
 | `AUTH_SECRET` | Secret for Auth.js session and AES key derivation |
-| `AUTH_GITHUB_ID` | GitHub OAuth App client ID |
-| `AUTH_GITHUB_SECRET` | GitHub OAuth App client secret |
+
+For GitHub OAuth sign-in, also set `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET`. GitLab-only or PAT-only deployments can leave them unset.
 
 Optional:
 
@@ -159,7 +162,6 @@ Optional:
 | `AUTH_GITLAB_ID` | GitLab OAuth App ID | |
 | `AUTH_GITLAB_SECRET` | GitLab OAuth App secret | |
 | `AUTH_GITLAB_URL` | Self-hosted GitLab URL | `https://gitlab.com` |
-| `SYNC_INTERVAL_MS` | Auto-sync interval | `300000` (5 min) |
 | `WEBHOOK_SECRET` | Shared secret for GitHub/GitLab webhook sync, sent in the provider's signature header (never in the URL) | (webhook sync disabled) |
 | `TRUSTED_PROXY_HOPS` | How many proxies append the client address to `X-Forwarded-For`; the rate limiter trusts only those entries | `0` |
 
