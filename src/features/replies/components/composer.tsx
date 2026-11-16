@@ -27,7 +27,7 @@
  */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, ExternalLink, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -119,6 +119,37 @@ interface ComposerProps {
 const stashedFlush = new Map<string, string>();
 
 /**
+ * Listeners for {@link stashedFlush}, so a flush that lands *after* the composer
+ * mounted still reaches it.
+ *
+ * The map is written from a promise callback with no component in scope, so
+ * nothing would notify a mounted composer of a late entry without this.
+ */
+const stashListeners = new Set<() => void>();
+
+/**
+ * Write or clear the stashed copy and wake any mounted composer.
+ *
+ * @param issueId - The issue the text belongs to.
+ * @param body - The text, or `null` to retire the entry.
+ */
+function setStashed(issueId: string, body: string | null): void {
+  if (body === null) stashedFlush.delete(issueId);
+  else stashedFlush.set(issueId, body);
+  for (const listener of stashListeners) listener();
+}
+
+function subscribeToStash(listener: () => void): () => void {
+  stashListeners.add(listener);
+  return () => stashListeners.delete(listener);
+}
+
+/** The snapshot React compares between renders. Identity-stable while unchanged. */
+function stashSnapshot(issueId: string): string | null {
+  return stashedFlush.get(issueId) ?? null;
+}
+
+/**
  * Reply composer for one issue.
  *
  * @param props - {@link ComposerProps}
@@ -194,17 +225,29 @@ export function Composer({ issue, className }: ComposerProps) {
   const notice = conflict ?? (lateArrival ? STORED_DRAFT_ARRIVED_LATE : null);
 
   // Text an unmount flush could not save, recovered when the composer is opened
-  // again. Read once on mount and removed from the stash, so it is offered
-  // exactly once: the user either keeps it or discards it deliberately, rather
-  // than finding the same text reappear every time the pane is opened.
-  const [recovered] = useState(() => {
-    const stashed = stashedFlush.get(issue.id);
-    if (stashed === undefined) return null;
-    stashedFlush.delete(issue.id);
-    return stashed;
-  });
-  /** Set when the user has answered the recovery banner, either way. */
-  const [recoveredDismissed, setRecoveredDismissed] = useState(false);
+  // again. Subscribed rather than read once: the map outlives the component, so a
+  // flush that fails *after* this mount has no other way to reach a composer that
+  // is already on screen.
+  //
+  // The entry is deliberately not removed on read — the user may leave without
+  // answering, and it is only retired when they choose.
+  const recovered = useSyncExternalStore(
+    subscribeToStash,
+    useCallback(() => stashSnapshot(issue.id), [issue.id]),
+    () => null
+  );
+  /** Set once the user has answered, either way. */
+  const [recoveryAnswered, setRecoveryAnswered] = useState(false);
+
+  /** Answer the banner, which is also what retires the stashed copy. */
+  function answerRecovery(keep: boolean) {
+    if (keep && recovered !== null) {
+      setPinnedVersion(version);
+      setTyped(recovered);
+    }
+    setStashed(issue.id, null);
+    setRecoveryAnswered(true);
+  }
 
   // Send is withheld until the draft has loaded. Without this an early Ctrl+Enter
   // would post with no version, the server would skip its version predicate, and
@@ -282,7 +325,7 @@ export function Composer({ issue, className }: ComposerProps) {
           // already gone, so a 400, a 401, a 5xx or a 409 all leave the user with
           // nothing unless the text is held somewhere they can get it back from.
           if (!res.ok) {
-            stashedFlush.set(issue.id, pending.body);
+            setStashed(issue.id, pending.body);
             return;
           }
           // The flush wrote a revision the cache does not know about. Without
@@ -291,7 +334,7 @@ export function Composer({ issue, className }: ComposerProps) {
           void queryClient.invalidateQueries({ queryKey: ["draft", issue.id] });
         })
         .catch(() => {
-          stashedFlush.set(issue.id, pending.body);
+          setStashed(issue.id, pending.body);
         });
     };
   }, [issue.id, queryClient]);
@@ -384,6 +427,11 @@ export function Composer({ issue, className }: ComposerProps) {
     setTypedBeforeLoad(false);
     setConflict(null);
     setSaveFailure(null);
+    // The editor is adopting the stored copy, so it must follow that copy's
+    // version again. Leaving the pin set meant the next send or discard carried
+    // the version this tab was writing before the reload — a revision the stored
+    // draft has already moved past — and the server refused it as stale.
+    setPinnedVersion(null);
   }
 
   /**
@@ -513,7 +561,7 @@ export function Composer({ issue, className }: ComposerProps) {
         </div>
       )}
 
-      {recovered !== null && !recoveredDismissed && typed === null && (
+      {recovered !== null && !recoveryAnswered && typed === null && (
         <div role="alert" className="mb-3 rounded-md border border-dashed px-3 py-2">
           <p className="text-xs leading-relaxed">{RECOVERED_TEXT_NOTICE}</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
@@ -524,13 +572,7 @@ export function Composer({ issue, className }: ComposerProps) {
               variant="outline"
               size="sm"
               className="h-8 px-2.5 text-xs"
-              // Pins the base at the loaded version: this text was never written
-              // against one, so the first save has to be conditional on the draft
-              // as it stands now rather than on nothing.
-              onClick={() => {
-                setPinnedVersion(draft?.version ?? 0);
-                setTyped(recovered);
-              }}
+              onClick={() => answerRecovery(true)}
             >
               Keep my text
             </Button>
@@ -538,7 +580,7 @@ export function Composer({ issue, className }: ComposerProps) {
               variant="ghost"
               size="sm"
               className="h-8 px-2.5 text-xs"
-              onClick={() => setRecoveredDismissed(true)}
+              onClick={() => answerRecovery(false)}
             >
               Discard
             </Button>

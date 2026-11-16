@@ -336,6 +336,65 @@ describe("githubProvider.fetchComments", () => {
     // One request only: the retry never ran.
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
+
+  /**
+   * @target githubProvider.fetchComments
+   * @dependencies ghFetch
+   * @scenario A rate-limited read retries inside the budget, and the retry then
+   *           stalls with no further response
+   * @expectedOutput The retry is aborted at the deadline rather than hanging. The
+   *                 retry used to inherit the caller's signal after its timer had
+   *                 been cleared, so it had no deadline at all — the one path a
+   *                 stalled provider could hold open indefinitely.
+   */
+  it("should give the retry its own deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      // First response: rate limited, resetting a moment from now.
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(
+          { message: "rate limited" },
+          {
+            status: 403,
+            headers: {
+              "x-ratelimit-remaining": "0",
+              "x-ratelimit-reset": String(Math.floor(Date.now() / 1000)),
+            },
+          }
+        )
+      );
+      // The retry never answers, and only rejects when its signal aborts.
+      mockFetch.mockImplementationOnce(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            const signal = init.signal as AbortSignal;
+            if (!signal) {
+              // No signal means no deadline: the failure this test exists for.
+              return;
+            }
+            signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+          })
+      );
+
+      let settled: "ok" | "rejected" | null = null;
+      void githubProvider.fetchComments?.("octo", "repo", 7, "token-abc").then(
+        () => {
+          settled = "ok";
+        },
+        () => {
+          settled = "rejected";
+        }
+      );
+
+      // Past the retry wait and past the whole request budget.
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(settled).toBe("rejected");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("githubProvider.createComment", () => {

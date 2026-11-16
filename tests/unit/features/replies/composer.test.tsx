@@ -364,9 +364,9 @@ describe("Composer", () => {
     fireEvent.change(textarea(), { target: { value: "Ready to go" } });
     fireEvent.keyDown(textarea(), { key: "Enter", ctrlKey: true });
 
-    const sends = vi.mocked(global.fetch).mock.calls.filter(([input]) =>
-      String(input).endsWith("/replies")
-    );
+    const sends = vi
+      .mocked(global.fetch)
+      .mock.calls.filter(([input]) => String(input).endsWith("/replies"));
     expect(sends).toHaveLength(0);
     expect(textarea().value).toBe("Ready to go");
 
@@ -400,6 +400,104 @@ describe("Composer", () => {
 
     expect(await screen.findByText(/may already be posted/i)).toBeDefined();
     expect(screen.queryByRole("button", { name: /^send/i })).toBeNull();
+  });
+
+  /**
+   * @target Composer
+   * @dependencies useDiscardDraft, reloadStoredDraft
+   * @scenario The user types against version 1, a conflict is raised, they reload
+   *           the stored draft (now version 3), and then discard
+   * @expectedOutput Discard carries version 3, the revision on screen. The pin from
+   *                 before the reload used to survive it, so every later send and
+   *                 discard named a version the stored draft had already passed and
+   *                 the server refused them as stale.
+   */
+  it("should discard with the reloaded version after a conflict reload", async () => {
+    let draftVersion = 1;
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      // The conflict happens on the autosave. By the time the user reloads, the
+      // other tab's version is the stored one, so the reload's GET must report it.
+      if (url.includes("/draft") && init?.method === "PUT") {
+        draftVersion = 3;
+        return json({ error: "This draft changed in another tab." }, 409);
+      }
+      if (url.includes("/draft") && init?.method === "DELETE") {
+        return json({ ok: true });
+      }
+      if (url.endsWith("/saved-replies")) return json([]);
+      if (url.startsWith("/api/issues") && url.includes("/draft")) {
+        return json({
+          id: "d1",
+          body: "",
+          version: draftVersion,
+          sendAttemptedAt: null,
+          sendClaimId: null,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      return json({});
+    }) as unknown as typeof fetch;
+
+    renderComposer();
+    await waitFor(() => expect(textarea()).toBeDefined());
+
+    fireEvent.change(textarea(), { target: { value: TYPED } });
+
+    // The conflict banner appears once the collided autosave answers.
+    const reload = await screen.findByRole(
+      "button",
+      { name: /reload the stored draft/i },
+      {
+        timeout: 3_000,
+      }
+    );
+    fireEvent.click(reload);
+
+    // The reload is async: it refetches, then clears the pin and the typed text.
+    // Clicking discard before that settles would read the pre-reload base and
+    // assert nothing about the reset this test exists for.
+    await waitFor(() => expect(textarea().value).toBe(""));
+
+    fireEvent.click(screen.getByRole("button", { name: /discard/i }));
+
+    await waitFor(() => {
+      const del = vi
+        .mocked(global.fetch)
+        .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "DELETE");
+      expect(del).toBeDefined();
+      expect(String(del?.[0])).toContain("version=3");
+    });
+  });
+
+  /**
+   * @target Composer
+   * @dependencies useSendReply
+   * @scenario The server answers 422 for a definitive provider rejection
+   * @expectedOutput Send stays available and the text is kept. A 422 is a refusal,
+   *                 so withholding Send would lock the user out of a reply the
+   *                 provider declined outright.
+   */
+  it("should keep Send available after a definitive rejection", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/draft")) return json(null);
+      if (url.endsWith("/saved-replies")) return json([]);
+      if (url.endsWith("/replies") && init?.method === "POST") {
+        return json({ error: "The provider rejected this reply." }, 422);
+      }
+      return json({});
+    }) as unknown as typeof fetch;
+
+    renderComposer();
+    await waitFor(() => expect(textarea()).toBeDefined());
+
+    fireEvent.change(textarea(), { target: { value: "Thanks!" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^send/i })).not.toBeNull());
+    expect(screen.queryByText(/may already be posted/i)).toBeNull();
+    expect(textarea().value).toBe("Thanks!");
   });
 
   it("shows the character counter only near the limit and never blocks typing below it", async () => {

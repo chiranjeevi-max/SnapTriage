@@ -125,7 +125,14 @@ async function ghFetch(
         await sleep(waitMs);
         if (signal.aborted) throw new Error("GitHub request aborted while waiting to retry");
         release();
-        return ghFetch(url, token, { ...init, signal, deadlineAt });
+        // The signal is deliberately NOT carried over: it belongs to the
+        // controller this call created, whose timer `release` just cleared. Passing
+        // it down gave the retry a signal with no timer behind it, so the retry had
+        // no deadline at all. Dropping it lets the recursive call build a fresh
+        // controller from the inherited, still-absolute `deadlineAt`.
+        const next: RequestInit & { deadlineAt?: number } = { ...init, deadlineAt };
+        delete next.signal;
+        return ghFetch(url, token, next);
       }
     }
   }
