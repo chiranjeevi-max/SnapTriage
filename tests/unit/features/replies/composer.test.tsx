@@ -211,7 +211,10 @@ describe("Composer", () => {
     // The text the user typed is still there; the conflict is a banner, not a
     // silent replacement with the stored version.
     expect(textarea().value).toBe(TYPED);
-    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false);
+    // Send stays closed while the conflict is unresolved: posting would publish
+    // text the stored draft does not contain, which is the state the banner asks
+    // the user to settle first.
+    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("asks before a saved reply would overwrite text already in the composer", async () => {

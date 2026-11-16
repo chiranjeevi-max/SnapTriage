@@ -48,6 +48,7 @@ import {
   useDiscardDraft,
   useDraft,
   useSaveDraft,
+  useReleaseSendClaim,
   useSavedReplies,
   useSendReply,
   type SavedReply,
@@ -107,6 +108,7 @@ export function Composer({ issue, className }: ComposerProps) {
   const saveDraft = useSaveDraft(issue.id);
   const discardDraft = useDiscardDraft(issue.id);
   const send = useSendReply(issue.id);
+  const releaseClaim = useReleaseSendClaim(issue.id);
   const savedReplies = useSavedReplies();
   const setSavedReplyPickerOpen = useKeyboardStore((s) => s.setSavedReplyPickerOpen);
 
@@ -124,6 +126,16 @@ export function Composer({ issue, className }: ComposerProps) {
    * tab wrote, which is exactly the collision the version check prevents.
    */
   const [typedBeforeLoad, setTypedBeforeLoad] = useState(false);
+  /**
+   * The draft revision this editor is writing against, once it has diverged.
+   *
+   * `null` means "follow the loaded draft", which is correct until something is
+   * typed. After that it is pinned and moved only by this editor's own save, or
+   * by an explicit "keep mine". Following `draftQuery.data` instead would adopt
+   * another tab's version silently and let this editor's older text save over
+   * the newer draft without ever raising a conflict.
+   */
+  const [pinnedVersion, setPinnedVersion] = useState<number | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   /** Caret position to restore after a programmatic insert. */
@@ -132,7 +144,7 @@ export function Composer({ issue, className }: ComposerProps) {
 
   const draft = draftQuery.data ?? null;
   const storedBody = draft?.body ?? "";
-  const version = draft?.version ?? 0;
+  const version = pinnedVersion ?? draft?.version ?? 0;
   const text = typed ?? storedBody;
   const dirty = typed !== null && typed !== storedBody;
 
@@ -157,6 +169,12 @@ export function Composer({ issue, className }: ComposerProps) {
     // the unconfirmed notice after every retried send.
     storedBody !== typed;
   const notice = conflict ?? (lateArrival ? STORED_DRAFT_ARRIVED_LATE : null);
+
+  // Send is withheld until the draft has loaded. Without this an early Ctrl+Enter
+  // would post with no version, the server would skip its version predicate, and
+  // an unread draft could be published over and then deleted.
+  const draftReady = draftQuery.isSuccess;
+  const sendBlocked = !draftReady || notice !== null;
 
   // The counter appears only inside the margin, and only then does it earn a
   // sentence: below the margin the composer shows nothing rather than a count
@@ -206,7 +224,13 @@ export function Composer({ issue, className }: ComposerProps) {
       saveDraftNow(
         { body: text, expectedVersion: version },
         {
-          onSuccess: () => setSaveFailure(null),
+          onSuccess: (saved) => {
+            setSaveFailure(null);
+            setTypedBeforeLoad(false);
+            // This editor's own write is the one case where the base may move:
+            // the next save has to carry the version the server just stored.
+            setPinnedVersion(saved.version);
+          },
           onError: (error) => {
             if (error instanceof DraftConflictError) {
               setConflict(error.message);
@@ -232,6 +256,10 @@ export function Composer({ issue, className }: ComposerProps) {
    */
   function noteTyped(next: string) {
     if (draftQuery.data === undefined) setTypedBeforeLoad(true);
+    // Pin the write base at the first keystroke. From here the load result no
+    // longer decides which revision this text belongs to, so a refetch triggered
+    // by another tab cannot rebase it silently.
+    setPinnedVersion((current) => current ?? draft?.version ?? 0);
     setTyped(next);
     setConflict(null);
   }
@@ -256,25 +284,50 @@ export function Composer({ issue, className }: ComposerProps) {
     setPickerOpen(false);
   }
 
-  /** Take the stored draft, discarding anything typed here. */
+  /**
+   * Take the stored draft, discarding anything typed here.
+   *
+   * Only on a successful read. TanStack reports a failed refetch in the result
+   * rather than throwing, so awaiting alone proves nothing: clearing on failure
+   * would discard the typed text and drop the conflict banner while leaving the
+   * stale cache in place, which loses the user's work and hides why.
+   */
   async function reloadStoredDraft() {
-    await draftQuery.refetch();
+    const result = await draftQuery.refetch();
+    if (!result.isSuccess) {
+      setSaveFailure("Could not reload the stored draft. Your text is still here.");
+      return;
+    }
     setTyped(null);
     setTypedBeforeLoad(false);
     setConflict(null);
     setSaveFailure(null);
   }
 
-  /** Keep the typed text, adopting the freshly read version so the next save lands. */
+  /**
+   * Keep the typed text, adopting the freshly read version so the next save lands.
+   *
+   * Same rule as {@link reloadStoredDraft}: a failed read leaves the conflict in
+   * place, because adopting an unknown version would write the text against a
+   * revision this editor never saw.
+   */
   async function keepMine() {
-    await draftQuery.refetch();
+    const result = await draftQuery.refetch();
+    if (!result.isSuccess) {
+      setSaveFailure("Could not reload the stored draft. Your text is still here.");
+      return;
+    }
+    // The user chose this text over the stored copy, so the base moves to what
+    // the server just returned. That is the one deliberate rebase, and without it
+    // every later save would collide with the version the other tab wrote.
+    setPinnedVersion(result.data?.version ?? 0);
     setTypedBeforeLoad(false);
     setConflict(null);
     setSaveFailure(null);
   }
 
   function handleSend() {
-    if (!canSend(sendState, text) || over) return;
+    if (!canSend(sendState, text) || over || sendBlocked) return;
     send.mutate(
       // The version on screen when Send was pressed. The server refuses a send
       // whose draft has moved on, which is what stops this tab from publishing
@@ -335,9 +388,23 @@ export function Composer({ issue, className }: ComposerProps) {
           className="mb-3 flex items-start gap-2 rounded-md border border-dashed px-3 py-2"
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-          <p className="min-w-0 break-words text-xs leading-relaxed [overflow-wrap:anywhere]">
-            {unconfirmedNotice(issue.url)}
-          </p>
+          <div className="min-w-0">
+            <p className="break-words text-xs leading-relaxed [overflow-wrap:anywhere]">
+              {unconfirmedNotice(issue.url)}
+            </p>
+            {/* The only exit when the provider never answers: the user looks at
+                the issue and says the outcome is settled, which releases the
+                claim so this draft can be edited or sent again. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2 h-8 px-2.5 text-xs"
+              disabled={releaseClaim.isPending}
+              onClick={() => releaseClaim.mutate()}
+            >
+              {releaseClaim.isPending ? "Releasing…" : "I checked the issue"}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -427,7 +494,7 @@ export function Composer({ issue, className }: ComposerProps) {
               <Button
                 size="sm"
                 className="h-9 gap-1.5 px-3 text-xs"
-                disabled={!canSend(sendState, text) || over}
+                disabled={!canSend(sendState, text) || over || sendBlocked}
                 onClick={handleSend}
               >
                 <Send className="h-3.5 w-3.5" />

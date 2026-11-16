@@ -14,8 +14,10 @@ export const dynamic = "force-dynamic";
  * leaving it behind would resurrect half-written text the next time the issue is
  * opened.
  *
+ * `PATCH` releases a send claim the user has resolved by checking the provider.
+ *
  * - **Endpoint:** `/api/issues/:id/draft`
- * - **HTTP Methods:** GET, PUT, DELETE
+ * - **HTTP Methods:** GET, PUT, PATCH, DELETE
  * - **Auth:** Required (session-based)
  */
 import { NextResponse } from "next/server";
@@ -24,6 +26,7 @@ import {
   clearDraft,
   findDraft,
   loadReplyTarget,
+  releaseSendClaim,
   saveDraft,
 } from "@/features/replies/reply-service";
 import { saveDraftSchema, parseBody } from "@/lib/validations";
@@ -118,6 +121,37 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       },
       { status: 409 }
     );
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+/**
+ * Releases a send claim the user has checked on the provider.
+ *
+ * Reaching a definitive answer is impossible when the provider is unreachable,
+ * so the user resolves it: they look at the issue, then say so. Refusing this
+ * would leave the draft claimed forever, with every save and send answered by a
+ * message telling them to do the thing this endpoint exists for.
+ *
+ * @param _req - Incoming request (unused).
+ * @param params - Dynamic route params containing `id`.
+ */
+export async function PATCH(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const target = await loadReplyTarget(session.user.id, id);
+  if (!target) {
+    return NextResponse.json({ error: "Issue not found" }, { status: 404 });
+  }
+
+  const released = await releaseSendClaim(session.user.id, id);
+  if (!released) {
+    return NextResponse.json({ error: "This draft has no unresolved send" }, { status: 404 });
   }
 
   return NextResponse.json({ ok: true });

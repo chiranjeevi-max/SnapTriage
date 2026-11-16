@@ -1,0 +1,1 @@
+ALTER TABLE `follow_up` ADD `attemptedAt` integer;

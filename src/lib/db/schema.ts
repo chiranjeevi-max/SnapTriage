@@ -481,12 +481,31 @@ export const followUps = sqliteTable(
      * makes the check honest: only a closed → open change is a reopen.
      */
     stateAtBaseline: text("stateAtBaseline").notNull().default("open"),
+    /**
+     * The issue state the last check actually observed.
+     *
+     * `stateAtBaseline` alone cannot see a reopen that happens between checks:
+     * armed open, observed closed, observed open again reads as "open then open".
+     * Comparing consecutive observations catches the transition, and it is
+     * written only when a check completes so a failed read cannot move it.
+     */
+    lastObservedState: text("lastObservedState"),
     /** Comment id whose review dismissed the resurface, so it cannot raise again. */
     reviewedCommentId: text("reviewedCommentId"),
     /** Why the issue most recently came back, for the queue's one-line reason. */
     reason: text("reason"),
     /** When that reason was computed, so the UI can show its age honestly. */
     checkedAt: integer("checkedAt", { mode: "timestamp_ms" }),
+    /**
+     * When this row was last attempted, whether or not the attempt succeeded.
+     *
+     * Separate from `checkedAt`, which only moves on a completed check, so the
+     * UI can keep showing the age of a successful result. Scheduling reads this
+     * one: with only `checkedAt` to order by, a row whose provider read keeps
+     * failing never advances and occupies the batch on every pass, starving the
+     * rows behind it.
+     */
+    attemptedAt: integer("attemptedAt", { mode: "timestamp_ms" }),
     createdAt: integer("createdAt", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),

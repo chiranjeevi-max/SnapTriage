@@ -20,7 +20,7 @@
  * That is weaker than a distributed transaction. Recovering an unconfirmed send
  * is a manual act: the user checks the issue before trying again.
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { issues, providerIdentities, replyDrafts, repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
@@ -431,6 +431,39 @@ async function claimAttempt(
   // an unresolved attempt means check the provider, a stale draft means reload.
   const current = await findDraft(userId, issueId);
   return current?.sendAttemptedAt ? "unresolved" : "stale";
+}
+
+/**
+ * Release a send claim the user has checked and resolved.
+ *
+ * The only other paths that clear `sendAttemptedAt` are a confirmed success and
+ * a definitive provider rejection. When the provider is unreachable both are
+ * unavailable, so without this the user is locked out of the issue: every save,
+ * send, and discard returns 409 under a message telling them to check the issue,
+ * and checking it changes nothing.
+ *
+ * This is user-initiated on purpose. The app cannot tell whether the comment was
+ * posted, so clearing the marker automatically would reintroduce the duplicate
+ * it exists to prevent.
+ *
+ * @param userId - The authenticated user.
+ * @param issueId - The issue being reconciled.
+ * @returns Whether a claimed draft was released.
+ */
+export async function releaseSendClaim(userId: string, issueId: string): Promise<boolean> {
+  const released = await typedDb
+    .update(replyDrafts)
+    .set({ sendAttemptedAt: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(replyDrafts.issueId, issueId),
+        eq(replyDrafts.userId, userId),
+        isNotNull(replyDrafts.sendAttemptedAt)
+      )
+    )
+    .returning({ id: replyDrafts.id });
+
+  return released.length > 0;
 }
 
 /**

@@ -24,7 +24,8 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { findPresetRow, toPreset } from "@/features/presets/preset-repository";
-import { resolvePreset } from "@/features/presets/types";
+import { effectiveTriageState, resolvePreset } from "@/features/presets/types";
+import type { PendingChanges } from "@/features/triage/types";
 import {
   applyTriage,
   loadTriageContext,
@@ -83,9 +84,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const mode = resolveTriageMode(repo.syncMode, batch);
+  // A batch repository keeps provider values in two places: the cached issue row
+  // and the staged diff. Resolving against the row alone reports a preset as a
+  // no-op whenever a staged change contradicts it, and the push then applies that
+  // staged change instead of the preset.
+  const staged = (triage?.pendingChanges ?? null) as PendingChanges | null;
+  const effective = mode === "batch" ? effectiveTriageState(issue, staged) : issue;
+
   const resolution = resolvePreset(preset.actions, {
-    labels: issue.labels ?? [],
-    assignees: issue.assignees ?? [],
+    labels: effective.labels ?? [],
+    assignees: effective.assignees ?? [],
     triage: triage ? { priority: triage.priority } : null,
   });
 

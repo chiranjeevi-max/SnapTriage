@@ -37,6 +37,7 @@ import type { IssueWithTriage } from "@/features/inbox/use-issues";
 import { describeActions, hasPresetActions } from "@/features/presets/preset-actions";
 import {
   describeResolution,
+  effectiveTriageState,
   resolvePreset,
   PRESET_LIMIT_PER_REPO,
   type PresetActions,
@@ -110,7 +111,16 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
   );
 
   const resolution: PresetResolution | null = useMemo(
-    () => (selected ? resolvePreset(selected.actions, issue) : null),
+    () =>
+      selected
+        ? resolvePreset(
+            selected.actions,
+            // Resolve against what the push will produce in batch mode, so the
+            // preview matches the diff the server computes. A staged removal of a
+            // label the preset adds would otherwise read as a no-op here too.
+            { ...issue, ...effectiveTriageState(issue, issue.triage?.pendingChanges) }
+          )
+        : null,
     [selected, issue]
   );
 

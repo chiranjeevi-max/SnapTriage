@@ -20,7 +20,7 @@
  * previews with the same function the server applies with.
  */
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
-import type { TriagePayload } from "@/features/triage/types";
+import type { PendingChanges, TriagePayload } from "@/features/triage/types";
 
 /**
  * The parts of a triage payload a preset may carry.
@@ -100,6 +100,38 @@ export const PRESET_NAME_LIMIT = 80;
 export type ResolvableIssue = Pick<IssueWithTriage, "labels" | "assignees"> & {
   triage?: { priority: number | null } | null;
 };
+
+/**
+ * Report the labels and assignees an issue will have once a batch is pushed.
+ *
+ * A batch repository keeps provider values in two places: the cached issue row
+ * and `triage_state.pendingChanges`. Resolving a preset against the cached row
+ * alone gets the wrong answer whenever a staged change contradicts it. If the
+ * row still says `bug` and the staged change removes `bug`, a preset that adds
+ * `bug` looks like a no-op, so no write is queued and the push then removes the
+ * label the preset was asked to apply.
+ *
+ * @param issue - The cached issue, holding the last known provider values.
+ * @param pending - The staged diff, or `null` when nothing is staged.
+ * @returns The effective label and assignee sets.
+ */
+export function effectiveTriageState(
+  issue: Pick<ResolvableIssue, "labels" | "assignees">,
+  pending: Pick<PendingChanges, "labels" | "assignees"> | null | undefined
+): Pick<ResolvableIssue, "labels" | "assignees"> {
+  const apply = (current: string[], diff: { add?: string[]; remove?: string[] } | undefined) => {
+    if (!diff) return current;
+    const values = new Set(current);
+    for (const value of diff.remove ?? []) values.delete(value);
+    for (const value of diff.add ?? []) values.add(value);
+    return [...values];
+  };
+
+  return {
+    labels: apply(issue.labels, pending?.labels),
+    assignees: apply(issue.assignees, pending?.assignees),
+  };
+}
 
 /**
  * Build the change a preset makes to one issue.

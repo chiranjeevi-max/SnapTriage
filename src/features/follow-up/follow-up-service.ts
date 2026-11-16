@@ -19,7 +19,7 @@ import { followUps, issues, repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { providerLogger } from "@/lib/logger";
-import type { ProviderName } from "@/lib/provider-interface";
+import type { ProviderComment, ProviderName } from "@/lib/provider-interface";
 import {
   detectFollowUp,
   newestComment,
@@ -33,6 +33,15 @@ const MAX_CHECKS_PER_PASS = 20;
 
 /** How long a checked issue is left alone before it is re-checked. */
 const RECHECK_COOLDOWN_MS = 60_000;
+
+/**
+ * How many comment pages one check may read.
+ *
+ * A bound is what keeps a long thread from turning a pass into an unbounded
+ * crawl. Three pages covers ninety comments after the baseline, which is well
+ * past the point where a real conversation is still waiting on a reply.
+ */
+const MAX_COMMENT_PAGES_PER_CHECK = 3;
 
 /** One row of the follow-up queue as the UI consumes it. */
 export interface FollowUpEntry {
@@ -83,6 +92,10 @@ export async function armFollowUp(userId: string, issueId: string): Promise<Foll
     lastSeenCommentId: baseline.commentId,
     lastSeenCommentAt: baseline.at,
     stateAtBaseline: target.state,
+    // Arming reads the current state, so that is the first observation. Leaving
+    // it null would make the next check fall back to the baseline and compare the
+    // same two states, which is fine but loses the record of what was seen.
+    lastObservedState: target.state,
     reviewedCommentId: null,
     reason: null,
     checkedAt: now,
@@ -265,25 +278,35 @@ async function passContextFor(userId: string, provider: ProviderName, cache: Pas
 export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSummary> {
   const cutoff = new Date(Date.now() - RECHECK_COOLDOWN_MS);
 
-  // The cooldown belongs in the query, not after it. Filtering in JS once the
-  // rows were already limited lets twenty recently checked issues consume the
-  // whole batch and starve the ones that are actually due, which is the exact
-  // failure the cooldown exists to avoid making worse.
+  // Two rules decide which rows this pass examines, and both belong in the query.
   //
-  // `checkedAt IS NULL` means "never checked", so those sort first.
+  // The cooldown filters, because applying it after `.limit()` lets recently
+  // checked rows consume the batch and starve the due ones.
+  //
+  // The ordering uses `attemptedAt`, not `checkedAt`. `checkedAt` only moves when
+  // a check completes, so a row whose provider read keeps failing would stay the
+  // oldest forever and be retried on every pass while healthy rows behind it
+  // wait. Ordering by the last attempt rotates those rows to the back once they
+  // have had their turn, and `checkedAt` keeps its meaning for the UI.
+  // A row is due when neither its last attempt nor its last completed check is
+  // inside the cooldown. Written as two disjunctions rather than a `coalesce`
+  // so the predicate stays plain column comparisons, which both drivers index
+  // and which any reader can check against the schema.
+  // Due means "not attempted recently". `checkedAt` only decides the order for
+  // rows that have never been attempted, so it does not appear here: including
+  // it would permanently exclude a row whose attempts keep failing, which is the
+  // starvation this column exists to prevent.
+  const due = or(isNull(followUps.attemptedAt), lt(followUps.attemptedAt, cutoff));
+
   const waiting = await typedDb
     .select({ followUp: followUps, issue: issues, repo: repos })
     .from(followUps)
     .innerJoin(issues, eq(issues.id, followUps.issueId))
     .innerJoin(repos, eq(repos.id, issues.repoId))
-    .where(
-      and(
-        eq(followUps.userId, userId),
-        eq(followUps.state, "waiting"),
-        or(isNull(followUps.checkedAt), lt(followUps.checkedAt, cutoff))
-      )
-    )
-    .orderBy(sql`${followUps.checkedAt} is not null`, followUps.checkedAt)
+    .where(and(eq(followUps.userId, userId), eq(followUps.state, "waiting"), due))
+    // Never-attempted rows first, then the ones left alone longest. A failed row
+    // moves to the back on its next pass because `attemptedAt` advanced.
+    .orderBy(sql`${followUps.attemptedAt} is not null`, followUps.attemptedAt, followUps.checkedAt)
     .limit(MAX_CHECKS_PER_PASS);
 
   const cache: PassContext = new Map();
@@ -353,13 +376,30 @@ async function checkOne(
   const now = new Date();
 
   try {
-    // Ask only for what changed since the baseline. The adapters treat `since`
-    // as "the oldest page of a small filtered set", which is enough to answer
-    // "did anything qualifying land".
-    const page = await provider.fetchComments(repo.owner, repo.name, issue.number, token, {
-      since: followUp.lastSeenCommentAt ?? undefined,
-      limit: 30,
-    });
+    // Ask only for what changed since the baseline, then walk towards older
+    // history while the cursor lasts. A single page is not enough: thirty of the
+    // user's own comments after the baseline would fill it and hide the reply
+    // that follows them. The walk is bounded so one long thread cannot turn a
+    // pass into an unbounded crawl.
+    const since = followUp.lastSeenCommentAt ?? undefined;
+    const comments: ProviderComment[] = [];
+    let cursor: string | null = null;
+
+    for (let page = 0; page < MAX_COMMENT_PAGES_PER_CHECK; page++) {
+      const fetched = await provider.fetchComments(repo.owner, repo.name, issue.number, token, {
+        since,
+        limit: 30,
+        cursor,
+      });
+      comments.push(...fetched.comments);
+      cursor = fetched.olderCursor;
+      if (!cursor) break;
+    }
+
+    // The state this check actually saw, persisted with the result so the next
+    // check can compare against it. Written only on a completed read: a failed
+    // fetch has observed nothing.
+    const observedState = issue.state === "open" ? ("open" as const) : ("closed" as const);
 
     const identity = context.identity;
     const check = detectFollowUp(
@@ -367,9 +407,15 @@ async function checkOne(
         lastSeenCommentId: followUp.lastSeenCommentId,
         lastSeenCommentAt: followUp.lastSeenCommentAt,
         stateAtBaseline: followUp.stateAtBaseline === "closed" ? "closed" : "open",
+        lastObservedState:
+          followUp.lastObservedState === "closed"
+            ? "closed"
+            : followUp.lastObservedState === "open"
+              ? "open"
+              : null,
         reviewedCommentId: followUp.reviewedCommentId,
       },
-      page.comments,
+      comments,
       { selfLogin: identity?.login ?? null, state: issue.state === "open" ? "open" : "closed" }
     );
 
@@ -381,17 +427,36 @@ async function checkOne(
       // one moment the user has actually acknowledged the activity.
       await typedDb
         .update(followUps)
-        .set({ reason: check.reason, checkedAt: now, updatedAt: now })
+        .set({
+          reason: check.reason,
+          checkedAt: now,
+          attemptedAt: now,
+          lastObservedState: observedState,
+          updatedAt: now,
+        })
         .where(eq(followUps.id, followUp.id));
     } else {
       await typedDb
         .update(followUps)
-        .set({ checkedAt: now, updatedAt: now })
+        .set({
+          checkedAt: now,
+          attemptedAt: now,
+          lastObservedState: observedState,
+          updatedAt: now,
+        })
         .where(eq(followUps.id, followUp.id));
     }
 
     return check;
   } catch (error) {
+    // `attemptedAt` moves even though `checkedAt` does not. The UI keeps showing
+    // the age of the last successful result, while the scheduler can see that
+    // this row has had its turn and rotate it behind the rows that have not.
+    await typedDb
+      .update(followUps)
+      .set({ attemptedAt: now, updatedAt: now })
+      .where(eq(followUps.id, followUp.id));
+
     providerLogger.warn(
       { issueId: issue.id, provider: providerName, error: String(error) },
       "Follow-up check failed; previous result left in place"

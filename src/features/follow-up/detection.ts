@@ -41,6 +41,14 @@ export interface FollowUpBaseline {
   lastSeenCommentAt: Date | null;
   /** The issue's state when waiting was armed. */
   stateAtBaseline: "open" | "closed";
+  /**
+   * The state the previous check observed, or `null` before the first one.
+   *
+   * A reopen is a transition, and the baseline alone only knows the state at the
+   * moment waiting was armed. Armed open, observed closed, observed open again
+   * would read as "was open, is open" and the reopen would be lost.
+   */
+  lastObservedState?: "open" | "closed" | null;
   /** The comment whose review dismissed the previous resurface. */
   reviewedCommentId: string | null;
 }
@@ -113,7 +121,10 @@ export function detectFollowUp(
   comments: ProviderComment[],
   context: { selfLogin: string | null; state: "open" | "closed" }
 ): FollowUpCheck {
-  if (baseline.stateAtBaseline === "closed" && context.state === "open") {
+  // Compare against the closest prior observation. The baseline covers the first
+  // check; after that the last observed state is the more recent truth.
+  const previous = baseline.lastObservedState ?? baseline.stateAtBaseline;
+  if (previous === "closed" && context.state === "open") {
     return { qualifies: true, reason: "reopened", trigger: null };
   }
 

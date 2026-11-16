@@ -338,7 +338,9 @@ describe("runFollowUpCheck", () => {
    */
   it("should skip a row still inside the cooldown", async () => {
     seedRepoAndIssue();
-    fakeDb.state.rows.follow_up.push(followUpRow({ checkedAt: new Date(Date.now() - 5_000) }));
+    fakeDb.state.rows.follow_up.push(
+      followUpRow({ checkedAt: new Date(Date.now() - 5_000), attemptedAt: new Date(Date.now() - 5_000) })
+    );
 
     const summary = await runFollowUpCheck("user-1");
 
@@ -445,7 +447,7 @@ describe("runFollowUpCheck", () => {
         issueRow({ id: issueId, number: index + 1, providerIssueId: `gh-cooled-${index}` })
       );
       fakeDb.state.rows.follow_up.push(
-        followUpRow({ id: `follow-up-cooled-${index}`, issueId, checkedAt: cooled })
+        followUpRow({ id: `follow-up-cooled-${index}`, issueId, checkedAt: cooled, attemptedAt: cooled })
       );
     }
     fakeDb.state.rows.issue.push(
@@ -453,6 +455,55 @@ describe("runFollowUpCheck", () => {
     );
     fakeDb.state.rows.follow_up.push(
       followUpRow({ id: "follow-up-due", issueId: OTHER_ISSUE_ID, checkedAt: null })
+    );
+
+    const summary = await runFollowUpCheck("user-1");
+
+    expect(summary.checked).toBe(1);
+    expect(provider.fetchComments).toHaveBeenCalledTimes(1);
+    expect(provider.fetchComments).toHaveBeenCalledWith(
+      "octo",
+      "repo",
+      99,
+      "token-abc",
+      expect.anything()
+    );
+  });
+
+  /**
+   * @target runFollowUpCheck
+   * @dependencies attemptedAt
+   * @scenario Twenty rows keep failing their provider read, and a healthy row sits
+   *           behind them
+   * @expectedOutput After the failures, the healthy row is reached. `checkedAt`
+   *                 alone never advances on a failure, so ordering by it would
+   *                 present the same twenty rows on every pass and the healthy
+   *                 row would never be examined.
+   */
+  it("should rotate past rows whose checks keep failing", async () => {
+    fakeDb.state.rows.repo.push(repoRow());
+    const failureMark = new Date(Date.now() - 120_000);
+    const failing = new Date(Date.now() - 60_000);
+    for (let index = 0; index < 20; index++) {
+      const issueId = `failing-${index}`;
+      fakeDb.state.rows.issue.push(
+        issueRow({ id: issueId, number: index + 1, providerIssueId: `gh-failing-${index}` })
+      );
+      fakeDb.state.rows.follow_up.push(
+        followUpRow({
+          id: `follow-up-failing-${index}`,
+          issueId,
+          // Checked once long ago, attempted just now and failed.
+          checkedAt: failureMark,
+          attemptedAt: failing,
+        })
+      );
+    }
+    fakeDb.state.rows.issue.push(
+      issueRow({ id: OTHER_ISSUE_ID, number: 99, providerIssueId: "gh-healthy" })
+    );
+    fakeDb.state.rows.follow_up.push(
+      followUpRow({ id: "follow-up-healthy", issueId: OTHER_ISSUE_ID, checkedAt: null })
     );
 
     const summary = await runFollowUpCheck("user-1");

@@ -22,6 +22,20 @@
       "when": 1794804985974,
       "tag": "0002_late_caretaker",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794829958770,
+      "tag": "0003_fast_meteorite",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794830121092,
+      "tag": "0004_green_leper_queen",
+      "breakpoints": true
     }
   ]
 }

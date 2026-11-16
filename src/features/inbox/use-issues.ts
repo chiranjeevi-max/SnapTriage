@@ -10,13 +10,21 @@
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { devIssues, readDataMode } from "@/features/dev-tools/data-mode";
+import type { PendingChanges } from "@/features/triage/types";
 
-/** Triage state recorded for one issue, or null when it has never been triaged. */
+/**
+ * Triage state recorded for one issue, or null when it has never been triaged.
+ *
+ * `pendingChanges` carries the staged diff for a batch repository. It travels
+ * with the queue because a preview has to resolve against the state the push
+ * will produce, not against the last synced row.
+ */
 export interface IssueTriage {
   id: string;
   priority: number | null;
   snoozedUntil: string | null;
   dismissed: boolean;
+  pendingChanges?: PendingChanges | null;
 }
 
 /**

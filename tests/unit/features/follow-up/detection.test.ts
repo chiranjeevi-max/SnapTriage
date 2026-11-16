@@ -192,6 +192,42 @@ describe("detectFollowUp", () => {
     expect(check.trigger).toBeNull();
   });
 
+  /**
+   * @target detectFollowUp
+   * @dependencies FollowUpBaseline.lastObservedState
+   * @scenario Waiting was armed while the issue was open, a check then observed it
+   *           closed, and this check observes it open again
+   * @expectedOutput `reopened`. Comparing against `stateAtBaseline` alone would
+   *                 read "open then open" and lose the transition entirely.
+   */
+  it("qualifies a reopen seen between checks rather than at baseline", () => {
+    const check = detectFollowUp(
+      baseline({ stateAtBaseline: "open", lastObservedState: "closed" }),
+      [],
+      OPEN
+    );
+
+    expect(check.qualifies).toBe(true);
+    expect(check.reason).toBe("reopened");
+  });
+
+  /**
+   * @target detectFollowUp
+   * @dependencies FollowUpBaseline.lastObservedState
+   * @scenario Armed closed, first check observed open, second check observes open
+   * @expectedOutput No second resurface: the transition was already reported, and
+   *                 the closest prior observation is now open.
+   */
+  it("does not re-report a reopen already observed", () => {
+    const check = detectFollowUp(
+      baseline({ stateAtBaseline: "closed", lastObservedState: "open" }),
+      [],
+      OPEN
+    );
+
+    expect(check.qualifies).toBe(false);
+  });
+
   it("does not treat an already-open issue as reopened", () => {
     const check = detectFollowUp(baseline({ stateAtBaseline: "open" }), [], OPEN);
 

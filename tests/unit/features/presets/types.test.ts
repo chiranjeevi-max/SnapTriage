@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import {
   describeResolution,
+  effectiveTriageState,
   invertResolution,
   resolvePreset,
   type PresetActions,
@@ -198,5 +199,72 @@ describe("invertResolution", () => {
     const resolution = resolvePreset({ labels: { add: ["bug"] } }, before);
 
     expect(invertResolution(resolution, before)).toEqual({});
+  });
+});
+
+describe("effectiveTriageState", () => {
+  /**
+   * @target effectiveTriageState
+   * @dependencies PendingChanges
+   * @scenario A batch repository has staged the removal of a label the cached
+   *           issue row still carries
+   * @expectedOutput The label is gone. Resolving a preset against the row alone
+   *                 would report "bug" as already present, queue nothing, and let
+   *                 the push remove the label the preset was asked to apply.
+   */
+  it("drops a label removed by a staged change", () => {
+    const effective = effectiveTriageState(
+      { labels: ["bug", "triage"], assignees: [] },
+      { labels: { add: [], remove: ["bug"] } }
+    );
+
+    expect(effective.labels).toEqual(["triage"]);
+  });
+
+  it("keeps a label the staged change adds", () => {
+    const effective = effectiveTriageState(
+      { labels: ["bug"], assignees: [] },
+      { labels: { add: ["confirmed"], remove: [] } }
+    );
+
+    expect(effective.labels).toEqual(["bug", "confirmed"]);
+  });
+
+  it("applies removals before additions so a staged replace wins", () => {
+    const effective = effectiveTriageState(
+      { labels: ["bug"], assignees: [] },
+      { labels: { add: ["bug"], remove: ["bug"] } }
+    );
+
+    // mergePendingChanges never produces this shape; if it ever did, the
+    // addition is the later intent and the label stays.
+    expect(effective.labels).toEqual(["bug"]);
+  });
+
+  it("leaves the issue untouched when nothing is staged", () => {
+    const effective = effectiveTriageState({ labels: ["bug"], assignees: ["jo"] }, null);
+
+    expect(effective).toEqual({ labels: ["bug"], assignees: ["jo"] });
+  });
+
+  it("applies the same rule to assignees", () => {
+    const effective = effectiveTriageState(
+      { labels: [], assignees: ["jo", "nadia"] },
+      { assignees: { add: ["sam"], remove: ["jo"] } }
+    );
+
+    expect(effective.assignees).toEqual(["nadia", "sam"]);
+  });
+
+  it("resolves a preset against the effective state, not the cached row", () => {
+    const effective = effectiveTriageState(
+      { labels: ["bug"], assignees: [] },
+      { labels: { add: [], remove: ["bug"] } }
+    );
+
+    const resolution = resolvePreset({ labels: { add: ["bug"] } }, effective);
+
+    expect(resolution.noChange).toBe(false);
+    expect(resolution.payload.labels).toEqual({ add: ["bug"] });
   });
 });

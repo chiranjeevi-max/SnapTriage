@@ -171,6 +171,27 @@ describe("githubProvider.fetchComments", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(requestedUrls()[0]).toContain("since=2026-01-31T00%3A00%3A00.000Z");
     expect(requestedUrls()[0]).toContain("page=1");
+    // A filtered set can span pages. Reporting no cursor here let a run of the
+    // user's own comments push a qualifying reply past the first page, where the
+    // follow-up check never looked.
+    expect(page?.olderCursor).toBe("2");
+  });
+
+  /**
+   * @target githubProvider.fetchComments
+   * @dependencies fetch
+   * @scenario A `since` filter whose filtered set fits on one page
+   * @expectedOutput One request and no cursor, so the caller does not walk
+   *                 pages that do not exist
+   */
+  it("should report no cursor when a since filter fits on one page", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse([githubComment()]));
+
+    const page = await githubProvider.fetchComments?.("octo", "repo", 7, "token-abc", {
+      since: new Date("2026-01-31T00:00:00Z"),
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(page?.olderCursor).toBeNull();
   });
 

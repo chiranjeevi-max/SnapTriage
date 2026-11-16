@@ -303,7 +303,15 @@ async function readSendFailure(res: Response): Promise<{ message: string; unconf
       unconfirmed: body.unconfirmed === true,
     };
   } catch {
-    return { message: "Failed to post the reply", unconfirmed: false };
+    // An unreadable body is not evidence the send failed. A proxy can return an
+    // HTML 502 after the server published the comment and deleted the draft, so
+    // treating this as an ordinary failure re-enables Send on a reply that is
+    // already public. Only a parsed response can report a definite rejection.
+    return {
+      message:
+        "The reply may already be posted. Check the issue before sending again; your draft has been kept.",
+      unconfirmed: true,
+    };
   }
 }
 
@@ -374,6 +382,35 @@ export function useSendReply(issueId: string | undefined) {
     onError: (error) => {
       toast.error(error.message);
       queryClient.invalidateQueries({ queryKey: ["draft", issueId] });
+    },
+  });
+}
+
+/**
+ * Releases a send claim the user has checked on the provider.
+ *
+ * The server carries no way to tell whether an unconfirmed comment was posted,
+ * so this is the user's decision, taken after looking. It is the only exit from
+ * the unconfirmed state when the provider never answers.
+ *
+ * @param issueId - The issue whose claim is being released.
+ * @returns A TanStack mutation.
+ */
+export function useReleaseSendClaim(issueId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ ok: true }, Error, void>({
+    mutationFn: async () => {
+      if (!issueId) throw new Error("No issue selected");
+      const res = await fetch(`/api/issues/${issueId}/draft`, { method: "PATCH" });
+      if (!res.ok) throw new Error(await readApiError(res, "Failed to release the send claim"));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["draft", issueId] });
+    },
+    onError: (error) => {
+      toast.error(error.message);
     },
   });
 }

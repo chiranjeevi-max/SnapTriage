@@ -1,0 +1,1 @@
+ALTER TABLE "follow_up" ADD COLUMN "lastObservedState" text;

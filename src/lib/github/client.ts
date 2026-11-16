@@ -404,10 +404,12 @@ export const githubProvider: IssueProvider = {
       }
 
       const raw = (await res.json()) as Parameters<typeof toProviderComment>[0][];
+      const link = res.headers.get("link");
       return {
         comments: raw.map(toProviderComment),
         page,
-        lastPage: linkedPage(res.headers.get("link"), "last"),
+        lastPage: linkedPage(link, "last"),
+        hasNext: linkedPage(link, "next") !== null,
       };
     };
 
@@ -426,8 +428,11 @@ export const githubProvider: IssueProvider = {
     }
 
     if (options.since) {
-      const oldest = await readPage(1);
-      return { comments: oldest.comments, olderCursor: null };
+      // A filtered set can still span pages: thirty of the user's own comments
+      // after the baseline would otherwise hide the reply that follows them. The
+      // cursor is reported from the same response, so this costs one request.
+      const first = await readPage(1);
+      return { comments: first.comments, olderCursor: first.hasNext ? "2" : null };
     }
 
     const probe = await readPage(1);
