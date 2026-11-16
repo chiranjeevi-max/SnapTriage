@@ -223,6 +223,48 @@ export function describeResolution(resolution: PresetResolution): string {
 }
 
 /**
+ * Build the inverse payload from the values the server read before writing.
+ *
+ * Unlike {@link invertResolution}, which takes a cached issue, this trusts the
+ * snapshot the apply route returned. The cache can be older than the write, so an
+ * inverse derived from it can restore a priority, label, or assignee the issue
+ * never carried.
+ *
+ * Only fields the applied payload touched are reversed, so an undo still cannot
+ * remove something the preset never added.
+ *
+ * @param resolution - The resolution that was applied.
+ * @param previous - The values the server read immediately before applying.
+ * @returns The payload that restores those values.
+ */
+export function invertToPayload(
+  resolution: PresetResolution,
+  previous: { priority: number | null; labels: string[]; assignees: string[] }
+): TriagePayload {
+  const inverse: TriagePayload = {};
+
+  if (resolution.payload.priority !== undefined) {
+    inverse.priority = previous.priority;
+  }
+
+  const addedLabels = resolution.payload.labels?.add ?? [];
+  if (addedLabels.length > 0) {
+    // A label the apply read already carried was not added by the preset, so it
+    // is filtered out of the removal set.
+    const added = addedLabels.filter((label) => !previous.labels.includes(label));
+    inverse.labels = { add: [], remove: added };
+  }
+
+  const addedAssignees = resolution.payload.assignees?.add ?? [];
+  if (addedAssignees.length > 0) {
+    const added = addedAssignees.filter((login) => !previous.assignees.includes(login));
+    inverse.assignees = { add: [], remove: added };
+  }
+
+  return inverse;
+}
+
+/**
  * Assemble the inverse payload for undoing a resolution.
  *
  * Only fields the preset actually changed are inverted, so an undo can never

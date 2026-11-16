@@ -271,7 +271,12 @@ describe("FollowUpView", () => {
       </QueryClientProvider>
     );
 
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("No provider token available");
+    // The list shows its own failure and the check pass shows its own; both are
+    // legitimate, so the assertion names the sentence rather than picking
+    // whichever alert happened to render first.
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts.some((alert) => alert.textContent?.includes("No provider token available"))).toBe(
+      true
+    );
   });
 });

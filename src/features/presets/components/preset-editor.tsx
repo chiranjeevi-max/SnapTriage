@@ -88,10 +88,16 @@ export function PresetEditor({
   onCancel,
   onSave,
 }: PresetEditorProps) {
-  const { data: repoLabels, isLoading: labelsLoading } = useRepoLabels(issue.repoId);
-  const { data: collaborators, isLoading: collaboratorsLoading } = useRepoCollaborators(
-    issue.repoId
-  );
+  const {
+    data: repoLabels,
+    isLoading: labelsLoading,
+    isError: labelsError,
+  } = useRepoLabels(issue.repoId);
+  const {
+    data: collaborators,
+    isLoading: collaboratorsLoading,
+    isError: collaboratorsError,
+  } = useRepoCollaborators(issue.repoId);
 
   const [name, setName] = useState(preset?.name ?? "");
   const [priority, setPriority] = useState<PriorityChoice>(initialPriority(preset?.actions));
@@ -221,7 +227,15 @@ export function PresetEditor({
           />
           <ul className="mt-2 max-h-40 overflow-y-auto" aria-label="Repository labels">
             {labelsLoading && <li className="py-2 text-xs text-muted-foreground">Loading…</li>}
-            {!labelsLoading && labelOptions.length === 0 && (
+            {/* A failed fetch is not an empty repository. Reporting it as "no
+                matches" gives the user nothing to act on and hides a provider
+                problem behind their own search. */}
+            {!labelsLoading && labelsError && (
+              <li className="py-2 text-xs text-destructive">
+                Could not load this repository&apos;s labels. Try again in a moment.
+              </li>
+            )}
+            {!labelsLoading && !labelsError && labelOptions.length === 0 && (
               <li className="py-2 text-xs text-muted-foreground">No labels match that filter.</li>
             )}
             {labelOptions.map((label) => {
@@ -291,7 +305,12 @@ export function PresetEditor({
             {collaboratorsLoading && (
               <li className="py-2 text-xs text-muted-foreground">Loading…</li>
             )}
-            {!collaboratorsLoading && assigneeOptions.length === 0 && (
+            {!collaboratorsLoading && collaboratorsError && (
+              <li className="py-2 text-xs text-destructive">
+                Could not load this repository&apos;s collaborators. Try again in a moment.
+              </li>
+            )}
+            {!collaboratorsLoading && !collaboratorsError && assigneeOptions.length === 0 && (
               <li className="py-2 text-xs text-muted-foreground">No collaborators match.</li>
             )}
             {assigneeOptions.map((person) => {

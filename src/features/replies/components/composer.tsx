@@ -141,6 +141,8 @@ export function Composer({ issue, className }: ComposerProps) {
   /** Caret position to restore after a programmatic insert. */
   const caretRef = useRef<number | null>(null);
   const saveDraftNow = saveDraft.mutate;
+  /** The text still owed to the server, so an unmount can flush it. */
+  const unsaved = useRef<{ body: string; expectedVersion: number } | null>(null);
 
   const draft = draftQuery.data ?? null;
   const storedBody = draft?.body ?? "";
@@ -214,6 +216,31 @@ export function Composer({ issue, className }: ComposerProps) {
   // flight: saving during a send would race the attempt marker the server just
   // wrote, and saving under an unresolved conflict would be the clobber the
   // banner exists to prevent.
+  // Mirrored outside the effect so an unmount can read it without re-running the
+  // debounce. Cleared when a save succeeds, which is what makes the flush below
+  // send only text the server does not already have.
+  useEffect(() => {
+    unsaved.current = dirty && !notice ? { body: text, expectedVersion: version } : null;
+  }, [dirty, notice, text, version]);
+
+  // Flush on unmount. Switching issues, or losing the pane to a re-render, would
+  // otherwise discard text typed inside the debounce window with no copy
+  // anywhere but this component's state.
+  useEffect(() => {
+    return () => {
+      const pending = unsaved.current;
+      if (!pending || pending.body.trim().length === 0) return;
+      // `keepalive` lets the request outlive the component, and the save is
+      // version-conditional, so a duplicate loses the race harmlessly.
+      void fetch(`/api/issues/${issue.id}/draft`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pending),
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+  }, [issue.id]);
+
   useEffect(() => {
     if (!dirty || notice || sending) return;
     // An empty body with no stored draft is nothing to save, and creating a row

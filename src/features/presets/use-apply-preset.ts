@@ -8,8 +8,8 @@
  * preset and a hand-made triage edit land in the cache identically. Undo is the
  * same mechanism the rest of the app uses — a five-second toast that PATCHes an
  * inverse payload in live mode, an entry on the batch undo stack otherwise. And
- * the inverse itself comes from {@link invertResolution}, which only reverses
- * what the applied payload changed.
+ * the inverse itself comes from {@link invertToPayload}, which only reverses
+ * what the applied payload changed, against the values the server read.
  *
  * The server's answer is authoritative in two ways that matter here: it names
  * the effective mode (a repository set to batch wins over a live request), and
@@ -20,7 +20,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { describeResolution, invertResolution } from "./types";
+import { describeResolution, invertToPayload } from "./types";
 import type { PresetResolution, PreviewChange, ResolvableIssue } from "./types";
 import { readApiError } from "./api-error";
 import { applyPayloadToIssue } from "@/features/triage/use-triage-mutation";
@@ -39,6 +39,8 @@ export interface ApplyPresetResult {
   applied: TriagePayload;
   /** The preview lines the server computed with the same resolver the pane used. */
   changes: PreviewChange[];
+  /** The values the server read before writing, authoritative for undo. */
+  previous: { priority: number | null; labels: string[]; assignees: string[] };
 }
 
 /** Arguments for {@link useApplyPreset}. */
@@ -147,18 +149,17 @@ export function useApplyPreset() {
       };
       const description = `Applied "${input.presetName}"`;
 
+      // Undo restores what the server read, never what this tab had cached. The
+      // cache can be older than the write: another tab may have changed priority
+      // in between, and an inverse derived from the stale copy would restore a
+      // value the issue never carried.
+      const inverse = invertToPayload(resolution, result.previous);
+
       if (result.mode === "batch") {
-        // Without the pre-write issue an inverse would be a guess, so a change
-        // that arrives with nothing to invert is reported and left to the next
-        // fetch rather than staged with a payload that could revert too much.
-        if (!context?.before) {
-          toast.success(`Staged "${input.presetName}"`);
-          return;
-        }
         pushUndo({
           issueId: input.issueId,
           payload: result.applied,
-          previousPayload: invertResolution(resolution, context.before),
+          previousPayload: inverse,
           description,
         });
         toast(`Staged "${input.presetName}"`, { description: describeResolution(resolution) });
@@ -166,12 +167,6 @@ export function useApplyPreset() {
         return;
       }
 
-      if (!context?.before) {
-        toast.success(description, { description: describeResolution(resolution) });
-        return;
-      }
-
-      const inverse = invertResolution(resolution, context.before);
       showUndoToast(description, () => {
         const reverseMutation = queryClient.getMutationCache().build(queryClient, {
           mutationFn: async () => {
@@ -184,8 +179,12 @@ export function useApplyPreset() {
             return res.json();
           },
         });
-        reverseMutation.execute({}).catch(() => {
+        // Refresh in both outcomes: a failed undo may still have reached the
+        // provider, and leaving the list showing the applied values would be a
+        // claim the app cannot support.
+        reverseMutation.execute({}).finally(() => {
           queryClient.invalidateQueries({ queryKey: ["issues"] });
+          queryClient.invalidateQueries({ queryKey: ["issue", input.issueId] });
         });
       });
     },

@@ -122,8 +122,18 @@ export function Discussion({ issueId, providerUrl, className }: DiscussionProps)
 
   // Pages arrive newest first and each page is oldest first, so reversing the
   // pages is what puts the thread back in reading order.
+  // Deduplicated by id, keeping the first occurrence. A comment can land on two
+  // pages when the provider shifts its window between requests, and React would
+  // warn about duplicate keys while showing the same reply twice.
   const comments = query.data
-    ? [...query.data.pages].reverse().flatMap((page) => page.comments)
+    ? [
+        ...new Map(
+          [...query.data.pages]
+            .reverse()
+            .flatMap((page) => page.comments)
+            .map((comment) => [comment.id, comment])
+        ).values(),
+      ]
     : [];
   const supported = query.data?.pages[0]?.supported ?? true;
   const loaded = comments.length;

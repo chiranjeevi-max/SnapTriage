@@ -94,6 +94,7 @@ describe("useApplyPreset", () => {
         noChange: false,
         applied: PREVIEW.payload,
         changes: PREVIEW.changes,
+        previous: { priority: 2, labels: ["triage"], assignees: [] },
       }),
     } as Response);
 
@@ -137,6 +138,7 @@ describe("useApplyPreset", () => {
         noChange: false,
         applied: PREVIEW.payload,
         changes: PREVIEW.changes,
+        previous: { priority: 2, labels: ["triage"], assignees: [] },
       }),
     } as Response);
 
@@ -179,6 +181,7 @@ describe("useApplyPreset", () => {
         noChange: false,
         applied: PREVIEW.payload,
         changes: PREVIEW.changes,
+        previous: { priority: 2, labels: ["triage"], assignees: [] },
       }),
     } as Response);
 

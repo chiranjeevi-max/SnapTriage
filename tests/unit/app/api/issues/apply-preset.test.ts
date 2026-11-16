@@ -503,6 +503,9 @@ describe("POST /api/issues/:id/apply-preset — response", () => {
         { kind: "label", value: "triage", operation: "=" },
         { kind: "label", value: "bug", operation: "+" },
       ],
+      // The values read before the write. Undo is built from these rather than
+      // from the client's cache, which can be older than the write.
+      previous: { priority: null, labels: ["triage"], assignees: [] },
     });
     expect(fakeDb.state.rows.issue[0].labels).toEqual(["triage", "bug"]);
   });

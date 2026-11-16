@@ -206,6 +206,21 @@ export function FollowUpView({ onOpenIssue }: FollowUpViewProps) {
         </Button>
       </div>
 
+      {/* A failed check is reported on its own line rather than replacing the
+          list. The GET may have succeeded and the POST may have failed, in which
+          case the rows are still valid and only their freshness is in doubt. */}
+      {check.isError && (
+        <div
+          role="alert"
+          className="mx-4 mt-2 flex items-start gap-2 rounded-md border border-dashed px-3 py-2"
+        >
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+          <p className="min-w-0 break-words text-xs leading-relaxed text-destructive">
+            {check.error.message}
+          </p>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto">
         {isPending ? (
           <div className="flex flex-col gap-2 p-4" aria-busy="true">

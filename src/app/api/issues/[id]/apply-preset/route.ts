@@ -101,6 +101,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ ok: true, mode, noChange: true, applied: {}, changes: [] });
   }
 
+  // Captured before the write: `applyTriage` updates the cached issue row, and a
+  // snapshot taken afterwards would report the post-write values as "previous".
+  const previous = {
+    priority: triage ? triage.priority : null,
+    labels: [...(issue.labels ?? [])],
+    assignees: [...(issue.assignees ?? [])],
+  };
+
   const result = await applyTriage({ userId, issueId: id, payload: resolution.payload, batch });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
@@ -112,5 +120,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     noChange: false,
     applied: result.applied,
     changes: resolution.changes,
+    // The inverse is built from the values this request read, not from whatever
+    // the client happens to have cached. Another tab can change priority between
+    // the client's last fetch and this write, and an inverse derived from the
+    // stale copy would restore a value the issue never had.
+    previous,
   });
 }

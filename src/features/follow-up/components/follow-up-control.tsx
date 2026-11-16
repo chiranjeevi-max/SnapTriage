@@ -44,7 +44,7 @@ const STATE_LABEL: Record<"waiting" | "reviewed" | "stopped", string> = {
  * @param props - `issueId` of the issue in the detail pane.
  */
 export function FollowUpControl({ issueId }: { issueId: string }) {
-  const { data } = useFollowUps();
+  const { data, isPending, isError } = useFollowUps();
   const action = useFollowUpAction(issueId);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const armRequested = useKeyboardStore((state) => state.followUpArmRequested);
@@ -57,25 +57,43 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
   // request can outlive the selection that made it, and a bare flag would let a
   // control for a different issue consume it and arm the wrong one. The request
   // is cleared before the mutation starts, so a failed arm cannot re-fire.
+  const entry = data?.entries.find((item) => item.issueId === issueId) ?? null;
+  const state = entry?.state ?? null;
+
   useEffect(() => {
     if (armRequested === null) return;
     setArmRequested(null);
     if (armRequested !== issueId) return;
-    arm({ action: "wait" });
-  }, [armRequested, issueId, setArmRequested, arm]);
+
+    // Re-arming clears the baseline and the reason, which would silently dismiss
+    // a resurface the user has not read. When one already exists the key opens
+    // the details, which is derived below rather than set here: re-reading the
+    // baseline is an explicit button in that dialog.
+    if (entry === null) arm({ action: "wait" });
+  }, [armRequested, issueId, entry, setArmRequested, arm]);
+
+  /**
+   * Whether the details dialog is open.
+   *
+   * Opening is derived from the request rather than mirrored into state, so the
+   * `w` key can open it without an effect setting state on every render. The
+   * user's own clicks still control `detailsOpen`.
+   */
+  const showDetails = detailsOpen || (armRequested === issueId && entry !== null);
 
   // The details dialog is a dialog with plain buttons, so the global shortcut
   // listener needs to be told it is open; otherwise `d` would dismiss the issue
   // behind it. The flag is released on unmount as well as on close.
   useEffect(() => {
-    setPanelOpen(detailsOpen);
+    setPanelOpen(showDetails);
     return () => setPanelOpen(false);
-  }, [detailsOpen, setPanelOpen]);
-
-  const entry = data?.entries.find((item) => item.issueId === issueId) ?? null;
-  const state = entry?.state ?? null;
+  }, [showDetails, setPanelOpen]);
 
   function handleClick() {
+    // Arming before the list has loaded would issue a write while the control
+    // cannot yet say whether a follow-up already exists, and a failed list read
+    // would present every issue as unfollowed.
+    if (isPending || isError) return;
     if (state === null) {
       action.mutate({ action: "wait" });
       return;
@@ -91,7 +109,7 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
             variant={state === "waiting" ? "secondary" : "outline"}
             size="sm"
             className="h-8 gap-1.5 px-2.5 text-xs"
-            disabled={action.isPending}
+            disabled={action.isPending || isPending || isError}
             onClick={handleClick}
           >
             <BellRing
@@ -114,7 +132,7 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
         </TooltipContent>
       </Tooltip>
 
-      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+      <Dialog open={showDetails} onOpenChange={setDetailsOpen}>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-4 sm:max-w-sm">
           <DialogHeader className="shrink-0 pr-6">
             <DialogTitle className="flex items-center gap-2">
@@ -162,7 +180,7 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
               variant="outline"
               size="sm"
               className="h-9 px-2.5 text-xs"
-              disabled={action.isPending}
+              disabled={action.isPending || isPending || isError}
               onClick={() => action.mutate({ action: "wait" })}
             >
               {entry?.state === "waiting" ? "Re-read the baseline" : "Wait again"}
