@@ -230,8 +230,9 @@ export async function saveDraft(
  */
 export async function clearDraft(
   userId: string,
-  issueId: string
-): Promise<"cleared" | "claimed" | "missing"> {
+  issueId: string,
+  expectedVersion: number | null = null
+): Promise<"cleared" | "claimed" | "stale" | "missing"> {
   const existing = await findDraft(userId, issueId);
   if (!existing) return "missing";
   if (existing.sendAttemptedAt) return "claimed";
@@ -244,12 +245,16 @@ export async function clearDraft(
         eq(replyDrafts.userId, userId),
         // Re-checked in the predicate, not only above: a send can claim the row
         // between the read and this delete.
-        isNull(replyDrafts.sendAttemptedAt)
+        isNull(replyDrafts.sendAttemptedAt),
+        // A tab showing an older version is not looking at the draft it is about
+        // to delete. Without this it could discard a newer one from another tab.
+        expectedVersion === null ? undefined : eq(replyDrafts.version, expectedVersion)
       )
     )
     .returning({ id: replyDrafts.id });
 
-  return removed.length > 0 ? "cleared" : "claimed";
+  if (removed.length > 0) return "cleared";
+  return (await findDraft(userId, issueId))?.sendAttemptedAt ? "claimed" : "stale";
 }
 
 /**

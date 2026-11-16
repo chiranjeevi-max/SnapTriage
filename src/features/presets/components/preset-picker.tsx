@@ -19,6 +19,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import {
   CommandDialog,
@@ -40,6 +41,7 @@ import {
   effectiveTriageState,
   resolvePreset,
   PRESET_LIMIT_PER_REPO,
+  type Preset,
   type PresetActions,
   type PresetResolution,
 } from "@/features/presets/types";
@@ -90,11 +92,12 @@ interface PresetPickerBodyProps {
 
 /** The contents of the dialog: list, preview, editor, and delete confirmation. */
 function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps) {
-  const { data: presets, isLoading } = usePresets(issue.repoId);
+  const { data: presets, isLoading, isError: presetsError } = usePresets(issue.repoId);
   const createPreset = useCreatePreset(issue.repoId);
   const updatePreset = useUpdatePreset(issue.repoId);
   const deletePreset = useDeletePreset(issue.repoId);
   const applyPreset = useApplyPreset();
+  const queryClient = useQueryClient();
 
   const [mode, setMode] = useState<Mode>("browse");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -125,6 +128,11 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
   );
 
   function backToBrowse() {
+    // Clear mutation errors on the way out. The editor shows the previous
+    // failure when it reopens otherwise, which reads as if the new attempt had
+    // already failed before anything was typed.
+    createPreset.reset();
+    updatePreset.reset();
     setMode("browse");
     setSelectedId(null);
   }
@@ -133,13 +141,29 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
     if (mode === "edit" && selected) {
       updatePreset.mutate(
         { id: selected.id, name: input.name, actions: input.actions },
-        { onSuccess: () => setMode("preview") }
+        {
+          onSuccess: (updated) => {
+            // Seed the cache before switching to preview. The invalidation the
+            // hook starts is asynchronous, so `selected` would otherwise still
+            // hold the pre-edit actions and Apply could show one bundle while the
+            // server applies another.
+            queryClient.setQueryData<Preset[]>(
+              ["presets", issue.repoId],
+              (current) =>
+                current?.map((preset) => (preset.id === updated.id ? updated : preset)) ?? [updated]
+            );
+            setMode("preview");
+          },
+        }
       );
       return;
     }
     createPreset.mutate(input, {
       onSuccess: (created) => {
         setSelectedId(created.id);
+        // Straight into the preview built from what was just saved. The list is
+        // refetched in the background, and waiting for it would show the
+        // pre-edit bundle for a moment if it were used instead.
         setMode("preview");
       },
     });
@@ -169,11 +193,22 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
               <p className="text-sm font-medium">
                 {isLoading
                   ? "Loading presets…"
-                  : visiblePresets.length > 0
-                    ? "No preset matches that search"
-                    : "No presets yet"}
+                  : presetsError
+                    ? "Could not load presets"
+                    : visiblePresets.length > 0
+                      ? "No preset matches that search"
+                      : "No presets yet"}
               </p>
+              {/* A failed load is not an empty repository, and offering "Create
+                  preset" here would suggest the user has none when the truth is
+                  that none could be read. */}
+              {!isLoading && presetsError && (
+                <p className="mx-auto mt-1.5 max-w-[38ch] text-xs leading-relaxed text-destructive">
+                  The presets for this repository could not be read. Close the pane and try again.
+                </p>
+              )}
               {!isLoading &&
+                !presetsError &&
                 (visiblePresets.length > 0 ? (
                   <p className="mx-auto mt-1.5 max-w-[38ch] text-xs leading-relaxed text-muted-foreground">
                     Clear the search to see every preset in this repository.
@@ -184,7 +219,17 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
                       A preset records the labels, assignees, and priority you reach for whenever
                       the same kind of issue arrives.
                     </p>
-                    <Button size="sm" className="mt-4 h-9" onClick={() => setMode("create")}>
+                    <Button
+                      size="sm"
+                      className="mt-4 h-9"
+                      onClick={() => setMode("create")}
+                      onKeyDown={(event) => {
+                        // cmdk's root always handles Enter to select an item, and
+                        // this button lives outside the list, so without this the
+                        // empty-state action is unreachable by keyboard.
+                        if (event.key === "Enter") event.stopPropagation();
+                      }}
+                    >
                       <Plus className="h-3.5 w-3.5" />
                       Create preset
                     </Button>
@@ -237,6 +282,9 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
               size="sm"
               className="h-8 px-2 text-xs"
               onClick={() => setMode("create")}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.stopPropagation();
+              }}
             >
               <Plus className="h-3 w-3" />
               New preset

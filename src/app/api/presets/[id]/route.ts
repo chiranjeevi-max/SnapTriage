@@ -64,6 +64,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const preset = await updatePreset(session.user.id, id, parsed.data);
   if (!preset) {
+    // `updatePreset` returns null both when the row is not the caller's and when
+    // the stored actions no longer validate. Reporting the second as "not found"
+    // would be a lie the user cannot act on: the preset is there, its contents
+    // are unreadable.
+    const row = await findPresetRow(session.user.id, id);
+    if (row) {
+      return NextResponse.json(
+        { error: "This preset's stored actions are unreadable. Save it again to repair it." },
+        { status: 422 }
+      );
+    }
     return NextResponse.json({ error: "Preset not found" }, { status: 404 });
   }
 

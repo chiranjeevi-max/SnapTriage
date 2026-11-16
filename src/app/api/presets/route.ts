@@ -20,6 +20,7 @@ import { auth } from "@/auth";
 import {
   countPresets,
   createPreset,
+  deletePreset,
   findOwnedRepo,
   listPresets,
 } from "@/features/presets/preset-repository";
@@ -102,8 +103,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: rejected }, { status: 400 });
   }
 
-  const existing = await countPresets(session.user.id, repoId);
-  if (existing >= PRESET_LIMIT_PER_REPO) {
+  // Insert first, then count, then undo if that took the user over the limit. A
+  // count before the insert races: two requests can both read 99 and both write.
+  // Counting afterwards includes this row, so the loser sees the overshoot and
+  // the delete leaves the stored set within the quota either way.
+  const preset = await createPreset({ userId: session.user.id, repoId, name, actions });
+
+  if ((await countPresets(session.user.id, repoId)) > PRESET_LIMIT_PER_REPO) {
+    await deletePreset(session.user.id, preset.id);
     return NextResponse.json(
       {
         error: `This repository already has ${PRESET_LIMIT_PER_REPO} presets, the maximum allowed. Delete one to save another.`,
@@ -112,6 +119,5 @@ export async function POST(req: Request) {
     );
   }
 
-  const preset = await createPreset({ userId: session.user.id, repoId, name, actions });
   return NextResponse.json(preset, { status: 201 });
 }

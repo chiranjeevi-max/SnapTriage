@@ -375,14 +375,17 @@ export function Composer({ issue, className }: ComposerProps) {
   }
 
   function handleDiscard() {
-    discardDraft.mutate(undefined, {
-      onSuccess: () => {
-        setTyped(null);
-        setTypedBeforeLoad(false);
-        setConflict(null);
-        setSaveFailure(null);
-      },
-    });
+    discardDraft.mutate(
+      { expectedVersion: draft?.version },
+      {
+        onSuccess: () => {
+          setTyped(null);
+          setTypedBeforeLoad(false);
+          setConflict(null);
+          setSaveFailure(null);
+        },
+      }
+    );
   }
 
   const posted = send.isSuccess;

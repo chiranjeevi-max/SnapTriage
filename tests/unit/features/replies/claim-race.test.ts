@@ -144,8 +144,15 @@ describe("sendReply under concurrent senders", () => {
     const first = await sendReply("user-1", TARGET, "Thanks.");
     expect(first.ok).toBe(false);
 
-    // A 422 is a definitive answer, so the claim must be gone.
-    const claim = fakeDb.state.rows.reply_draft[0]?.sendAttemptedAt ?? null;
-    expect(claim).toBeNull();
+    // A 422 is a definitive answer, so the claim must be gone and a retry must be
+    // allowed. Asserting only the marker would pass even if the route still
+    // refused every later send.
+    expect(fakeDb.state.rows.reply_draft[0]?.sendAttemptedAt ?? null).toBeNull();
+
+    vi.mocked(provider.createComment!).mockResolvedValueOnce(posted());
+    const second = await sendReply("user-1", TARGET, "Thanks.");
+
+    expect(second.ok).toBe(true);
+    expect(provider.createComment).toHaveBeenCalledTimes(2);
   });
 });

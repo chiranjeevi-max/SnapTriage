@@ -149,8 +149,11 @@ describe("detectFollowUp", () => {
       OPEN
     );
 
-    expect(check.qualifies).toBe(false);
-    expect(check.reason).toBeNull();
+    // The names match the behaviour: the id is newer, so it qualifies even though
+    // the instants are equal.
+    expect(check.qualifies).toBe(true);
+    expect(check.reason).toBe("reply");
+    expect(check.trigger?.id).toBe("91");
   });
 
   it("does not raise the comment whose review dismissed it", () => {

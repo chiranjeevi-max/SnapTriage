@@ -130,6 +130,12 @@ export function useFollowUpAction(issueId: string | undefined) {
   return useMutation<FollowUpEntry | { ok: true }, Error, FollowUpActionInput>({
     mutationFn: async ({ action, trigger }) => {
       if (!issueId) throw new Error("No issue selected");
+      // The dev data toggle swaps in fixture rows whose ids are synthetic, so a
+      // mutation would reach the real API with an id it has never seen. Refuse
+      // rather than write against the developer's own account.
+      if (await devFollowUps(readDataMode())) {
+        return { ok: true } as const;
+      }
 
       const params = new URLSearchParams();
       if (action === "review" && trigger) {

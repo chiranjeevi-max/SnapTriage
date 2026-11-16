@@ -58,11 +58,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const { searchParams } = new URL(req.url);
     const commentId = searchParams.get("commentId");
     const rawAt = searchParams.get("commentAt");
-    const commentAt = rawAt ? new Date(rawAt) : null;
+    // `has` rather than a truthiness test: `?commentAt=` arrives as an empty
+    // string, and treating that as "omitted" silently records a review with no
+    // baseline, which widens the window instead of narrowing it.
+    const commentAt = searchParams.has("commentAt") ? new Date(rawAt ?? "") : null;
 
-    // An unparseable instant would silently move the baseline to null, which
-    // widens the window instead of narrowing it. Refuse rather than guess.
-    if (rawAt && (!commentAt || Number.isNaN(commentAt.getTime()))) {
+    if (commentAt !== null && Number.isNaN(commentAt.getTime())) {
       return NextResponse.json({ error: "commentAt is not a valid date" }, { status: 400 });
     }
 

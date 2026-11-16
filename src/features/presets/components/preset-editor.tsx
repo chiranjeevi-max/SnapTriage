@@ -106,6 +106,14 @@ export function PresetEditor({
   const [labelFilter, setLabelFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
 
+  /**
+   * Most labels or assignees one preset may carry.
+   *
+   * Matches the bound in `presetActionsSchema`. The editor stops at it rather
+   * than letting the user build a bundle the API will refuse at save time.
+   */
+  const ACTION_VALUE_LIMIT = 100;
+
   // The provider decides how long a value may be; the client only explains it.
   const limits = providerLimits[issue.provider === "gitlab" ? "gitlab" : "github"];
 
@@ -161,7 +169,11 @@ export function PresetEditor({
     setLabels((current) =>
       current.includes(labelName)
         ? current.filter((value) => value !== labelName)
-        : [...current, labelName]
+        : // Capped at the API's own limit. Letting the list grow past it only
+          // moves the failure to save, after the user has done the work.
+          current.length >= ACTION_VALUE_LIMIT
+          ? current
+          : [...current, labelName]
     );
   }
 
@@ -169,7 +181,9 @@ export function PresetEditor({
     setAssignees((current) =>
       current.includes(username)
         ? current.filter((value) => value !== username)
-        : [...current, username]
+        : current.length >= ACTION_VALUE_LIMIT
+          ? current
+          : [...current, username]
     );
   }
 

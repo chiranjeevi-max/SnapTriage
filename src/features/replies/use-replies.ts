@@ -267,10 +267,14 @@ export function useSaveDraft(issueId: string | undefined) {
 export function useDiscardDraft(issueId: string | undefined) {
   const queryClient = useQueryClient();
 
-  return useMutation<{ ok: true }, Error, void>({
-    mutationFn: async () => {
+  return useMutation<{ ok: true }, Error, { expectedVersion?: number } | void>({
+    mutationFn: async (input) => {
       if (!issueId) throw new Error("No issue selected");
-      const res = await fetch(`/api/issues/${issueId}/draft`, { method: "DELETE" });
+      // The version this tab has seen. Without it, a tab left open on an older
+      // draft could discard one another tab has since written.
+      const version = input && "expectedVersion" in input ? input.expectedVersion : undefined;
+      const query = version === undefined ? "" : `?version=${version}`;
+      const res = await fetch(`/api/issues/${issueId}/draft${query}`, { method: "DELETE" });
       if (!res.ok) throw new Error(await readApiError(res, "Failed to discard the draft"));
       return res.json();
     },

@@ -136,8 +136,12 @@ export function detectFollowUp(
     if (isBotLogin(comment.author)) continue;
     if (baseline.reviewedCommentId && comment.id === baseline.reviewedCommentId) continue;
 
+    // `>=`, not `>`. Provider timestamps tie within a burst, and the id comparison
+    // is what orders two comments sharing an instant. A strict `>` made a reply
+    // posted in the same second as the baseline invisible on both checks, which is
+    // exactly the case the id comparison exists to catch.
     const isAfterBaselineAt =
-      baseline.lastSeenCommentAt === null || comment.createdAt > baseline.lastSeenCommentAt;
+      baseline.lastSeenCommentAt === null || comment.createdAt >= baseline.lastSeenCommentAt;
     const isAfterBaselineId =
       baseline.lastSeenCommentId === null ||
       compareCommentIds(comment.id, baseline.lastSeenCommentId) > 0;

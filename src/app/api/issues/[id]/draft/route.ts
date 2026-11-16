@@ -112,13 +112,28 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Issue not found" }, { status: 404 });
   }
 
-  const outcome = await clearDraft(session.user.id, id);
+  // The version the tab was showing. A tab that has not seen the newest draft
+  // would otherwise discard text it never read.
+  const { searchParams } = new URL(_req.url);
+  const rawVersion = searchParams.get("version");
+  const expectedVersion = rawVersion === null ? null : Number(rawVersion);
+  if (rawVersion !== null && (!Number.isInteger(expectedVersion) || expectedVersion! < 1)) {
+    return NextResponse.json({ error: "version must be a positive integer" }, { status: 400 });
+  }
+
+  const outcome = await clearDraft(session.user.id, id, expectedVersion);
   if (outcome === "claimed") {
     return NextResponse.json(
       {
         error:
           "A reply from this draft may already be posted. Check the issue before discarding it.",
       },
+      { status: 409 }
+    );
+  }
+  if (outcome === "stale") {
+    return NextResponse.json(
+      { error: "This draft changed in another tab. Reload it before discarding." },
       { status: 409 }
     );
   }

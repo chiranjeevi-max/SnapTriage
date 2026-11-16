@@ -811,12 +811,24 @@ export function commentsForMode(mode: DataMode): ReplyComment[] {
  * @returns The queue the mode stands for.
  */
 export function followUpsForMode(mode: DataMode): FollowUpList {
+  // Derived from the issues this mode actually renders. The static rows name
+  // `worst-*` ids, which `many` mode does not contain, so a follow-up there would
+  // point at an issue the list cannot open.
   const entries =
     mode === "empty"
       ? []
-      : mode === "one"
-        ? WORST_CASE_FOLLOW_UPS.slice(0, 1)
-        : WORST_CASE_FOLLOW_UPS;
+      : mode === "many"
+        ? manyIssues(3).map((issue, index) => ({
+            ...WORST_CASE_FOLLOW_UPS[index % WORST_CASE_FOLLOW_UPS.length],
+            issueId: issue.id,
+            repoId: issue.repoId,
+            number: issue.number,
+            title: issue.title,
+            url: issue.url,
+          }))
+        : mode === "one"
+          ? WORST_CASE_FOLLOW_UPS.slice(0, 1)
+          : WORST_CASE_FOLLOW_UPS;
 
   const checkedAt = entries.reduce<string | null>((latest, entry) => {
     if (!entry.checkedAt) return latest;
