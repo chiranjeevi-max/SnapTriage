@@ -141,7 +141,8 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
             </DialogTitle>
             <DialogDescription>
               This issue comes back to the follow-up queue when somebody else replies, or when it is
-              reopened. It stays in the queue until you review or stop it.
+              reopened. Reviewing or stopping it ends the watch; the row stays in the queue so you
+              can see what happened, and Wait again re-arms it.
             </DialogDescription>
           </DialogHeader>
 

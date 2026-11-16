@@ -300,9 +300,10 @@ describe("githubProvider.createComment", () => {
   /**
    * @target githubProvider.createComment
    * @dependencies ProviderApiError
-   * @scenario GitHub answers 403 because the rate limit is exhausted
-   * @expectedOutput The error is reported as retryable, which is how the send
-   *                 path knows the outcome is ambiguous rather than a refusal
+   * @scenario GitHub answers with a server error, then with a validation rejection
+   * @expectedOutput The 500 is retryable and the 422 is not. That distinction is
+   *                 how the send path knows an outcome is ambiguous rather than a
+   *                 refusal, and only a refusal may release the claim.
    */
   it("should report a 500 as retryable and a 422 as definitive", async () => {
     mockFetch.mockResolvedValueOnce(errorResponse(500, "boom"));

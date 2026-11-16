@@ -121,6 +121,10 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           setFollowUpArmRequested(currentIssue?.id ?? null);
           break;
         case "undo": {
+          // Undo reverses an action on a queue row, and that row is not on screen
+          // while the follow-up surface is up. Popping the stack there would undo
+          // something the user cannot see and cannot connect to the keystroke.
+          if (!currentIssue) break;
           const action = popUndo();
           if (action) {
             triageRef.current.mutate({

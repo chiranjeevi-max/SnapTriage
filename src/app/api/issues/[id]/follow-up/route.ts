@@ -27,8 +27,9 @@ import { followUpActionSchema, parseBody } from "@/lib/validations";
  * Applies one follow-up transition.
  *
  * `review` accepts the comment that prompted it as an optional pair of query
- * params (`commentId`, `commentAt`); omitting them records a review with no new
- * baseline, which is what "I looked and there was nothing" means.
+ * params (`commentId`, `commentAt`). Omitting them reviews "everything up to
+ * now": the baseline moves to the review instant, so the same comment cannot
+ * raise the issue again on the next pass.
  *
  * @param req - Request with JSON body `{ action }` and optional review params in the URL.
  * @param params - Dynamic route params containing `id`.
