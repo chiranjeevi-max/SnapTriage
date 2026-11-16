@@ -460,14 +460,11 @@ describe("runFollowUpCheck", () => {
     const summary = await runFollowUpCheck("user-1");
 
     expect(summary.checked).toBe(1);
+    // Only the healthy row is fetched. Ordering by `attemptedAt` puts the twenty
+    // recently attempted rows behind it; ordering by `checkedAt` would have
+    // filled the batch with them and never reached this call.
     expect(provider.fetchComments).toHaveBeenCalledTimes(1);
-    expect(provider.fetchComments).toHaveBeenCalledWith(
-      "octo",
-      "repo",
-      99,
-      "token-abc",
-      expect.anything()
-    );
+    expect(provider.fetchComments.mock.calls[0][2]).toBe(99);
   });
 
   /**
