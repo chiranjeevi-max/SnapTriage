@@ -36,17 +36,30 @@ export interface ReplyDraftShape {
 /**
  * Derive the composer's state from a stored draft.
  *
- * `sendAttemptedAt` is the only marker of an unfinished attempt: the server sets
- * it immediately before contacting the provider and clears it only once the
+ * `sendAttemptedAt` is the marker of an unfinished attempt: the server sets it
+ * immediately before contacting the provider and clears it only once the
  * outcome is known, so its presence means "we do not know" rather than "it
  * failed".
  *
+ * `unconfirmed` covers the case the stored draft cannot. When the response is
+ * lost after the provider accepted the comment, the server has already deleted
+ * the draft, so a refetch returns nothing and the marker is gone. The client
+ * still knows an outcome is unknown, and without this the composer would offer
+ * Send again on a reply that is already public.
+ *
  * @param draft - The stored draft, or `null` when there is none.
  * @param sending - Whether a send is currently in flight in this client.
+ * @param unconfirmed - Whether this client saw an ambiguous outcome it has not
+ *   been able to resolve.
  * @returns The state the composer should render.
  */
-export function replySendState(draft: ReplyDraftShape | null, sending: boolean): ReplySendState {
+export function replySendState(
+  draft: ReplyDraftShape | null,
+  sending: boolean,
+  unconfirmed = false
+): ReplySendState {
   if (sending) return "sending";
+  if (unconfirmed) return "unconfirmed";
   if (draft?.sendAttemptedAt) return "unconfirmed";
   return "editable";
 }

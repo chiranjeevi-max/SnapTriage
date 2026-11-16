@@ -433,9 +433,36 @@ function project(projection: Record<string, unknown>, scope: ReadonlyMap<object,
       projected[alias] = row ? row[source.name] : undefined;
       continue;
     }
+    // `sql\`${column}\`` wraps a column so the driver hands back raw text. The
+    // fake has no codec to bypass, so it resolves the wrapped column directly.
+    const wrapped = wrappedColumn(source);
+    if (wrapped) {
+      const row = scope.get(wrapped.table);
+      projected[alias] = row ? row[wrapped.name] : undefined;
+      continue;
+    }
     projected[alias] = source;
   }
   return projected;
+}
+
+/**
+ * Find the single column a `sql` chunk wraps, if that is all it does.
+ *
+ * `sql\`${column}\`` produces a chunk whose query strings are empty and whose
+ * only binding is the column. Anything more complex is not a plain column read
+ * and is left alone.
+ */
+function wrappedColumn(node: unknown): { table: object; name: string } | null {
+  const chunks = (node as { queryChunks?: unknown[] } | null)?.queryChunks;
+  if (!Array.isArray(chunks)) return null;
+
+  const found: Token[] = [];
+  flatten(chunks, found);
+  const columns = found.filter(
+    (token): token is { column: { table: object; name: string } } => typeof token === "object" && "column" in token
+  );
+  return columns.length === 1 ? columns[0].column : null;
 }
 
 /**

@@ -44,6 +44,7 @@ import { providerLimits, type ProviderName } from "@/lib/provider-interface";
 import { useKeyboardStore } from "@/features/keyboard";
 import {
   DraftConflictError,
+  UnconfirmedSendError,
   useDiscardDraft,
   useDraft,
   useSaveDraft,
@@ -135,7 +136,11 @@ export function Composer({ issue, className }: ComposerProps) {
   const text = typed ?? storedBody;
   const dirty = typed !== null && typed !== storedBody;
 
-  const sendState = replySendState(draft, send.isPending);
+  const sendState = replySendState(
+    draft,
+    send.isPending,
+    send.error instanceof UnconfirmedSendError
+  );
   const sending = send.isPending;
   const unconfirmed = sendState === "unconfirmed";
 
@@ -162,6 +167,11 @@ export function Composer({ issue, className }: ComposerProps) {
       : over
         ? `${(-remaining).toLocaleString()} over the ${limit.toLocaleString()} limit`
         : `${remaining.toLocaleString()} left`;
+
+  // A send whose outcome this client could not confirm must keep Send withheld
+  // even though the server's marker may already be gone. The mutation error is
+  // the latch: TanStack keeps it until the next attempt, so there is nothing to
+  // mirror in state and no effect to keep in sync.
 
   useEffect(() => {
     const caret = caretRef.current;

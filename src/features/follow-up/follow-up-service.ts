@@ -13,7 +13,7 @@
  * not hammer the provider. Anything not examined keeps its previous
  * `checkedAt`, which is what the UI shows to make freshness honest.
  */
-import { and, eq, inArray, desc } from "drizzle-orm";
+import { and, eq, inArray, desc, isNull, lt, or, sql } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { followUps, issues, repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
@@ -258,22 +258,33 @@ async function passContextFor(userId: string, provider: ProviderName, cache: Pas
 export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSummary> {
   const cutoff = new Date(Date.now() - RECHECK_COOLDOWN_MS);
 
+  // The cooldown belongs in the query, not after it. Filtering in JS once the
+  // rows were already limited lets twenty recently checked issues consume the
+  // whole batch and starve the ones that are actually due, which is the exact
+  // failure the cooldown exists to avoid making worse.
+  //
+  // `checkedAt IS NULL` means "never checked", so those sort first.
   const waiting = await typedDb
     .select({ followUp: followUps, issue: issues, repo: repos })
     .from(followUps)
     .innerJoin(issues, eq(issues.id, followUps.issueId))
     .innerJoin(repos, eq(repos.id, issues.repoId))
-    .where(and(eq(followUps.userId, userId), eq(followUps.state, "waiting")))
+    .where(
+      and(
+        eq(followUps.userId, userId),
+        eq(followUps.state, "waiting"),
+        or(isNull(followUps.checkedAt), lt(followUps.checkedAt, cutoff))
+      )
+    )
+    .orderBy(sql`${followUps.checkedAt} is not null`, followUps.checkedAt)
     .limit(MAX_CHECKS_PER_PASS);
-
-  const due = waiting.filter((row) => !row.followUp.checkedAt || row.followUp.checkedAt < cutoff);
 
   const cache: PassContext = new Map();
   let checked = 0;
   let surfaced = 0;
-  let skipped = waiting.length - due.length;
+  let skipped = 0;
 
-  for (const row of due) {
+  for (const row of waiting) {
     const provider = getProvider(row.repo.provider);
     // Provenance is a provider capability, so it is answered once per provider
     // rather than once per issue.

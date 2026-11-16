@@ -120,9 +120,15 @@ export function PresetDiffSummary({ changes }: { changes: PreviewChange[] }) {
   if (changing > 0) parts.push(`${changing} change${changing === 1 ? "" : "s"}`);
   if (same > 0) parts.push(`${same} already in place`);
 
+  // The icon follows what actually happens: a preset that only clears a priority
+  // removes something, so a plus would misdescribe it. No icon when nothing
+  // changes, because both glyphs imply an edit.
+  const icon =
+    added > 0 ? <Plus className="h-3 w-3" /> : cleared > 0 ? <Minus className="h-3 w-3" /> : null;
+
   return (
     <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      {changing > 0 ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+      {icon}
       <span>{parts.length > 0 ? parts.join(" · ") : "No changes"}</span>
     </p>
   );

@@ -209,6 +209,8 @@ describe("POST /api/issues/:id/replies — outcomes", () => {
     const res = await postReply({ body: "Thanks for the report." });
 
     expect(res.status).toBe(201);
+    // Every field `ReplyComment` declares, so a consumer can treat the response
+    // as one without encountering `undefined` where the type promises a value.
     expect(res.body).toEqual({
       ok: true,
       comment: {
@@ -217,6 +219,8 @@ describe("POST /api/issues/:id/replies — outcomes", () => {
         author: "me",
         authorAvatar: "https://avatars.test/me.png",
         createdAt: "2026-02-01T12:00:00.000Z",
+        updatedAt: "2026-02-01T12:00:00.000Z",
+        isSystem: false,
         url: "https://github.com/octo/repo/issues/7#issuecomment-1001",
       },
     });

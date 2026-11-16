@@ -10,15 +10,22 @@
  * corrupt row is skipped, never trusted" a single rule rather than two
  * implementations that could disagree.
  */
-import { and, eq, count } from "drizzle-orm";
+import { and, eq, count, sql } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { repos, triagePresets } from "@/lib/db/schema";
 import { presetActionsSchema } from "@/lib/validations";
 import type { Preset, PresetActions } from "@/features/presets/types";
 import { apiLogger } from "@/lib/logger";
 
-/** A stored preset row as the table holds it, before `actions` is parsed. */
-export type PresetRow = typeof triagePresets.$inferSelect;
+/** A stored preset row, with `actions` as the raw column text. */
+export type PresetRow = Omit<typeof triagePresets.$inferSelect, "actions"> & {
+  /**
+   * Raw JSON text on a read, or the decoded object on an `insert`/`update`
+   * `returning()`, which the driver decodes from the value it just wrote.
+   * {@link toPreset} handles both.
+   */
+  actions: string | Record<string, unknown>;
+};
 
 /** The repository columns creation needs to confirm ownership. */
 export type OwnedRepo = typeof repos.$inferSelect;
@@ -45,11 +52,26 @@ export async function findOwnedRepo(userId: string, repoId: string): Promise<Own
 /**
  * Validate the stored JSON and reshape it as a {@link Preset}.
  *
- * @param row - The stored row.
- * @returns The preset, or `null` when the stored actions no longer validate.
+ * The text is parsed here rather than by the driver so a malformed value is a
+ * skipped row instead of a failed query: one bad preset must not hide the rest
+ * of the user's presets.
+ *
+ * @param row - The stored row, with `actions` as raw JSON text.
+ * @returns The preset, or `null` when the stored actions no longer parse or validate.
  */
 export function toPreset(row: PresetRow): Preset | null {
-  const parsed = presetActionsSchema.safeParse(row.actions);
+  let decoded: unknown;
+  try {
+    decoded = typeof row.actions === "string" ? JSON.parse(row.actions) : row.actions;
+  } catch {
+    apiLogger.warn(
+      { presetId: row.id, repoId: row.repoId },
+      "Stored preset actions are not valid JSON and were skipped"
+    );
+    return null;
+  }
+
+  const parsed = presetActionsSchema.safeParse(decoded);
   if (!parsed.success) {
     apiLogger.warn(
       { presetId: row.id, repoId: row.repoId },
@@ -80,7 +102,18 @@ export function toPreset(row: PresetRow): Preset | null {
  */
 export async function listPresets(userId: string, repoId: string): Promise<Preset[]> {
   const rows = await typedDb
-    .select()
+    .select({
+      id: triagePresets.id,
+      userId: triagePresets.userId,
+      repoId: triagePresets.repoId,
+      name: triagePresets.name,
+      // Read the column as text rather than through the JSON codec. A row that
+      // holds invalid JSON would otherwise throw inside the driver, before
+      // `toPreset` could skip it, and take the whole list down with it.
+      actions: sql<string>`${triagePresets.actions}`,
+      createdAt: triagePresets.createdAt,
+      updatedAt: triagePresets.updatedAt,
+    })
     .from(triagePresets)
     .where(and(eq(triagePresets.userId, userId), eq(triagePresets.repoId, repoId)))
     .orderBy(triagePresets.name);
@@ -107,7 +140,17 @@ export async function listPresets(userId: string, repoId: string): Promise<Prese
  */
 export async function findPresetRow(userId: string, presetId: string): Promise<PresetRow | null> {
   const rows = await typedDb
-    .select()
+    .select({
+      id: triagePresets.id,
+      userId: triagePresets.userId,
+      repoId: triagePresets.repoId,
+      name: triagePresets.name,
+      // Raw text for the same reason as the list: a malformed value must be a
+      // rejected preset, not a failed lookup that reports "not found".
+      actions: sql<string>`${triagePresets.actions}`,
+      createdAt: triagePresets.createdAt,
+      updatedAt: triagePresets.updatedAt,
+    })
     .from(triagePresets)
     .where(and(eq(triagePresets.id, presetId), eq(triagePresets.userId, userId)));
   return rows[0] ?? null;

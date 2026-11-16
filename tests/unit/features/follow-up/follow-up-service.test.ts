@@ -333,8 +333,8 @@ describe("runFollowUpCheck", () => {
    * @target runFollowUpCheck
    * @dependencies RECHECK_COOLDOWN_MS
    * @scenario The row was checked five seconds ago
-   * @expectedOutput Nothing examined, counted as skipped, and no provider call:
-   *                 opening the inbox twice must not double the traffic
+   * @expectedOutput Nothing examined and no provider call: opening the inbox
+   *                 twice must not double the traffic
    */
   it("should skip a row still inside the cooldown", async () => {
     seedRepoAndIssue();
@@ -342,7 +342,10 @@ describe("runFollowUpCheck", () => {
 
     const summary = await runFollowUpCheck("user-1");
 
-    expect(summary).toEqual({ checked: 0, surfaced: 0, skipped: 1 });
+    // A cooled-down row is excluded by the query, so it is never examined and
+    // never reaches the loop. Counting it as `skipped` would conflate "not due
+    // yet" with "the provider failed", which is what the field reports.
+    expect(summary).toEqual({ checked: 0, surfaced: 0, skipped: 0 });
     expect(provider.fetchComments).not.toHaveBeenCalled();
   });
 
@@ -409,9 +412,13 @@ describe("runFollowUpCheck", () => {
         updatedAt: new Date("2026-01-08T00:00:00.000Z"),
       })
     );
-    provider.fetchComments
-      .mockRejectedValueOnce(new Error("provider is down"))
-      .mockResolvedValueOnce({ comments: [comment({ id: "100" })], olderCursor: null });
+    // Keyed on the issue number rather than call order: the pass orders rows by
+    // `checkedAt`, so a sequenced mock would silently test a different issue
+    // than the one the assertions below name.
+    provider.fetchComments.mockImplementation(async (_o, _r, issueNumber) => {
+      if (issueNumber === 7) throw new Error("provider is down");
+      return { comments: [comment({ id: "100" })], olderCursor: null };
+    });
 
     const summary = await runFollowUpCheck("user-1");
 
@@ -419,6 +426,46 @@ describe("runFollowUpCheck", () => {
     expect(fakeDb.state.rows.follow_up[0].checkedAt).toEqual(oldCheck);
     expect(fakeDb.state.rows.follow_up[0].reason).toBeNull();
     expect(fakeDb.state.rows.follow_up[1].reason).toBe("reply");
+  });
+
+  /**
+   * @target runFollowUpCheck
+   * @dependencies MAX_CHECKS_PER_PASS, RECHECK_COOLDOWN_MS
+   * @scenario Twenty recently checked rows sit alongside one that is due
+   * @expectedOutput The due row is still examined. Applying the limit before the
+   *                 cooldown filter would let the twenty cooled rows fill the
+   *                 batch and starve it indefinitely.
+   */
+  it("should not let cooled rows starve a due one", async () => {
+    fakeDb.state.rows.repo.push(repoRow());
+    const cooled = new Date(Date.now() - 5_000);
+    for (let index = 0; index < 20; index++) {
+      const issueId = `cooled-${index}`;
+      fakeDb.state.rows.issue.push(
+        issueRow({ id: issueId, number: index + 1, providerIssueId: `gh-cooled-${index}` })
+      );
+      fakeDb.state.rows.follow_up.push(
+        followUpRow({ id: `follow-up-cooled-${index}`, issueId, checkedAt: cooled })
+      );
+    }
+    fakeDb.state.rows.issue.push(
+      issueRow({ id: OTHER_ISSUE_ID, number: 99, providerIssueId: "gh-due" })
+    );
+    fakeDb.state.rows.follow_up.push(
+      followUpRow({ id: "follow-up-due", issueId: OTHER_ISSUE_ID, checkedAt: null })
+    );
+
+    const summary = await runFollowUpCheck("user-1");
+
+    expect(summary.checked).toBe(1);
+    expect(provider.fetchComments).toHaveBeenCalledTimes(1);
+    expect(provider.fetchComments).toHaveBeenCalledWith(
+      "octo",
+      "repo",
+      99,
+      "token-abc",
+      expect.anything()
+    );
   });
 
   /**

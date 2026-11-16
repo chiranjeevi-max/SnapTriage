@@ -29,6 +29,30 @@ describe("replySendState", () => {
   /**
    * @target replySendState
    * @dependencies ReplyDraftShape
+   * @scenario The provider accepted the reply but the response was lost, so the
+   *           server already deleted the draft and a refetch returns nothing
+   * @expectedOutput `unconfirmed`, even though no stored draft records an
+   *                 attempt. The absence of a draft cannot prove the post failed,
+   *                 and offering Send again would publish a second reply.
+   */
+  it("should stay unconfirmed when the outcome is unknown but the draft is gone", () => {
+    expect(replySendState(null, false, true)).toBe("unconfirmed");
+  });
+
+  /**
+   * @target replySendState
+   * @dependencies ReplyDraftShape
+   * @scenario A send is in flight while the previous attempt is still latched
+   * @expectedOutput `sending` wins: the composer is locked either way, and
+   *                 `sending` is the state that shows progress
+   */
+  it("should report sending ahead of a latched unconfirmed outcome", () => {
+    expect(replySendState(draft(), true, true)).toBe("sending");
+  });
+
+  /**
+   * @target replySendState
+   * @dependencies ReplyDraftShape
    * @scenario A saved draft with no attempt recorded
    * @expectedOutput `editable`, which is what makes the body writable and Send available
    */

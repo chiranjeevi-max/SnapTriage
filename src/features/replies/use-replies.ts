@@ -315,6 +315,12 @@ async function readSendFailure(res: Response): Promise<{ message: string; unconf
  * failure the draft is refetched, because `sendAttemptedAt` is what flips the
  * composer into the state that withholds Send.
  *
+ * A rejected `fetch` or an unparseable body is treated as unconfirmed rather
+ * than as a failure. Both mean the request left this tab and no answer came
+ * back, which is exactly the state where the provider may have accepted the
+ * comment. Reporting them as failures would re-enable Send on a reply that may
+ * already be public.
+ *
  * @param issueId - The issue being replied to.
  * @returns A TanStack mutation; `mutate` accepts the comment body.
  */
@@ -324,18 +330,37 @@ export function useSendReply(issueId: string | undefined) {
   return useMutation<PostedReply, Error, string>({
     mutationFn: async (body) => {
       if (!issueId) throw new Error("No issue selected");
-      const res = await fetch(`/api/issues/${issueId}/replies`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body }),
-      });
+
+      let res: Response;
+      try {
+        res = await fetch(`/api/issues/${issueId}/replies`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body }),
+        });
+      } catch {
+        throw new UnconfirmedSendError(
+          "The reply could not be sent and may not have been posted. Check the issue before sending again."
+        );
+      }
+
       if (!res.ok) {
         const failure = await readSendFailure(res);
         throw failure.unconfirmed
           ? new UnconfirmedSendError(failure.message)
           : new Error(failure.message);
       }
-      return res.json();
+
+      try {
+        return await res.json();
+      } catch {
+        // The provider answered, so the comment is very likely posted, but the
+        // body did not survive. Keep the draft unconfirmed rather than inviting
+        // a second public reply.
+        throw new UnconfirmedSendError(
+          "The reply was sent but its result could not be read. Check the issue before sending again."
+        );
+      }
     },
     onSuccess: () => {
       queryClient.setQueryData(["draft", issueId], null);

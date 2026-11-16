@@ -92,6 +92,32 @@ describe("listPresets", () => {
     });
   });
 
+  /**
+   * @target listPresets
+   * @dependencies toPreset, JSON.parse
+   * @scenario A row holds text that is not JSON at all, as a half-written value
+   *           or one edited outside the API would
+   * @expectedOutput The other presets are still returned. Reading the column
+   *                 through the driver's JSON codec throws before the row can be
+   *                 skipped, so one bad row hides every preset.
+   */
+  it("skips a row whose stored actions are not JSON", async () => {
+    fake.state.rows.triage_preset.push(
+      presetRow({
+        id: "preset-truncated",
+        name: "Truncated",
+        // Deliberately not JSON. The fixture type holds a decoded object, so the
+        // cast is what puts the malformed text in the column.
+        actions: '{"labels":{' as unknown as Record<string, unknown>,
+      }),
+      presetRow({ id: PRESET_ID, name: "A fine preset" })
+    );
+
+    const presets = await listPresets("user-1", REPO_ID);
+
+    expect(presets.map((preset) => preset.id)).toEqual([PRESET_ID]);
+  });
+
   it("only returns the current user's presets", async () => {
     fake.state.rows.triage_preset.push(
       presetRow({ id: "mine", name: "Mine" }),

@@ -199,6 +199,28 @@ describe("saveDraft", () => {
 
   /**
    * @target saveDraft
+   * @dependencies typedDb.update(reply_drafts), isNull(sendAttemptedAt)
+   * @scenario A send from this draft is still unresolved, and another tab saves
+   *           against the version it read
+   * @expectedOutput 409 and the claimed body unchanged. The send deletes the row
+   *                 on success, so accepting the edit would discard text the user
+   *                 believes was saved and give no reason why.
+   */
+  it("should refuse to save over a draft a send has claimed", async () => {
+    const claimedAt = new Date("2026-01-05T00:10:00.000Z");
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({ body: "On its way.", version: 2, sendAttemptedAt: claimedAt })
+    );
+
+    const failure = saveFailure(await saveDraft("user-1", ISSUE_ID, "Edited later", 2));
+
+    expect(failure.status).toBe(409);
+    expect(fakeDb.state.rows.reply_draft[0].body).toBe("On its way.");
+    expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).toEqual(claimedAt);
+  });
+
+  /**
+   * @target saveDraft
    * @dependencies typedDb.update(reply_drafts)
    * @scenario The caller supplies a non-zero version for a draft that no longer
    *           exists, as happens when another tab deleted it

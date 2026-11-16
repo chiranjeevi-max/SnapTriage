@@ -67,6 +67,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         author: result.comment.author,
         authorAvatar: result.comment.authorAvatar,
         createdAt: result.comment.createdAt.toISOString(),
+        updatedAt: result.comment.updatedAt.toISOString(),
+        isSystem: result.comment.isSystem,
         url: result.comment.url,
       },
     },

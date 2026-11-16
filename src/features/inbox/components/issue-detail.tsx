@@ -369,7 +369,12 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
         providerUrl={resolvedIssue.url}
         className="max-h-[min(18rem,30dvh)] min-h-0"
       />
+      {/* Keyed by issue so switching rows remounts the composer. Without it,
+          every piece of local state (typed text, conflict banner, the
+          unconfirmed-send latch) survives the switch and would autosave to, or
+          publish on, an issue the user never wrote it for. */}
       <Composer
+        key={issue.id}
         issue={{ id: issue.id, url: resolvedIssue.url, provider: issue.provider }}
         className="shrink-0"
       />

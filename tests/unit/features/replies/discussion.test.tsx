@@ -178,6 +178,33 @@ describe("Discussion", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
   });
 
+  it("keeps the loaded thread when fetching an older page fails", async () => {
+    const newest: CommentsPage = {
+      comments: [comment({ id: "3", body: "Already loaded reply" })],
+      olderCursor: "page-2",
+      supported: true,
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      return url.includes("cursor=page-2")
+        ? json({ error: "Could not load this discussion right now." }, 502)
+        : json(newest);
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    renderDiscussion();
+    expect(await screen.findByText("Already loaded reply")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Older comments" }));
+
+    // The failure reports itself, but the comments already on screen stay: a
+    // failed "load older" is not a reason to blank the conversation.
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Could not load this discussion right now.");
+    expect(screen.getByText("Already loaded reply")).toBeDefined();
+  });
+
   it("collapses and stops asking for comments while closed", async () => {
     const fetchMock = vi.fn(async () =>
       json({ comments: [comment()], olderCursor: null, supported: true })

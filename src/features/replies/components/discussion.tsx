@@ -188,7 +188,7 @@ export function Discussion({ issueId, providerUrl, className }: DiscussionProps)
                 </div>
               ))}
             </div>
-          ) : query.isError ? (
+          ) : query.isError && loaded === 0 ? (
             <div role="alert" className="rounded-md border border-dashed px-3 py-3">
               <p className="text-xs leading-relaxed text-destructive">{query.error.message}</p>
               <Button
@@ -200,16 +200,42 @@ export function Discussion({ issueId, providerUrl, className }: DiscussionProps)
                 Try again
               </Button>
             </div>
-          ) : loaded === 0 ? (
-            <p className="py-2 text-xs text-muted-foreground">
-              No replies yet. A reply you send here would be the first.
-            </p>
           ) : (
-            <ul className="flex flex-col gap-2">
-              {comments.map((comment) => (
-                <CommentRow key={comment.id} comment={comment} />
-              ))}
-            </ul>
+            <>
+              {/* A failed page fetch must not take the loaded thread with it. The
+                  error replaces the list only when there is nothing cached, so a
+                  failed "Older comments" reports itself above what already
+                  rendered instead of blanking the conversation. */}
+              {query.isError && (
+                <div
+                  role="alert"
+                  className="mb-2 flex flex-wrap items-center gap-x-2 rounded-md border border-dashed px-3 py-2"
+                >
+                  <span className="text-xs leading-relaxed text-destructive">
+                    {query.error.message}
+                  </span>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => query.refetch()}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              )}
+              {loaded === 0 ? (
+                <p className="py-2 text-xs text-muted-foreground">
+                  No replies yet. A reply you send here would be the first.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {comments.map((comment) => (
+                    <CommentRow key={comment.id} comment={comment} />
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </div>
       )}

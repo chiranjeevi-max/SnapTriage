@@ -12,7 +12,7 @@ Session-guarded REST layer. All routes `force-dynamic`.
 - Token writes go through `encrypt()`; reads through `decrypt()`. Rate-limit keys come from `rateLimitKey(req, scope)` in `src/lib/request-context.ts`, which only trusts `x-forwarded-for` when `TRUSTED_PROXY_HOPS` says how many proxies append to it; unattributable traffic shares one bucket.
 - Log via `apiLogger` / `authLogger` from `src/lib/logger.ts` (Pino, JSON in prod). No tokens in logs.
 - Provider writeback failures must surface to the client as non-2xx responses.
-- `POST /api/issues/[id]/replies` is the only endpoint that creates something a third party can see. It must never retry, and a possibly-accepted comment must return 409 with `{ unconfirmed: true }` so the client withholds Send. See invariant 13 in the root `AGENTS.md`.
+- `POST /api/issues/[id]/replies` is the only endpoint that creates something a third party can see. It must never retry, and a possibly-accepted comment must return 409 with `{ unconfirmed: true }` so the client withholds Send. See invariant 14 in the root `AGENTS.md`.
 - The follow-up and reply routes are deliberately separate from `PATCH /api/issues/[id]`. A follow-up is not a triage decision, and folding it in would let an unrelated triage retry re-arm a watch.
 - `GET /api/issues/[id]/comments` returns `supported: false` when the provider implements no comment API. Never return an empty thread for that case: "nobody replied" and "we cannot see" lead a maintainer to different actions.
 - `proxy.ts` owns route gating (`/inbox,/repos,/settings` → `/login`). Don't re-implement redirects in handlers.

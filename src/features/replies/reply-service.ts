@@ -183,12 +183,26 @@ export async function saveDraft(
       and(
         eq(replyDrafts.issueId, issueId),
         eq(replyDrafts.userId, userId),
-        eq(replyDrafts.version, expectedVersion)
+        eq(replyDrafts.version, expectedVersion),
+        // A claimed row belongs to the send that claimed it. Writing it would
+        // replace the text that is actually on its way to the provider, and the
+        // send deletes the row on success — so the accepted edit would vanish
+        // with no trace of why.
+        isNull(replyDrafts.sendAttemptedAt)
       )
     )
     .returning({ id: replyDrafts.id });
 
   if (updated.length === 0) {
+    const current = await findDraft(userId, issueId);
+    if (current?.sendAttemptedAt) {
+      return {
+        ok: false,
+        status: 409,
+        error:
+          "A send from this draft is still unconfirmed. Check the issue before saving over it.",
+      };
+    }
     return {
       ok: false,
       status: 409,
