@@ -7,8 +7,8 @@ SnapTriage is a keyboard-first issue triage tool. It aggregates issues, reposito
 - **Framework**: Next.js 16 (App Router) with TypeScript
 - **Styling**: Tailwind CSS v4 & shadcn/ui
 - **State Management**:
-  - Server State: TanStack Query (React Query)
-  - Client State: Zustand
+  - Server State: TanStack Query (React Query), with `staleTime: 60s` and `refetchOnWindowFocus: false`. Each feature names its own key: `["issues"]`, `["issue", id]`, `["draft", issueId]`, `["comments", issueId]`, `["presets", repoId]`, `["follow-ups"]`, `["saved-replies"]`.
+  - Client State: Zustand, for what has no server copy: selection, open pickers, and the undo stack.
 - **Database**:
   - Local/Self-Hosted: SQLite
   - Serverless/Vercel: Postgres via Drizzle ORM
@@ -29,6 +29,16 @@ There are two sync modes:
    - Ideal for scenarios with rate limits or slow networks.
 
 Webhook updates (optional): a GitHub or GitLab webhook calling `/api/webhooks/[provider]` syncs the matching connected repos immediately, on top of the polling interval. The shared secret travels in the provider's own header: `X-Hub-Signature-256` (HMAC-SHA256 over the raw body) for GitHub, `X-Gitlab-Token` for GitLab. It never travels in a query string that would land in access logs.
+
+## Presets, replies, and follow-ups
+
+Three features share the triage state: a preset re-applies a saved decision, a reply publishes a comment, and a follow-up parks an issue until something changes.
+
+**Presets** live in `triage_preset`, scoped to one repository. Applying one resolves it against the issue before writing, so the preview and the write use the same input. The resolver only ever adds, and a value the issue already carries is reported as `=` and kept out of the payload, so re-applying a preset changes nothing. In live mode the provider is called before `triage_state` is written, so a failed provider call leaves the issue as it was. In batch mode the resolution is merged into `pendingChanges`, and the write is conditional on a `revision` counter so two tabs staging at once cannot overwrite each other.
+
+**Replies** are published with no idempotency key. `reply_draft` holds the text and a claim. Before the provider call, `claimAttempt` records `sendAttemptedAt`, a random `sendClaimId`, and a `sendInFlightUntil` lease. The claim is an insert-then-conditional-update, so only one caller can take it. A confirmed success deletes the draft and clears the claim; a definitive provider rejection clears them both; anything ambiguous (timeout, abort, 5xx) keeps the claim so Send stays withheld until the user checks the issue. Every completion write is scoped to `sendClaimId`, so a call that outlives its lease cannot touch a newer attempt.
+
+**Follow-ups** live in `follow_up`, one row per issue, and the row itself is the baseline. `lastSeenCommentId` and `lastSeenCommentAt` record what the user had read when they parked the issue. A detection pass reads comments after that baseline and raises the issue when a human replies or it reopens. `attemptedAt` drives scheduling and `checkedAt` means the last completed check, so a row that keeps failing rotates behind the ones that have not had a turn. A detection pass never advances the baseline; only an explicit review does, or a re-arm.
 
 ## Deployment Strategy
 

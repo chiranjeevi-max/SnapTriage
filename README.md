@@ -33,6 +33,9 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 - **Webhook sync**: connect GitHub/GitLab webhooks to trigger an instant repo sync
 - **Label & assignee pickers**: searchable command palettes for quick editing
 - **Saved views**: keep named inbox filters (all, open, dismissed, snoozed, urgent) for one-click switching
+- **Presets**: save a recurring decision (labels, assignees, priority) as a named preset, preview the diff against the issue, then apply it with `T`
+- **Reply in place**: read the discussion and post a reply without leaving the inbox
+- **Follow-ups**: park an issue with `W` until someone replies or it reopens, then work it in the follow-up queue
 - **Snooze**: hide issues until a specific time
 - **Secure by default**: AES-256 encrypted tokens at rest, a nonce-based Content-Security-Policy, and webhooks authenticated in a request header instead of a URL
 - **Dark mode**: dark theme by default, light and system themes available
@@ -49,10 +52,14 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 | `L` | Edit labels |
 | `A` | Edit assignees |
 | `S` | Snooze issue |
+| `T` | Apply a preset |
+| `W` | Wait for a reply |
 | `Z` | Undo last action |
 | `R` | Sync issues |
 | `Shift+P` | Push batch changes |
 | `?` | Show all shortcuts |
+
+Reply to an issue with `Ctrl+Enter` (or `Cmd+Enter`) from the composer.
 
 ## Quick Start
 
@@ -112,6 +119,9 @@ SnapTriage is production-ready today. What's next:
 
 - [ ] **AI-assisted triage**: auto-suggest labels, priority, and assignees based on issue content
 - [x] **Saved filters & views**: custom inbox views with persistent filter sets
+- [x] **Triage presets**: save a recurring decision and apply it by name
+- [x] **In-place replies**: read the discussion and reply without leaving the inbox
+- [x] **Follow-ups**: park an issue until someone replies or it reopens
 - [ ] **Team sync**: shared triage queues with real-time presence
 - [ ] **Jira & Linear providers**: extend the provider abstraction beyond GitHub/GitLab
 - [x] **Bulk actions**: select multiple issues, apply changes in one shot
