@@ -15,6 +15,13 @@
       "when": 1793683764002,
       "tag": "0001_far_lenny_balinger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794804985974,
+      "tag": "0002_late_caretaker",
+      "breakpoints": true
     }
   ]
 }
