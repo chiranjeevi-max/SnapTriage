@@ -175,6 +175,30 @@ describe("POST /api/issues/:id/apply-preset — authorization", () => {
     expect(mockGetProvider).not.toHaveBeenCalled();
     expect(operations().filter((entry) => entry.startsWith("db:update"))).toEqual([]);
   });
+
+  /**
+   * @target POST /api/issues/:id/apply-preset
+   * @dependencies applyPresetSchema, findPresetRow
+   * @scenario The preset was edited after the preview the client is showing
+   * @expectedOutput 422 and nothing written. The preview named one bundle; the
+   *                 stored one is different, so applying it would make changes
+   *                 the user never reviewed.
+   */
+  it("should refuse a preset edited since it was previewed", async () => {
+    fakeDb.state.rows.repo.push(repoRow());
+    fakeDb.state.rows.issue.push(issueRow());
+    fakeDb.state.rows.triage_preset.push(presetRow());
+
+    const res = await applyPreset({
+      presetId: PRESET_ID,
+      expectedUpdatedAt: "2020-01-01T00:00:00.000Z",
+    });
+
+    expect(res.status).toBe(422);
+    expect((res.body as { error: string }).error).toContain("changed since");
+    expect(mockGetProvider).not.toHaveBeenCalled();
+    expect(operations().filter((entry) => entry.startsWith("db:update"))).toEqual([]);
+  });
 });
 
 describe("POST /api/issues/:id/apply-preset — resolution", () => {

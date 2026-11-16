@@ -47,6 +47,13 @@ export interface ApplyPresetResult {
 export interface ApplyPresetInput {
   issueId: string;
   presetId: string;
+  /**
+   * The revision the preview was computed from.
+   *
+   * Sent so the server can refuse an apply whose preview no longer matches the
+   * stored preset. Omitted only where there was no preview.
+   */
+  expectedUpdatedAt?: string;
   /** The preset's name, used in the toast and the undo stack entry. */
   presetName: string;
   /** The resolution the user approved; it drives the optimistic cache update. */
@@ -73,11 +80,11 @@ export function useApplyPreset() {
   const pushUndo = useUndoStore((s) => s.push);
 
   return useMutation<ApplyPresetResult, Error, ApplyPresetInput, ApplyContext>({
-    mutationFn: async ({ issueId, presetId, batch }) => {
+    mutationFn: async ({ issueId, presetId, batch, expectedUpdatedAt }) => {
       const res = await fetch(`/api/issues/${issueId}/apply-preset`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ presetId, batch }),
+        body: JSON.stringify({ presetId, batch, expectedUpdatedAt }),
       });
       if (!res.ok) throw new Error(await readApiError(res, "Failed to apply preset"));
       return res.json();

@@ -55,7 +55,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-  const { presetId, batch } = parsed.data;
+  const { presetId, batch, expectedUpdatedAt } = parsed.data;
 
   const context = await loadTriageContext(userId, id);
   if (!context) {
@@ -73,6 +73,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // not have, so the mismatch is reported as a missing preset.
   if (row.repoId !== issue.repoId) {
     return NextResponse.json({ error: "Preset not found" }, { status: 404 });
+  }
+
+  // The preview was built from one revision. If the preset was edited after that,
+  // the user is looking at a bundle that no longer exists, and applying the
+  // current one would write changes they never reviewed.
+  if (expectedUpdatedAt !== undefined && row.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return NextResponse.json(
+      {
+        error: "This preset changed since it was previewed. Reopen it to see the current version.",
+      },
+      { status: 422 }
+    );
   }
 
   const preset = toPreset(row);

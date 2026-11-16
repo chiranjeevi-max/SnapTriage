@@ -179,6 +179,15 @@ export type UpdatePresetInput = z.infer<typeof updatePresetSchema>;
 export const applyPresetSchema = z.object({
   presetId: z.string().uuid(),
   batch: z.boolean().optional(),
+  /**
+   * The preset revision the preview was computed from.
+   *
+   * Optional so a caller that has not previewed (an older client, or a direct
+   * API use) still works. When present, a mismatch is refused: the preview
+   * showed one bundle and the stored one has since changed, so applying it would
+   * act on terms the user never saw.
+   */
+  expectedUpdatedAt: z.string().datetime().optional(),
 });
 
 export type ApplyPresetInput = z.infer<typeof applyPresetSchema>;

@@ -176,6 +176,10 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
         issueId: issue.id,
         presetId: selected.id,
         presetName: selected.name,
+        // What the preview was built from. If the preset was edited elsewhere
+        // after that, the apply is refused rather than writing a bundle the user
+        // has not seen.
+        expectedUpdatedAt: selected.updatedAt,
         preview: resolution,
         batch: stageMode,
       },

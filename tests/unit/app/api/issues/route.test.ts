@@ -200,6 +200,35 @@ describe("PATCH /api/issues/:id", () => {
 
   /**
    * @target PATCH /api/issues/:id
+   * @dependencies applyTriage, mergePendingChanges
+   * @scenario Two staging writes run against the same row before either commits
+   * @expectedOutput Both sets of values are staged. The merge is a
+   *                 read-modify-write, so a second write that merged from its own
+   *                 pre-write snapshot would replace the first one's values with
+   *                 a bundle that never contained them.
+   */
+  it("should keep both sets of values when two staging writes race", async () => {
+    fakeDb.state.rows.repo.push(repoRow({ syncMode: "batch" }));
+    fakeDb.state.rows.issue.push(issueRow());
+    fakeDb.state.rows.triage_state.push(triageRow());
+
+    await Promise.all([
+      patchIssue({ labels: { add: ["bug"] } }),
+      patchIssue({ assignees: { add: ["octocat"] } }),
+    ]);
+
+    const staged = fakeDb.state.rows.triage_state[0].pendingChanges as {
+      labels?: { add: string[] };
+      assignees?: { add: string[] };
+    };
+
+    // Whatever the interleaving, neither write may be lost.
+    expect(staged.labels?.add ?? []).toContain("bug");
+    expect(staged.assignees?.add ?? []).toContain("octocat");
+  });
+
+  /**
+   * @target PATCH /api/issues/:id
    * @dependencies applyTriage
    * @scenario A priority-only change on a live repo with no provider token
    * @expectedOutput 200: priority is personal, so it needs no provider token

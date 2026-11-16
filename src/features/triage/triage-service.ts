@@ -155,6 +155,15 @@ function providerFields(
 }
 
 /**
+ * How many times a staged merge is re-attempted after losing a write race.
+ *
+ * Three is enough to absorb the realistic case — two tabs, occasionally a third
+ * writer — without a loop that could run long under contention. Exhausting them
+ * is reported rather than retried forever.
+ */
+const STAGE_RETRIES = 3;
+
+/**
  * Apply one triage payload to one of the user's issues.
  *
  * Batch repositories merge into `triage_state.pendingChanges` and set
@@ -243,21 +252,64 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
       return { ok: true, mode, applied: payload };
     }
 
-    const staged = touchesProvider
-      ? {
-          batchPending: true,
-          pendingChanges: mergePendingChanges((triageRow?.pendingChanges ?? {}) as PendingChanges, {
-            labels,
-            assignees,
-            state,
-          }) as Record<string, unknown>,
-        }
-      : {};
-
     const triageId = await ensureTriageRow();
+
+    if (touchesProvider) {
+      // Compare-and-set on `updatedAt`. A merge is read-modify-write, so two tabs
+      // staging at once would otherwise both merge their own snapshot and the
+      // later write would drop the earlier one's values. The write is conditional
+      // on the row being unchanged since it was read; a lost race is retried
+      // against the row the winner left behind rather than silently overwritten.
+      for (let attempt = 0; attempt < STAGE_RETRIES; attempt++) {
+        const current = await typedDb
+          .select({ updatedAt: triageState.updatedAt, pendingChanges: triageState.pendingChanges })
+          .from(triageState)
+          .where(eq(triageState.id, triageId));
+        const seen = current[0];
+        if (!seen) break;
+
+        const merged = mergePendingChanges((seen.pendingChanges ?? {}) as PendingChanges, {
+          labels,
+          assignees,
+          state,
+        });
+        const written = await typedDb
+          .update(triageState)
+          .set({
+            ...personal,
+            batchPending: true,
+            pendingChanges: merged as Record<string, unknown>,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(triageState.id, triageId),
+              // Three-valued logic: `updatedAt` is never null for a row that
+              // exists, so a null here means the row moved out from under us.
+              eq(triageState.updatedAt, seen.updatedAt)
+            )
+          )
+          .returning({ id: triageState.id });
+
+        if (written.length > 0) {
+          apiLogger.info(
+            { issueId, mode, durationMs: Math.round(performance.now() - startedAt) },
+            "Triage write staged for batch push"
+          );
+          return { ok: true, mode, applied: payload };
+        }
+      }
+
+      return {
+        ok: false,
+        status: 409,
+        error: "Another change was staged at the same time. Try again.",
+      };
+    }
+
     await typedDb
       .update(triageState)
-      .set({ ...personal, ...staged, updatedAt: new Date() })
+      .set({ ...personal, updatedAt: new Date() })
       .where(eq(triageState.id, triageId));
 
     apiLogger.info(
