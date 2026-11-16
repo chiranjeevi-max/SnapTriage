@@ -37,7 +37,7 @@ These override statistical defaults. Follow them exactly.
 12. Webhook auth is header-borne only: `X-Hub-Signature-256` (HMAC over the raw body) for GitHub, `X-Gitlab-Token` for GitLab. Never accept a secret in a query string.
 13. PAT sign-in identifies the user by the token's provider account, stored as `<instance>/<id>` in `access_token.providerAccountId` since GitLab ids repeat across instances. Provider-reported emails can be unverified, so an email only nominates a legacy row with a null `providerAccountId`, claimed when its stored token resolves to the same account.
 14. Publishing a comment is irreversible and has no idempotency key. Never auto-retry a send: claim it with the conditional update in `sendReply` (`src/features/replies/reply-service.ts`), and on an ambiguous failure keep the draft unconfirmed (`sendAttemptedAt` set) so Send is withheld. A definitive provider rejection may clear the claim; a timeout, abort, or 5xx must not.
-15. A follow-up is an event, not a timer. Never advance `follow_up.lastSeenCommentId` from a detection pass — only `reviewFollowUp` moves the baseline. A reopen is a transition (`stateAtBaseline` closed → open), never merely "is open". Never let follow-up and snooze clear each other.
+15. A follow-up is an event, not a timer. Never advance `follow_up.lastSeenCommentId` from a detection pass. `armFollowUp` sets it once, and `reviewFollowUp` moves it forward. A reopen is a transition (`stateAtBaseline` closed → open), never merely "is open". Never let follow-up and snooze clear each other.
 ## Style
 
 - TypeScript `strict:true`, `target:ES2017`, `jsx:react-jsx`.

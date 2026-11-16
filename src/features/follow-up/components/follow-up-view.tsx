@@ -175,7 +175,7 @@ export function FollowUpView({ onOpenIssue }: FollowUpViewProps) {
   const entries = data?.entries ?? [];
 
   return (
-    <div className="flex h-full min-h-0 flex-col" aria-label="Follow-up queue">
+    <section className="flex h-full min-h-0 flex-col" aria-label="Follow-up queue">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b px-4 py-2.5">
         <div className="min-w-0">
           <p className="text-xs font-medium">
@@ -246,6 +246,6 @@ export function FollowUpView({ onOpenIssue }: FollowUpViewProps) {
           and reviewing it here does not un-snooze it.
         </p>
       </div>
-    </div>
+    </section>
   );
 }
