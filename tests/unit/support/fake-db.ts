@@ -534,15 +534,10 @@ export function createFakeDb(): FakeDb {
             },
 
             where(condition?: unknown) {
+              // The filtered rows, then chained through `queryResult` so
+              // `.orderBy()` and `.limit()` apply to this result rather than
+              // starting from the unfiltered table again.
               return queryResult(materialize(run(condition)));
-            },
-
-            orderBy(...terms: unknown[]) {
-              return queryResult(sortRows(materialize(run(undefined)), terms));
-            },
-
-            limit(count: number) {
-              return queryResult(materialize(run(undefined)).slice(0, Math.max(count, 0)));
             },
           };
 

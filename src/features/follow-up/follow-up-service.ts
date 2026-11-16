@@ -13,7 +13,7 @@
  * not hammer the provider. Anything not examined keeps its previous
  * `checkedAt`, which is what the UI shows to make freshness honest.
  */
-import { and, eq, inArray, desc, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, inArray, desc, isNull, lt, or } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { followUps, issues, repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
@@ -304,9 +304,10 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
     .innerJoin(issues, eq(issues.id, followUps.issueId))
     .innerJoin(repos, eq(repos.id, issues.repoId))
     .where(and(eq(followUps.userId, userId), eq(followUps.state, "waiting"), due))
-    // Never-attempted rows first, then the ones left alone longest. A failed row
-    // moves to the back on its next pass because `attemptedAt` advanced.
-    .orderBy(sql`${followUps.attemptedAt} is not null`, followUps.attemptedAt, followUps.checkedAt)
+    // Oldest attempt first. NULL sorts below every timestamp on SQLite and
+    // Postgres, so never-attempted rows lead. A failed row moves to the back on
+    // its next pass because `attemptedAt` advanced.
+    .orderBy(followUps.attemptedAt, followUps.checkedAt)
     .limit(MAX_CHECKS_PER_PASS);
 
   const cache: PassContext = new Map();

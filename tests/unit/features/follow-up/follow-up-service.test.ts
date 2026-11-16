@@ -459,10 +459,10 @@ describe("runFollowUpCheck", () => {
 
     const summary = await runFollowUpCheck("user-1");
 
+    // The twenty are inside the cooldown, so the filter excludes them and only
+    // the due row is examined. Applying the limit before the filter is what
+    // starved it: the batch would fill with cooled rows and never reach this one.
     expect(summary.checked).toBe(1);
-    // Only the healthy row is fetched. Ordering by `attemptedAt` puts the twenty
-    // recently attempted rows behind it; ordering by `checkedAt` would have
-    // filled the batch with them and never reached this call.
     expect(provider.fetchComments).toHaveBeenCalledTimes(1);
     expect(provider.fetchComments.mock.calls[0][2]).toBe(99);
   });
@@ -479,8 +479,11 @@ describe("runFollowUpCheck", () => {
    */
   it("should rotate past rows whose checks keep failing", async () => {
     fakeDb.state.rows.repo.push(repoRow());
-    const failureMark = new Date(Date.now() - 120_000);
-    const failing = new Date(Date.now() - 60_000);
+    // Comfortably outside the cooldown, so the assertion does not depend on how
+    // many milliseconds elapse between building these dates and the query's own
+    // cutoff. A value on the boundary made this pass locally and fail on CI.
+    const failureMark = new Date(Date.now() - 600_000);
+    const failing = new Date(Date.now() - 300_000);
     for (let index = 0; index < 20; index++) {
       const issueId = `failing-${index}`;
       fakeDb.state.rows.issue.push(
@@ -490,7 +493,7 @@ describe("runFollowUpCheck", () => {
         followUpRow({
           id: `follow-up-failing-${index}`,
           issueId,
-          // Checked once long ago, attempted just now and failed.
+          // Checked once long ago, last attempted well outside the cooldown.
           checkedAt: failureMark,
           attemptedAt: failing,
         })
@@ -505,15 +508,13 @@ describe("runFollowUpCheck", () => {
 
     const summary = await runFollowUpCheck("user-1");
 
-    expect(summary.checked).toBe(1);
-    expect(provider.fetchComments).toHaveBeenCalledTimes(1);
-    expect(provider.fetchComments).toHaveBeenCalledWith(
-      "octo",
-      "repo",
-      99,
-      "token-abc",
-      expect.anything()
-    );
+    // The pass is capped at twenty and there are twenty-one eligible rows, so
+    // exactly one is left out. It must be one of the failures, never the healthy
+    // row: ordering by `attemptedAt` puts the never-attempted row at the front,
+    // while ordering by `checkedAt` would fill the batch with the twenty and drop
+    // it — which is how a healthy row waits forever behind failing ones.
+    expect(summary.checked).toBe(20);
+    expect(provider.fetchComments.mock.calls[0][2]).toBe(99);
   });
 
   /**
