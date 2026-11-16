@@ -21,6 +21,18 @@ interface KeyboardState {
   labelPickerOpen: boolean;
   assigneePickerOpen: boolean;
   snoozePickerOpen: boolean;
+  presetPickerOpen: boolean;
+  savedReplyPickerOpen: boolean;
+  followUpPanelOpen: boolean;
+  /**
+   * Set by the `follow-up` shortcut and consumed by the detail pane's
+   * follow-up control.
+   *
+   * A request rather than an open flag, because arming reads the provider for a
+   * baseline and that mutation lives in the pane that knows which issue is
+   * selected. The consumer clears it, so it cannot fire twice.
+   */
+  followUpArmRequested: boolean;
 
   setSelectedIndex: (i: number) => void;
   setIssueCount: (n: number) => void;
@@ -29,6 +41,10 @@ interface KeyboardState {
   setLabelPickerOpen: (open: boolean) => void;
   setAssigneePickerOpen: (open: boolean) => void;
   setSnoozePickerOpen: (open: boolean) => void;
+  setPresetPickerOpen: (open: boolean) => void;
+  setSavedReplyPickerOpen: (open: boolean) => void;
+  setFollowUpPanelOpen: (open: boolean) => void;
+  setFollowUpArmRequested: (requested: boolean) => void;
   isAnyPickerOpen: () => boolean;
   reset: () => void;
 }
@@ -41,6 +57,10 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   labelPickerOpen: false,
   assigneePickerOpen: false,
   snoozePickerOpen: false,
+  presetPickerOpen: false,
+  savedReplyPickerOpen: false,
+  followUpPanelOpen: false,
+  followUpArmRequested: false,
 
   setSelectedIndex: (i) => set({ selectedIndex: i }),
 
@@ -62,10 +82,25 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   setLabelPickerOpen: (open) => set({ labelPickerOpen: open }),
   setAssigneePickerOpen: (open) => set({ assigneePickerOpen: open }),
   setSnoozePickerOpen: (open) => set({ snoozePickerOpen: open }),
+  setPresetPickerOpen: (open) => set({ presetPickerOpen: open }),
+  setSavedReplyPickerOpen: (open) => set({ savedReplyPickerOpen: open }),
+  setFollowUpPanelOpen: (open) => set({ followUpPanelOpen: open }),
+  setFollowUpArmRequested: (requested) => set({ followUpArmRequested: requested }),
 
+  // The two dialogs that belong to the reply surface are counted here even
+  // though they are not triage controls: their buttons are not editable
+  // elements, so without these flags a `d` pressed while choosing a template or
+  // reading follow-up details would dismiss the issue behind the dialog.
   isAnyPickerOpen: () => {
     const s = get();
-    return s.labelPickerOpen || s.assigneePickerOpen || s.snoozePickerOpen;
+    return (
+      s.labelPickerOpen ||
+      s.assigneePickerOpen ||
+      s.snoozePickerOpen ||
+      s.presetPickerOpen ||
+      s.savedReplyPickerOpen ||
+      s.followUpPanelOpen
+    );
   },
 
   reset: () =>
@@ -76,5 +111,9 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
       labelPickerOpen: false,
       assigneePickerOpen: false,
       snoozePickerOpen: false,
+      presetPickerOpen: false,
+      savedReplyPickerOpen: false,
+      followUpPanelOpen: false,
+      followUpArmRequested: false,
     }),
 }));

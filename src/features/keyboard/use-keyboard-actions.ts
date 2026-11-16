@@ -28,6 +28,8 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
     setLabelPickerOpen,
     setAssigneePickerOpen,
     setSnoozePickerOpen,
+    setPresetPickerOpen,
+    setFollowUpArmRequested,
   } = useKeyboardStore();
   const triage = useTriageMutation();
   const sync = useSync();
@@ -108,6 +110,16 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           if (!currentIssue) break;
           setSnoozePickerOpen(true);
           break;
+        case "presets":
+          setPresetPickerOpen(!!currentIssue);
+          break;
+        case "follow-up":
+          // A request flag, not a direct mutation: the control that owns the
+          // issue's follow-up state arms it when it sees the flag, so this
+          // dispatcher never needs the issue id or a TanStack mutation.
+          if (!currentIssue) break;
+          setFollowUpArmRequested(true);
+          break;
         case "undo": {
           const action = popUndo();
           if (action) {
@@ -138,6 +150,8 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
       setLabelPickerOpen,
       setAssigneePickerOpen,
       setSnoozePickerOpen,
+      setPresetPickerOpen,
+      setFollowUpArmRequested,
       popUndo,
     ]
   );

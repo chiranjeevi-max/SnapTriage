@@ -13,10 +13,13 @@
  */
 import { z } from "zod";
 import type {
+  CommentPage,
+  FetchCommentsOptions,
   IssueProvider,
+  ProviderCollaborator,
+  ProviderComment,
   ProviderIssue,
   ProviderLabel,
-  ProviderCollaborator,
 } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
 import { providerLogger } from "@/lib/logger";
@@ -63,6 +66,30 @@ const gitlabUserSchema = z.object({ id: z.number(), username: z.string() });
 
 /** The part of a GitLab issue that assignee updates are computed from. */
 const issueAssigneesSchema = z.object({ assignees: z.array(gitlabUserSchema) });
+
+/** Normalise a GitLab note into the provider-neutral shape. */
+function toProviderComment(raw: {
+  id: number;
+  body: string;
+  author?: { username: string; avatar_url: string | null } | null;
+  created_at: string;
+  updated_at: string;
+  system?: boolean;
+}): ProviderComment {
+  return {
+    id: String(raw.id),
+    body: raw.body ?? "",
+    author: raw.author?.username ?? null,
+    authorAvatar: raw.author?.avatar_url ?? null,
+    createdAt: new Date(raw.created_at),
+    updatedAt: new Date(raw.updated_at),
+    // GitLab returns generated activity in the same stream as comments, unlike
+    // GitHub. The flag is what keeps "added label bug" out of the follow-up
+    // check; the request also asks for comments only, so this is belt and brace.
+    isSystem: raw.system === true,
+    url: null,
+  };
+}
 
 /** GitLab implementation of the {@link IssueProvider} interface. */
 export const gitlabProvider: IssueProvider = {
@@ -330,5 +357,138 @@ export const gitlabProvider: IssueProvider = {
     }
 
     return collaborators;
+  },
+
+  /**
+   * Fetch one page of an issue's notes, oldest first.
+   *
+   * GitLab's notes endpoint mixes human comments with generated activity and
+   * lets the caller filter: `activity_filter=only_comments` drops system notes
+   * server-side, which keeps the payload small and means a thread of pure
+   * label changes reads as empty rather than as a conversation.
+   *
+   * Pages are requested newest-first, so page 1 is the most recent activity and
+   * the cursor walks towards older history exactly as it does for GitHub. Each
+   * page is then reversed before it is returned, because both providers hand
+   * the caller "oldest first within the page" — a thread should read in the
+   * order it was written no matter which way the API paged it.
+   *
+   * @param options - Cursor from a previous call, optional `since` filter, page size.
+   */
+  async fetchComments(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    token: string,
+    options: FetchCommentsOptions = {}
+  ): Promise<CommentPage> {
+    const baseUrl = getBaseUrl();
+    const project = projectPath(owner, repo);
+    const requested = options.limit ?? 30;
+    const perPage = Number.isFinite(requested)
+      ? Math.min(Math.max(Math.trunc(requested), 1), 100)
+      : 30;
+
+    const page = options.cursor ? Number(options.cursor) : 1;
+    if (!Number.isInteger(page) || page < 1) {
+      throw new ProviderApiError(400, "Invalid comment cursor", {
+        provider: "gitlab",
+        operation: "fetchComments",
+        owner,
+        repo,
+      });
+    }
+
+    const params = new URLSearchParams({
+      per_page: String(perPage),
+      page: String(page),
+      sort: "desc",
+      order_by: "created_at",
+      activity_filter: "only_comments",
+    });
+    if (options.since) params.set("updated_after", options.since.toISOString());
+
+    const res = await timedFetch(
+      `${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}/notes?${params}`,
+      { headers: headers(token) }
+    );
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new ProviderApiError(res.status, body, {
+        provider: "gitlab",
+        operation: "fetchComments",
+        owner,
+        repo,
+      });
+    }
+
+    const raw = (await res.json()) as Parameters<typeof toProviderComment>[0][];
+    // The header carries the page number GitLab wants next; use its value rather
+    // than assuming contiguity, so a server that skips a page is followed.
+    const nextPage = res.headers.get("x-next-page");
+
+    return {
+      comments: raw
+        .filter((note) => note.system !== true)
+        .map(toProviderComment)
+        .reverse(),
+      olderCursor: nextPage ? nextPage : null,
+    };
+  },
+
+  /**
+   * Post a comment on an issue.
+   *
+   * GitLab normalises the body before storing it: quick actions are executed
+   * and removed, carriage returns are stripped, and trailing whitespace is
+   * trimmed. The returned comment is therefore what GitLab kept, not
+   * necessarily what was sent, which is why the caller stores the response.
+   *
+   * @returns The note as GitLab stored it, including its id.
+   */
+  async createComment(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    token: string,
+    body: string
+  ): Promise<ProviderComment> {
+    const baseUrl = getBaseUrl();
+    const project = projectPath(owner, repo);
+
+    const res = await timedFetch(
+      `${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}/notes`,
+      {
+        method: "POST",
+        headers: { ...headers(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      }
+    );
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new ProviderApiError(res.status, text, {
+        provider: "gitlab",
+        operation: "createComment",
+        owner,
+        repo,
+      });
+    }
+
+    return toProviderComment(await res.json());
+  },
+
+  /**
+   * Resolve the username behind a GitLab token.
+   *
+   * @returns The authenticated username and avatar, or `null`.
+   */
+  async getAuthenticatedUser(token: string) {
+    const res = await timedFetch(`${getBaseUrl()}/api/v4/user`, { headers: headers(token) });
+    if (!res.ok) return null;
+    const user = await res.json();
+    if (!user?.username) return null;
+    return { login: user.username as string, avatar: (user.avatar_url as string) ?? null };
   },
 };

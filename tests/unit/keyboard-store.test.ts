@@ -15,6 +15,10 @@ describe("keyboard-store", () => {
       expect(state.labelPickerOpen).toBe(false);
       expect(state.assigneePickerOpen).toBe(false);
       expect(state.snoozePickerOpen).toBe(false);
+      expect(state.presetPickerOpen).toBe(false);
+      expect(state.savedReplyPickerOpen).toBe(false);
+      expect(state.followUpPanelOpen).toBe(false);
+      expect(state.followUpArmRequested).toBe(false);
     });
   });
 
@@ -104,6 +108,48 @@ describe("keyboard-store", () => {
       useKeyboardStore.getState().setSnoozePickerOpen(true);
       expect(useKeyboardStore.getState().snoozePickerOpen).toBe(true);
     });
+
+    it("updates presetPickerOpen", () => {
+      useKeyboardStore.getState().setPresetPickerOpen(true);
+      expect(useKeyboardStore.getState().presetPickerOpen).toBe(true);
+
+      useKeyboardStore.getState().setPresetPickerOpen(false);
+      expect(useKeyboardStore.getState().presetPickerOpen).toBe(false);
+    });
+
+    it("updates savedReplyPickerOpen", () => {
+      useKeyboardStore.getState().setSavedReplyPickerOpen(true);
+      expect(useKeyboardStore.getState().savedReplyPickerOpen).toBe(true);
+
+      useKeyboardStore.getState().setSavedReplyPickerOpen(false);
+      expect(useKeyboardStore.getState().savedReplyPickerOpen).toBe(false);
+    });
+
+    it("updates followUpPanelOpen", () => {
+      useKeyboardStore.getState().setFollowUpPanelOpen(true);
+      expect(useKeyboardStore.getState().followUpPanelOpen).toBe(true);
+
+      useKeyboardStore.getState().setFollowUpPanelOpen(false);
+      expect(useKeyboardStore.getState().followUpPanelOpen).toBe(false);
+    });
+  });
+
+  describe("followUpArmRequested", () => {
+    it("is set by the shortcut's request and cleared by its consumer", () => {
+      const state = useKeyboardStore.getState();
+      state.setFollowUpArmRequested(true);
+      expect(useKeyboardStore.getState().followUpArmRequested).toBe(true);
+
+      state.setFollowUpArmRequested(false);
+      expect(useKeyboardStore.getState().followUpArmRequested).toBe(false);
+    });
+
+    it("does not make the store think a dialog is open", () => {
+      // The flag is a one-shot request, not a modal. Treating it as one would
+      // mute the keyboard until the next unrelated picker closed.
+      useKeyboardStore.getState().setFollowUpArmRequested(true);
+      expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(false);
+    });
   });
 
   describe("isAnyPickerOpen", () => {
@@ -125,6 +171,30 @@ describe("keyboard-store", () => {
       useKeyboardStore.getState().setSnoozePickerOpen(true);
       expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(true);
     });
+
+    it("returns true when the preset picker is open", () => {
+      useKeyboardStore.getState().setPresetPickerOpen(true);
+      expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(true);
+    });
+
+    it("returns true when the saved-reply picker is open", () => {
+      // The dialog's buttons are not editable elements, so without this flag a
+      // shortcut fired while it was open would act on the issue behind it.
+      useKeyboardStore.getState().setSavedReplyPickerOpen(true);
+      expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(true);
+    });
+
+    it("returns true when the follow-up details panel is open", () => {
+      useKeyboardStore.getState().setFollowUpPanelOpen(true);
+      expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(true);
+    });
+
+    it("returns false again once every picker is closed", () => {
+      const state = useKeyboardStore.getState();
+      state.setPresetPickerOpen(true);
+      state.setPresetPickerOpen(false);
+      expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(false);
+    });
   });
 
   describe("reset", () => {
@@ -134,6 +204,10 @@ describe("keyboard-store", () => {
       state.setIssueCount(10);
       state.toggleOverlay();
       state.setLabelPickerOpen(true);
+      state.setPresetPickerOpen(true);
+      state.setSavedReplyPickerOpen(true);
+      state.setFollowUpPanelOpen(true);
+      state.setFollowUpArmRequested(true);
 
       state.reset();
 
@@ -144,6 +218,20 @@ describe("keyboard-store", () => {
       expect(newState.labelPickerOpen).toBe(false);
       expect(newState.assigneePickerOpen).toBe(false);
       expect(newState.snoozePickerOpen).toBe(false);
+      expect(newState.presetPickerOpen).toBe(false);
+      expect(newState.savedReplyPickerOpen).toBe(false);
+      expect(newState.followUpPanelOpen).toBe(false);
+      expect(newState.followUpArmRequested).toBe(false);
+    });
+
+    it("leaves no dialog flag set, so the keyboard is not muted after a sign-out", () => {
+      const state = useKeyboardStore.getState();
+      state.setSavedReplyPickerOpen(true);
+      state.setFollowUpPanelOpen(true);
+
+      state.reset();
+
+      expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(false);
     });
   });
 });

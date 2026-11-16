@@ -1,0 +1,190 @@
+/**
+ * @module follow-up/components/follow-up-control
+ *
+ * The "Wait for a reply" control in the issue pane.
+ *
+ * A follow-up is not triage. Snooze hides an issue until a clock runs out;
+ * a follow-up leaves the issue exactly where it is and watches it for activity
+ * that is worth interrupting for. The two are therefore independent, and this
+ * control never touches `triage_state` nor is it cleared by it.
+ *
+ * Arming records a baseline by reading the provider's newest comment, so the
+ * first check compares against what the user could see at that moment rather
+ * than against an empty thread.
+ */
+"use client";
+
+import { useEffect, useState } from "react";
+import { BellRing } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn, formatRelativeTime } from "@/lib/utils";
+import { Kbd, useKeyboardStore } from "@/features/keyboard";
+import { describeFollowUpReason } from "@/features/follow-up/detection";
+import { useFollowUpAction, useFollowUps } from "@/features/follow-up/use-follow-ups";
+
+/** The word shown on the button for each stored state. */
+const STATE_LABEL: Record<"waiting" | "reviewed" | "stopped", string> = {
+  waiting: "Waiting",
+  reviewed: "Reviewed",
+  stopped: "Stopped",
+};
+
+/**
+ * Arms a follow-up for the selected issue, or shows the one already there.
+ *
+ * @param props - `issueId` of the issue in the detail pane.
+ */
+export function FollowUpControl({ issueId }: { issueId: string }) {
+  const { data } = useFollowUps();
+  const action = useFollowUpAction(issueId);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const armRequested = useKeyboardStore((state) => state.followUpArmRequested);
+  const setArmRequested = useKeyboardStore((state) => state.setFollowUpArmRequested);
+  const setPanelOpen = useKeyboardStore((state) => state.setFollowUpPanelOpen);
+  const arm = action.mutate;
+
+  // The shortcut sets a flag rather than reaching into this component. The flag
+  // is cleared before the mutation starts, so a failed arm cannot leave it set
+  // and re-fire on the next render.
+  useEffect(() => {
+    if (!armRequested) return;
+    setArmRequested(false);
+    arm({ action: "wait" });
+  }, [armRequested, setArmRequested, arm]);
+
+  // The details dialog is a dialog with plain buttons, so the global shortcut
+  // listener needs to be told it is open; otherwise `d` would dismiss the issue
+  // behind it. The flag is released on unmount as well as on close.
+  useEffect(() => {
+    setPanelOpen(detailsOpen);
+    return () => setPanelOpen(false);
+  }, [detailsOpen, setPanelOpen]);
+
+  const entry = data?.entries.find((item) => item.issueId === issueId) ?? null;
+  const state = entry?.state ?? null;
+
+  function handleClick() {
+    if (state === null) {
+      action.mutate({ action: "wait" });
+      return;
+    }
+    setDetailsOpen(true);
+  }
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={state === "waiting" ? "secondary" : "outline"}
+            size="sm"
+            className="h-8 gap-1.5 px-2.5 text-xs"
+            disabled={action.isPending}
+            onClick={handleClick}
+          >
+            <BellRing
+              className={cn(
+                "h-3 w-3",
+                entry?.due && "text-foreground",
+                !entry && "text-muted-foreground"
+              )}
+            />
+            {state
+              ? entry?.due
+                ? describeFollowUpReason(entry.reason)
+                : STATE_LABEL[state]
+              : "Wait"}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="flex items-center gap-1.5">
+          <span>{state ? "Follow-up details" : "Wait for a reply"}</span>
+          <Kbd>W</Kbd>
+        </TooltipContent>
+      </Tooltip>
+
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-4 sm:max-w-sm">
+          <DialogHeader className="shrink-0 pr-6">
+            <DialogTitle className="flex items-center gap-2">
+              <BellRing className="h-4 w-4" />
+              Follow-up
+            </DialogTitle>
+            <DialogDescription>
+              This issue comes back to the follow-up queue when somebody else replies, or when it is
+              reopened. It stays in the queue until you review or stop it.
+            </DialogDescription>
+          </DialogHeader>
+
+          {entry && (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+              <dt className="text-muted-foreground">State</dt>
+              <dd>
+                <Badge variant={entry.due ? "secondary" : "outline"} className="text-[11px]">
+                  {STATE_LABEL[entry.state]}
+                </Badge>
+              </dd>
+              <dt className="text-muted-foreground">Reason</dt>
+              <dd className="min-w-0 break-words">{describeFollowUpReason(entry.reason)}</dd>
+              <dt className="text-muted-foreground">Checked</dt>
+              <dd className="font-mono tabular-nums">
+                {entry.checkedAt
+                  ? formatRelativeTime(entry.checkedAt, { suffix: true })
+                  : "never checked"}
+              </dd>
+            </dl>
+          )}
+
+          {action.error && (
+            <p role="alert" className="break-words text-xs text-destructive">
+              {action.error.message}
+            </p>
+          )}
+
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Snooze and follow-up are separate: snoozing this issue does not stop it returning here,
+            and reviewing it here does not un-snooze it.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-2.5 text-xs"
+              disabled={action.isPending}
+              onClick={() => action.mutate({ action: "wait" })}
+            >
+              {entry?.state === "waiting" ? "Re-read the baseline" : "Wait again"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 px-2.5 text-xs"
+              disabled={action.isPending || entry?.state !== "waiting"}
+              onClick={() => action.mutate({ action: "review" })}
+            >
+              Review
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 px-2.5 text-xs text-muted-foreground"
+              disabled={action.isPending || !entry}
+              onClick={() => action.mutate({ action: "stop" })}
+            >
+              Stop
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

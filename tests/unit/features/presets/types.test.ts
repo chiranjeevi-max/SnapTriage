@@ -1,0 +1,202 @@
+/**
+ * @module tests/unit/features/presets/types
+ *
+ * The preset resolver is the one place that decides what a preset actually
+ * does to an issue. These tests pin the properties the rest of the feature
+ * depends on:
+ *
+ * - A preset only adds; it never removes something the issue already had.
+ * - Re-applying a preset to an issue that already satisfies it changes nothing.
+ * - The preview lines and the payload always agree.
+ * - The inverse restores exactly what the resolution changed.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  describeResolution,
+  invertResolution,
+  resolvePreset,
+  type PresetActions,
+  type ResolvableIssue,
+} from "@/features/presets/types";
+
+/** An issue with no labels, no assignees and no triage row yet. */
+function issue(overrides: Partial<ResolvableIssue> = {}): ResolvableIssue {
+  return {
+    labels: [],
+    assignees: [],
+    triage: { priority: null },
+    ...overrides,
+  } as ResolvableIssue;
+}
+
+describe("resolvePreset", () => {
+  it("adds every configured value to an issue that has none", () => {
+    const actions: PresetActions = {
+      priority: 1,
+      labels: { add: ["bug", "confirmed"] },
+      assignees: { add: ["jo"] },
+    };
+
+    const resolution = resolvePreset(actions, issue());
+
+    expect(resolution.noChange).toBe(false);
+    expect(resolution.payload).toEqual({
+      priority: 1,
+      labels: { add: ["bug", "confirmed"] },
+      assignees: { add: ["jo"] },
+    });
+  });
+
+  it("does not re-add a label or assignee the issue already has", () => {
+    const actions: PresetActions = {
+      labels: { add: ["bug", "confirmed"] },
+      assignees: { add: ["jo"] },
+    };
+
+    const resolution = resolvePreset(
+      actions,
+      issue({ labels: ["bug"], assignees: ["jo"], triage: { priority: null } })
+    );
+
+    expect(resolution.payload).toEqual({ labels: { add: ["confirmed"] } });
+    expect(resolution.noChange).toBe(false);
+  });
+
+  it("treats an already-satisfied preset as no change", () => {
+    const actions: PresetActions = {
+      priority: 2,
+      labels: { add: ["bug"] },
+      assignees: { add: ["jo"] },
+    };
+
+    const resolution = resolvePreset(
+      actions,
+      issue({ labels: ["bug"], assignees: ["jo"], triage: { priority: 2 } })
+    );
+
+    expect(resolution.noChange).toBe(true);
+    expect(resolution.payload).toEqual({});
+  });
+
+  it("compares label and assignee names case-insensitively", () => {
+    const actions: PresetActions = {
+      labels: { add: ["Bug"] },
+      assignees: { add: ["JO"] },
+    };
+
+    const resolution = resolvePreset(actions, issue({ labels: ["bug"], assignees: ["jo"] }));
+
+    expect(resolution.noChange).toBe(true);
+  });
+
+  it("distinguishes an omitted priority from a null one", () => {
+    const omitted = resolvePreset({ labels: { add: ["bug"] } }, issue({ triage: { priority: 2 } }));
+    const cleared = resolvePreset({ priority: null }, issue({ triage: { priority: 2 } }));
+
+    expect(omitted.payload.priority).toBeUndefined();
+    expect(cleared.payload.priority).toBeNull();
+  });
+
+  it("does not clear a priority that is already unset", () => {
+    const resolution = resolvePreset({ priority: null }, issue({ triage: { priority: null } }));
+
+    expect(resolution.noChange).toBe(true);
+  });
+
+  it("sets a priority on an issue that has never been triaged", () => {
+    const resolution = resolvePreset({ priority: 0 }, issue({ triage: null }));
+
+    expect(resolution.payload.priority).toBe(0);
+    expect(resolution.noChange).toBe(false);
+  });
+
+  it("deduplicates a label repeated inside one preset", () => {
+    const resolution = resolvePreset({ labels: { add: ["bug", "bug"] } }, issue());
+
+    expect(resolution.payload.labels?.add).toEqual(["bug"]);
+  });
+
+  it("preserves unrelated labels on the issue", () => {
+    const resolution = resolvePreset(
+      { labels: { add: ["bug"] } },
+      issue({ labels: ["documentation", "good first issue"] })
+    );
+
+    expect(resolution.payload.labels).toEqual({ add: ["bug"] });
+  });
+});
+
+describe("resolvePreset preview", () => {
+  it("marks added values with + and existing ones with =", () => {
+    const resolution = resolvePreset(
+      { labels: { add: ["bug", "triage"] } },
+      issue({ labels: ["bug"] })
+    );
+
+    expect(resolution.changes).toEqual([
+      { kind: "label", value: "bug", operation: "=" },
+      { kind: "label", value: "triage", operation: "+" },
+    ]);
+  });
+
+  it("reports a cleared priority with - and the outgoing value", () => {
+    const resolution = resolvePreset({ priority: null }, issue({ triage: { priority: 3 } }));
+
+    expect(resolution.changes).toEqual([{ kind: "priority", value: "P3", operation: "-" }]);
+  });
+
+  it("emits no preview line for an unset priority that stays unset", () => {
+    const resolution = resolvePreset({ priority: null }, issue({ triage: { priority: null } }));
+
+    expect(resolution.changes).toEqual([]);
+  });
+
+  it("describes only the operations that change something", () => {
+    const resolution = resolvePreset(
+      { priority: 1, labels: { add: ["bug", "triage"] }, assignees: { add: ["jo"] } },
+      issue({ labels: ["bug"] })
+    );
+
+    expect(describeResolution(resolution)).toBe("Set P1, Add triage, Assign jo");
+  });
+
+  it("describes an already-satisfied preset as a match", () => {
+    const resolution = resolvePreset({ labels: { add: ["bug"] } }, issue({ labels: ["bug"] }));
+
+    expect(describeResolution(resolution)).toBe("Already matches this preset");
+  });
+});
+
+describe("invertResolution", () => {
+  it("restores the previous priority", () => {
+    const before = issue({ triage: { priority: 2 } });
+    const resolution = resolvePreset({ priority: 1 }, before);
+
+    expect(invertResolution(resolution, before)).toEqual({ priority: 2 });
+  });
+
+  it("removes only the labels the preset added", () => {
+    const before = issue({ labels: ["documentation"] });
+    const resolution = resolvePreset({ labels: { add: ["bug"] } }, before);
+
+    expect(invertResolution(resolution, before)).toEqual({
+      labels: { add: [], remove: ["bug"] },
+    });
+  });
+
+  it("removes only the assignees the preset added", () => {
+    const before = issue({ assignees: ["nadia"] });
+    const resolution = resolvePreset({ assignees: { add: ["jo"] } }, before);
+
+    expect(invertResolution(resolution, before)).toEqual({
+      assignees: { add: [], remove: ["jo"] },
+    });
+  });
+
+  it("produces an empty payload for a no-op resolution", () => {
+    const before = issue({ labels: ["bug"] });
+    const resolution = resolvePreset({ labels: { add: ["bug"] } }, before);
+
+    expect(invertResolution(resolution, before)).toEqual({});
+  });
+});

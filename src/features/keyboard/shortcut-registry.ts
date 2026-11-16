@@ -67,6 +67,13 @@ export const shortcuts: Shortcut[] = [
   { id: "labels", key: "l", category: "triage", description: "Edit labels" },
   { id: "assignees", key: "a", category: "triage", description: "Edit assignees" },
   { id: "snooze", key: "s", category: "triage", description: "Snooze issue" },
+  { id: "presets", key: "t", category: "triage", description: "Apply a preset" },
+  {
+    id: "follow-up",
+    key: "w",
+    category: "triage",
+    description: "Wait for a reply",
+  },
   { id: "undo", key: "z", category: "triage", description: "Undo last action" },
   {
     id: "batch-push",

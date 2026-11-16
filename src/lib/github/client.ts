@@ -8,10 +8,13 @@
  * per_page=100 convention with sequential page fetching.
  */
 import type {
+  CommentPage,
+  FetchCommentsOptions,
   IssueProvider,
+  ProviderCollaborator,
+  ProviderComment,
   ProviderIssue,
   ProviderLabel,
-  ProviderCollaborator,
 } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
 import { providerLogger } from "@/lib/logger";
@@ -74,6 +77,44 @@ async function ghFetch(url: string, token: string, init?: RequestInit): Promise<
   }
 
   return res;
+}
+
+/**
+ * Read one page number out of GitHub's `Link` header.
+ *
+ * GitHub pages issue comments oldest-first and only numbers the pages in this
+ * header, so the newest page is discovered rather than computed.
+ */
+function linkedPage(linkHeader: string | null, relation: "last" | "prev" | "next"): number | null {
+  if (!linkHeader) return null;
+  for (const part of linkHeader.split(",")) {
+    const match = part.match(/<[^>]*[?&]page=(\d+)[^>]*>\s*;\s*rel="(\w+)"/);
+    if (match && match[2] === relation) return Number(match[1]);
+  }
+  return null;
+}
+
+/** Normalise a GitHub issue comment into the provider-neutral shape. */
+function toProviderComment(raw: {
+  id: number;
+  body: string | null;
+  user: { login: string; avatar_url: string } | null;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+}): ProviderComment {
+  return {
+    id: String(raw.id),
+    body: raw.body ?? "",
+    author: raw.user?.login ?? null,
+    authorAvatar: raw.user?.avatar_url ?? null,
+    createdAt: new Date(raw.created_at),
+    updatedAt: new Date(raw.updated_at),
+    // GitHub keeps generated timeline activity out of the comment stream
+    // entirely, so anything returned here was typed by a person.
+    isSystem: false,
+    url: raw.html_url ?? null,
+  };
 }
 
 /** GitHub implementation of the {@link IssueProvider} interface. */
@@ -320,5 +361,129 @@ export const githubProvider: IssueProvider = {
     }
 
     return collaborators;
+  },
+
+  /**
+   * Fetch one page of an issue's comments, oldest first.
+   *
+   * GitHub numbers comment pages ascending from the oldest, so "the newest
+   * page" is only knowable from the `Link` header. Reading the newest page
+   * therefore costs a probe: ask for page 1, learn the last page number, then
+   * read that. A caller that supplies `since` skips the probe — the filtered
+   * set is small and its *oldest* page already contains what changed, so one
+   * request answers "anything new since X".
+   *
+   * @param options - Cursor from a previous call, optional `since` filter, page size.
+   */
+  async fetchComments(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    token: string,
+    options: FetchCommentsOptions = {}
+  ): Promise<CommentPage> {
+    const requested = options.limit ?? 30;
+    const perPage = Number.isFinite(requested)
+      ? Math.min(Math.max(Math.trunc(requested), 1), 100)
+      : 30;
+    const base = `${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
+
+    const readPage = async (page: number) => {
+      const params = new URLSearchParams({ per_page: String(perPage), page: String(page) });
+      if (options.since) params.set("since", options.since.toISOString());
+
+      const res = await ghFetch(`${base}?${params}`, token);
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new ProviderApiError(res.status, body, {
+          provider: "github",
+          operation: "fetchComments",
+          owner,
+          repo,
+        });
+      }
+
+      const raw = (await res.json()) as Parameters<typeof toProviderComment>[0][];
+      return {
+        comments: raw.map(toProviderComment),
+        page,
+        lastPage: linkedPage(res.headers.get("link"), "last"),
+      };
+    };
+
+    if (options.cursor) {
+      const page = Number(options.cursor);
+      if (!Number.isInteger(page) || page < 1) {
+        throw new ProviderApiError(400, "Invalid comment cursor", {
+          provider: "github",
+          operation: "fetchComments",
+          owner,
+          repo,
+        });
+      }
+      const current = await readPage(page);
+      return { comments: current.comments, olderCursor: page > 1 ? String(page - 1) : null };
+    }
+
+    if (options.since) {
+      const oldest = await readPage(1);
+      return { comments: oldest.comments, olderCursor: null };
+    }
+
+    const probe = await readPage(1);
+    if (!probe.lastPage || probe.lastPage === 1) {
+      return { comments: probe.comments, olderCursor: null };
+    }
+
+    const newest = await readPage(probe.lastPage);
+    return { comments: newest.comments, olderCursor: String(probe.lastPage - 1) };
+  },
+
+  /**
+   * Post a comment on an issue.
+   *
+   * @returns The comment as GitHub stored it, including its id.
+   */
+  async createComment(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    token: string,
+    body: string
+  ): Promise<ProviderComment> {
+    const res = await ghFetch(
+      `${GITHUB_API}/repos/${owner}/${repo}/issues/${issueNumber}/comments`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      }
+    );
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new ProviderApiError(res.status, text, {
+        provider: "github",
+        operation: "createComment",
+        owner,
+        repo,
+      });
+    }
+
+    return toProviderComment(await res.json());
+  },
+
+  /**
+   * Resolve the login behind a GitHub token.
+   *
+   * @returns The authenticated login and avatar, or `null` when the token cannot
+   *          read its own user (an installation token, for instance).
+   */
+  async getAuthenticatedUser(token: string) {
+    const res = await ghFetch(`${GITHUB_API}/user`, token);
+    if (!res.ok) return null;
+    const user = await res.json();
+    if (!user?.login) return null;
+    return { login: user.login as string, avatar: (user.avatar_url as string) ?? null };
   },
 };

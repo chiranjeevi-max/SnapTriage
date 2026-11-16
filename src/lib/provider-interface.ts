@@ -30,6 +30,51 @@ export interface IssueUpdate {
   state?: "open" | "closed";
 }
 
+/**
+ * One comment on an issue.
+ *
+ * `isSystem` marks records the provider generated itself (a label change, a
+ * close, a reference) rather than text a person wrote. Those matter to the
+ * follow-up check: an automated "added label bug" is not a reply from anybody.
+ */
+export interface ProviderComment {
+  /** The provider's stable comment id, kept as a string because the two providers disagree on width. */
+  id: string;
+  body: string;
+  author: string | null;
+  authorAvatar: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  isSystem: boolean;
+  /** Permalink to the comment, when the provider exposes one. */
+  url: string | null;
+}
+
+/**
+ * One page of comments, oldest first.
+ *
+ * Providers page in opposite directions (GitHub ascending only, GitLab
+ * configurable), so the adapter normalises both to "oldest first within the
+ * page, with a cursor that walks towards older history". Returning the cursor
+ * instead of a page number keeps the caller from having to know which provider
+ * it is talking to.
+ */
+export interface CommentPage {
+  comments: ProviderComment[];
+  /** Cursor for the next older page, or `null` when this is the oldest. */
+  olderCursor: string | null;
+}
+
+/** Options for {@link IssueProvider.fetchComments}. */
+export interface FetchCommentsOptions {
+  /** Cursor returned by a previous call; omit for the newest page. */
+  cursor?: string | null;
+  /** Only return comments updated at or after this instant. */
+  since?: Date;
+  /** Page size, capped by the adapter at the provider's own maximum. */
+  limit?: number;
+}
+
 /** A label on a repo */
 export interface ProviderLabel {
   name: string;
@@ -67,6 +112,15 @@ export const providerLimits = {
     label: 50,
     /** Maximum length of a user login. */
     login: 39,
+    /**
+     * Maximum length of a comment body, in characters.
+     *
+     * GitHub stores issue comments in a MySQL `mediumblob` (262,144 bytes), and
+     * the API rejects a body over 65,536 characters. Confirmed by GitHub staff
+     * in community discussion 27190 and by the rejection message users report
+     * ("Comment is too long (maximum is 65536 characters)").
+     */
+    comment: 65_536,
   },
   gitlab: {
     /** Maximum length of a namespace path, which may be nested. */
@@ -79,6 +133,11 @@ export const providerLimits = {
     label: 255,
     /** Maximum length of a username. */
     login: 255,
+    /**
+     * Maximum length of a note body, in characters. Documented as
+     * "Limited to 1,000,000 characters" on the Notes API reference.
+     */
+    comment: 1_000_000,
   },
 } as const;
 
@@ -108,4 +167,43 @@ export interface IssueProvider {
 
   /** Fetch collaborators for a repo */
   fetchCollaborators?(owner: string, repo: string, token: string): Promise<ProviderCollaborator[]>;
+
+  /**
+   * Fetch one page of an issue's discussion, oldest first.
+   *
+   * Optional because a provider may not expose comments; callers must treat a
+   * missing implementation as "discussion unavailable" rather than as an empty
+   * thread, so the UI can say so instead of implying nobody has replied.
+   */
+  fetchComments?(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    token: string,
+    options?: FetchCommentsOptions
+  ): Promise<CommentPage>;
+
+  /**
+   * Post a comment and return it as the provider stored it.
+   *
+   * There is no idempotency key on either provider's comment endpoint, so this
+   * is not safe to retry blindly: a request that timed out may have created the
+   * comment. Callers must not retry automatically and must reconcile before
+   * offering a second send.
+   */
+  createComment?(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    token: string,
+    body: string
+  ): Promise<ProviderComment>;
+
+  /**
+   * Resolve the authenticated user's own login on this provider.
+   *
+   * Needed to tell "the reporter replied" from "I replied". Fetched per
+   * provider rather than per repository, and cached by the caller.
+   */
+  getAuthenticatedUser?(token: string): Promise<{ login: string; avatar: string | null } | null>;
 }

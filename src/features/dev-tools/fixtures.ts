@@ -8,6 +8,9 @@
  * hit. The limits are listed per row.
  */
 import type { IssueDetail } from "@/features/inbox/use-issues";
+import type { Preset } from "@/features/presets/types";
+import type { ReplyComment, SavedReply } from "@/features/replies/use-replies";
+import type { FollowUpEntry, FollowUpList } from "@/features/follow-up/use-follow-ups";
 import type { DataMode } from "./data-mode";
 
 /** A repository as the app stores it. */
@@ -45,6 +48,9 @@ export interface FixtureAvailableRepo {
   permission: "admin" | "write" | "read";
   isPrivate: boolean;
 }
+
+/** A preset as the picker renders it. */
+export type FixturePreset = Preset;
 
 /** A saved view as the inbox toolbar renders it. */
 export interface FixtureView {
@@ -349,6 +355,82 @@ export const WORST_CASE_VIEWS: FixtureView[] = [
   },
 ];
 
+/** A preset name at the API's 80 character limit, made of real words. */
+const LONG_PRESET_NAME =
+  "Confirmed bug: 500 on every checkout retry, charged twice, no audit trail in log";
+
+/**
+ * The worst case for the preset picker.
+ *
+ * Each row breaks a different thing so one screen shows all of them: a name at
+ * the 80 character limit, a label at GitHub's 50 character label limit, a
+ * hundred labels, a preset whose every action the worst-case issue already
+ * satisfies, and an empty bundle the picker must refuse to render.
+ */
+export const WORST_CASE_PRESETS: Preset[] = [
+  {
+    id: "preset-1",
+    repoId: "r1",
+    name: LONG_PRESET_NAME,
+    actions: {
+      priority: 1,
+      labels: {
+        add: [
+          "documentation-must-be-updated-and-reviewed-before-merge".slice(0, LABEL_LIMIT),
+          "confirmed",
+          "needs-repro",
+        ],
+      },
+      assignees: { add: ["jo"] },
+    },
+    createdAt: hoursAgo(72),
+    updatedAt: hoursAgo(2),
+  },
+  {
+    id: "preset-2",
+    repoId: "r1",
+    name: "Every label",
+    actions: {
+      labels: { add: MAX_LABELS_LIST },
+    },
+    createdAt: hoursAgo(72),
+    updatedAt: hoursAgo(4),
+  },
+  {
+    id: "preset-3",
+    // Every value here is already on worst-1, so resolving it is a no-op. That
+    // is the row that proves the pane says "Already applied" instead of
+    // reporting a success it did not perform.
+    repoId: "r1",
+    name: "Already satisfied by the first row",
+    actions: {
+      priority: 1,
+      labels: {
+        add: ["documentation-must-be-updated-and-reviewed-before-merge".slice(0, LABEL_LIMIT)],
+      },
+      assignees: { add: [MAX_ASSIGNEES_LIST[0]] },
+    },
+    createdAt: hoursAgo(72),
+    updatedAt: hoursAgo(6),
+  },
+  {
+    id: "preset-4",
+    repoId: "r1",
+    name: "Empty bundle from before validation existed",
+    actions: {},
+    createdAt: hoursAgo(72),
+    updatedAt: hoursAgo(8),
+  },
+  {
+    id: "preset-5",
+    repoId: "r1",
+    name: "Clear priority",
+    actions: { priority: null, labels: { add: ["priorité-haute"] } },
+    createdAt: hoursAgo(72),
+    updatedAt: hoursAgo(10),
+  },
+];
+
 /** A thousand rows, for the list performance and pagination check. */
 export function manyIssues(count = 1000): FixtureIssue[] {
   return Array.from({ length: count }, (_, index) =>
@@ -428,4 +510,330 @@ export function viewsForMode(mode: DataMode): FixtureView[] {
   if (mode === "empty") return [];
   if (mode === "one") return WORST_CASE_VIEWS.slice(0, 1);
   return WORST_CASE_VIEWS;
+}
+
+/**
+ * The presets for a mode.
+ *
+ * @param mode - The active data mode.
+ * @returns The presets the mode stands for.
+ */
+export function presetsForMode(mode: DataMode): Preset[] {
+  if (mode === "empty") return [];
+  if (mode === "one") return WORST_CASE_PRESETS.slice(0, 1);
+  return WORST_CASE_PRESETS;
+}
+
+/**
+ * A comment body padded to exactly `limit` characters.
+ *
+ * Padded rather than truncated from one long sentence so the counter in the
+ * composer is exercised at the boundary the provider actually enforces, and so
+ * a body that reflows badly at that width is visible instead of theoretical.
+ *
+ * @param limit - The provider's documented comment limit, in characters.
+ */
+function commentAtLimit(limit: number): string {
+  const block = [
+    "Thanks for the report. Reproduced on `main` at 4f21c0e with the retry path enabled.",
+    "",
+    "```",
+    "TypeError: Cannot read properties of undefined (reading 'id')",
+    "    at settle (src/lib/github/client.ts:118:22)",
+    "```",
+    "",
+    "| Attempt | Status | Duration |",
+    "| --- | --- | --- |",
+    "| 1 | 503 | 30s |",
+    "",
+  ].join("\n");
+
+  let body = "";
+  while (body.length + block.length <= limit) body += block;
+  return body.padEnd(limit, ".");
+}
+
+/** A thousand comments, for the pagination and scroll check on a long thread. */
+export function manyComments(count = 1000): ReplyComment[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: String(1_000_000 + index),
+    body:
+      index % 12 === 0
+        ? `**Comment ${index + 1}.** Re-ran the suite on node 26 and it is still flaky.`
+        : `Comment ${index + 1}. Same here on macOS, but only under load.`,
+    author:
+      index % 5 === 0 ? "nadia" : index % 7 === 0 ? "dependabot[bot]" : "bartholomew.fitzgerald",
+    authorAvatar: null,
+    createdAt: hoursAgo(240 - index / 5),
+    updatedAt: hoursAgo(240 - index / 5),
+    isSystem: index % 23 === 0,
+    url: `https://github.com/example/example/issues/1#issuecomment-${1_000_000 + index}`,
+  }));
+}
+
+/**
+ * The worst case for the discussion pane.
+ *
+ * One row per failure the pane has to survive: a body at GitHub's 65,536
+ * character limit, a body at GitLab's 1,000,000 character limit, a provider
+ * system note, a bot, the signed-in user's own reply, an unbreakable URL, and
+ * mixed scripts. The system note and the bot are here because the follow-up
+ * check has to tell them apart from a human reply; the pane has to render them
+ * without pretending they are one.
+ */
+export const WORST_CASE_COMMENTS: ReplyComment[] = [
+  {
+    id: "9007199254740993",
+    body: commentAtLimit(65_536),
+    author: "bartholomew.fitzgerald-northwind".slice(0, LOGIN_LIMIT),
+    authorAvatar: null,
+    createdAt: hoursAgo(96),
+    updatedAt: hoursAgo(96),
+    isSystem: false,
+    url: "https://github.com/example/example/issues/1#issuecomment-9007199254740993",
+  },
+  {
+    id: "9007199254740994",
+    body: commentAtLimit(1_000_000),
+    author: "priya-ramachandran",
+    authorAvatar: null,
+    createdAt: hoursAgo(72),
+    updatedAt: hoursAgo(72),
+    isSystem: false,
+    url: "https://gitlab.com/group/project/-/issues/1#note_9007199254740994",
+  },
+  {
+    id: "9007199254740995",
+    body: "added label ~confirmed and removed label ~needs-repro",
+    author: "ghost",
+    authorAvatar: null,
+    createdAt: hoursAgo(60),
+    updatedAt: hoursAgo(60),
+    isSystem: true,
+    url: null,
+  },
+  {
+    id: "9007199254740996",
+    body: "This issue has been automatically marked as stale because it has not had recent activity.",
+    author: "stale[bot]",
+    authorAvatar: null,
+    createdAt: hoursAgo(48),
+    updatedAt: hoursAgo(48),
+    isSystem: false,
+    url: "https://github.com/example/example/issues/1#issuecomment-9007199254740996",
+  },
+  {
+    id: "9007199254740997",
+    body: "Thanks, I can reproduce this on the retry path. Leaving it open for now.",
+    author: "chiranjeevi",
+    authorAvatar: null,
+    createdAt: hoursAgo(30),
+    updatedAt: hoursAgo(30),
+    isSystem: false,
+    url: "https://github.com/example/example/issues/1#issuecomment-9007199254740997",
+  },
+  {
+    id: "9007199254740998",
+    body:
+      "The failing redirect lands on a URL with no break opportunity: " +
+      "https://ci.northwind-industries-holdings.internal/pipelines/9876543210/jobs/1234567890/artifacts/bundle/coverage/lcov-report/src/features/very/deeply/nested/module/index.html#L9876",
+    author: "r.okonkwo",
+    authorAvatar: null,
+    createdAt: hoursAgo(12),
+    updatedAt: hoursAgo(12),
+    isSystem: false,
+    url: "https://github.com/example/example/issues/1#issuecomment-9007199254740998",
+  },
+  {
+    id: "9007199254740999",
+    body:
+      "同じ現象を確認しました。การจัดวางปุ่มภาษาไทยบนหน้าจอเล็กที่มีความสูงจำกัดก็พังด้วย " +
+      "Không hiển thị được tiếng Việt có dấu khi bảng có nhiều cột.",
+    author: "jo",
+    authorAvatar: null,
+    createdAt: hoursAgo(4),
+    updatedAt: hoursAgo(4),
+    isSystem: false,
+    url: "https://github.com/example/example/issues/1#issuecomment-9007199254740999",
+  },
+  {
+    id: "9007199254741000",
+    body: "",
+    author: null,
+    authorAvatar: null,
+    createdAt: hoursAgo(2),
+    updatedAt: hoursAgo(2),
+    isSystem: false,
+    url: null,
+  },
+];
+
+/**
+ * The worst case for the follow-up queue.
+ *
+ * The first row has never been checked, so the view has to say so instead of
+ * rendering an empty `checked  ago`. The second carries a three-day-old check,
+ * which is the state freshness text exists for. The remaining rows cover each
+ * state and both reasons, and one row is simultaneously snoozed and waiting on
+ * a follow-up: the two are separate concepts and neither clears the other.
+ */
+export const WORST_CASE_FOLLOW_UPS: FollowUpEntry[] = [
+  {
+    issueId: "worst-1",
+    repoId: "r1",
+    number: 999_999,
+    title: "Flaky integration suite fails intermittently on CI when the upstream provider answers",
+    url: "https://github.com/northwind-industries-holdings/customer-identity-platform/issues/999999",
+    provider: "github",
+    fullName: "northwind-industries-holdings/customer-identity-platform",
+    state: "waiting",
+    reason: null,
+    checkedAt: null,
+    due: false,
+  },
+  {
+    issueId: "worst-2",
+    repoId: "r1",
+    number: 1,
+    title:
+      "Webhook rejects payloads that contain a URL such as https://api.github.com/repos/x/hooks/1",
+    url: "https://github.com/a/b/issues/1",
+    provider: "github",
+    fullName: "a/b",
+    state: "waiting",
+    reason: "reply",
+    checkedAt: hoursAgo(72),
+    due: true,
+  },
+  {
+    issueId: "worst-3",
+    repoId: "r2",
+    number: 4200,
+    title: "Every label at once",
+    url: "https://gitlab.com/group/subgroup/project-with-a-long-name/-/issues/4200",
+    provider: "gitlab",
+    fullName: "group/subgroup/project-with-a-long-name",
+    state: "waiting",
+    reason: "reopened",
+    checkedAt: hoursAgo(0.02),
+    due: true,
+  },
+  {
+    issueId: "worst-4",
+    repoId: "r2",
+    number: 7,
+    title: "Không hiển thị được tiếng Việt có dấu",
+    url: "https://github.com/acme/console/issues/7",
+    provider: "github",
+    fullName: "acme/console",
+    state: "reviewed",
+    reason: null,
+    checkedAt: hoursAgo(5),
+    due: false,
+  },
+  {
+    issueId: "worst-5",
+    repoId: "r3",
+    number: 8,
+    title: "Ship the new triage queue",
+    url: "https://github.com/acme/console/issues/8",
+    provider: "github",
+    fullName: "acme/console",
+    state: "stopped",
+    reason: null,
+    checkedAt: hoursAgo(9),
+    due: false,
+  },
+];
+
+/**
+ * The worst case for the saved-reply picker.
+ *
+ * A name at the API's 80 character cap, a body at GitHub's comment cap, a body
+ * at GitLab's, and a template that is one unbreakable token.
+ */
+export const WORST_CASE_SAVED_REPLIES: SavedReply[] = [
+  {
+    id: "saved-1",
+    name: "Cannot reproduce without the version, the exact command, and the full log output",
+    body: commentAtLimit(65_536),
+    createdAt: hoursAgo(240),
+    updatedAt: hoursAgo(2),
+  },
+  {
+    id: "saved-2",
+    name: "Thanks for the report",
+    body: commentAtLimit(1_000_000),
+    createdAt: hoursAgo(240),
+    updatedAt: hoursAgo(4),
+  },
+  {
+    id: "saved-3",
+    name: "Closing as stale",
+    body:
+      "Closing this as stale. Reopen it with a reproduction if it still happens, and the queue will " +
+      "pick it up again, including through a follow-up if you were already waiting on it.",
+    createdAt: hoursAgo(240),
+    updatedAt: hoursAgo(6),
+  },
+  {
+    id: "saved-4",
+    name: "One long token",
+    body: "Supercalifragilisticexpialidociouspneumonoultramicroscopicsilicovolcanoconiosis".repeat(
+      20
+    ),
+    createdAt: hoursAgo(240),
+    updatedAt: hoursAgo(8),
+  },
+];
+
+/**
+ * The discussion for a mode.
+ *
+ * @param mode - The active data mode.
+ * @returns The comments the mode stands for.
+ */
+export function commentsForMode(mode: DataMode): ReplyComment[] {
+  if (mode === "empty") return [];
+  if (mode === "one") return WORST_CASE_COMMENTS.slice(0, 1);
+  if (mode === "many") return manyComments();
+  return WORST_CASE_COMMENTS;
+}
+
+/**
+ * The follow-up queue for a mode.
+ *
+ * `checkedAt` is derived from the entries the same way `GET /api/follow-ups`
+ * derives it, so the freshness line a fixture produces is the one the server
+ * would produce for the same rows.
+ *
+ * @param mode - The active data mode.
+ * @returns The queue the mode stands for.
+ */
+export function followUpsForMode(mode: DataMode): FollowUpList {
+  const entries =
+    mode === "empty"
+      ? []
+      : mode === "one"
+        ? WORST_CASE_FOLLOW_UPS.slice(0, 1)
+        : WORST_CASE_FOLLOW_UPS;
+
+  const checkedAt = entries.reduce<string | null>((latest, entry) => {
+    if (!entry.checkedAt) return latest;
+    return !latest || entry.checkedAt > latest ? entry.checkedAt : latest;
+  }, null);
+
+  return { entries, checkedAt };
+}
+
+/**
+ * The saved replies for a mode.
+ *
+ * @param mode - The active data mode.
+ * @returns The templates the mode stands for.
+ */
+export function savedRepliesForMode(mode: DataMode): SavedReply[] {
+  if (mode === "empty") return [];
+  if (mode === "one") return WORST_CASE_SAVED_REPLIES.slice(0, 1);
+  return WORST_CASE_SAVED_REPLIES;
 }
