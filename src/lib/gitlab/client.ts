@@ -98,6 +98,18 @@ async function timedFetch(input: RequestInfo, init?: RequestInit): Promise<Respo
  * @param res - A response returned by {@link timedFetch}.
  * @returns The parsed body.
  */
+/**
+ * Release a response whose body will not be read.
+ *
+ * Call this on every `!res.ok` early return. Skipping it leaves the request's
+ * timer armed for its full duration, which leaks one timer per failed call.
+ *
+ * @param res - A response returned by {@link timedFetch} that will not be read.
+ */
+function discard(res: Response): void {
+  (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   const release = (res as unknown as { releaseTimeout?: () => void }).releaseTimeout;
   try {
@@ -323,8 +335,10 @@ export const gitlabProvider: IssueProvider = {
     });
 
     // 404 means the token cannot see this project at all.
-    if (res.status === 404) return null;
-    if (!res.ok) return null;
+    if (!res.ok) {
+      discard(res);
+      return null;
+    }
 
     const data = await readJson<{
       permissions?: {
@@ -360,7 +374,10 @@ export const gitlabProvider: IssueProvider = {
       const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}/labels?${params}`, {
         headers: headers(token),
       });
-      if (!res.ok) break;
+      if (!res.ok) {
+        discard(res);
+        break;
+      }
 
       const data =
         await readJson<Array<{ name: string; color?: string | null; description?: string | null }>>(
@@ -402,7 +419,10 @@ export const gitlabProvider: IssueProvider = {
       const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}/members/all?${params}`, {
         headers: headers(token),
       });
-      if (!res.ok) break;
+      if (!res.ok) {
+        discard(res);
+        break;
+      }
 
       const data =
         await readJson<
@@ -557,7 +577,10 @@ export const gitlabProvider: IssueProvider = {
    */
   async getAuthenticatedUser(token: string) {
     const res = await timedFetch(`${getBaseUrl()}/api/v4/user`, { headers: headers(token) });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      discard(res);
+      return null;
+    }
     const user = await readJson<{ username?: string; avatar_url?: string | null }>(res);
     if (!user?.username) return null;
     return { login: user.username as string, avatar: (user.avatar_url as string) ?? null };

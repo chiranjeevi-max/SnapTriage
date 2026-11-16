@@ -137,8 +137,10 @@ async function ghFetch(
     }
   }
 
-  // Released by `readBody` once the body has been consumed, so the deadline
-  // covers the read without leaving a timer armed for every request.
+  // Released by `readBody`, `readText`, or `discard` once the response is done
+  // with. Every path must use one of them: returning on `!res.ok` without
+  // touching the body leaves the timer armed, and that was leaking one timer per
+  // failed request.
   return Object.assign(res, { releaseTimeout: release });
 }
 
@@ -176,6 +178,18 @@ async function readText(res: Response): Promise<string> {
   } finally {
     release?.();
   }
+}
+
+/**
+ * Release a response whose body will not be read.
+ *
+ * Call this on every `!res.ok` early return. Skipping it leaves the request's
+ * timer armed for its full duration, which leaks one timer per failed call.
+ *
+ * @param res - A response returned by {@link ghFetch} that will not be read.
+ */
+function discard(res: Response): void {
+  (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
 }
 
 /**
@@ -379,7 +393,10 @@ export const githubProvider: IssueProvider = {
   async getRepoPermission(owner, repo, token) {
     // Get authenticated user first
     const userRes = await ghFetch(`${GITHUB_API}/user`, token);
-    if (!userRes.ok) return null;
+    if (!userRes.ok) {
+      discard(userRes);
+      return null;
+    }
     const user = await userRes.json();
 
     const res = await ghFetch(
@@ -388,8 +405,10 @@ export const githubProvider: IssueProvider = {
     );
 
     // 404 means the token cannot see this repository at all.
-    if (res.status === 404) return null;
-    if (!res.ok) return null;
+    if (!res.ok) {
+      discard(res);
+      return null;
+    }
 
     const data = await readBody<{ permission?: string }>(res);
     const perm = data.permission;
@@ -414,7 +433,10 @@ export const githubProvider: IssueProvider = {
     while (true) {
       const params = new URLSearchParams({ per_page: "100", page: String(page) });
       const res = await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/labels?${params}`, token);
-      if (!res.ok) break;
+      if (!res.ok) {
+        discard(res);
+        break;
+      }
 
       const data =
         await readBody<Array<{ name: string; color?: string | null; description?: string | null }>>(
@@ -455,7 +477,10 @@ export const githubProvider: IssueProvider = {
         `${GITHUB_API}/repos/${owner}/${repo}/collaborators?${params}`,
         token
       );
-      if (!res.ok) break;
+      if (!res.ok) {
+        discard(res);
+        break;
+      }
 
       const data =
         await readBody<Array<{ login: string; avatar_url: string | null; role_name?: string }>>(
@@ -618,7 +643,10 @@ export const githubProvider: IssueProvider = {
    */
   async getAuthenticatedUser(token: string) {
     const res = await ghFetch(`${GITHUB_API}/user`, token);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      discard(res);
+      return null;
+    }
     const user = await readBody<{ login?: string; avatar_url?: string | null }>(res);
     if (!user?.login) return null;
     return { login: user.login as string, avatar: (user.avatar_url as string) ?? null };

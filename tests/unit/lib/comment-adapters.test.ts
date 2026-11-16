@@ -395,6 +395,30 @@ describe("githubProvider.fetchComments", () => {
       vi.useRealTimers();
     }
   });
+
+  /**
+   * @target githubProvider.getAuthenticatedUser
+   * @dependencies ghFetch
+   * @scenario The provider answers 401 and the body is never read
+   * @expectedOutput No timer is left armed. Callers that return on `!res.ok`
+   *                 without touching the body used to leak one 30s timer per
+   *                 failed request, because the deadline was only released by the
+   *                 body-read helpers. Four call sites did exactly that.
+   */
+  it("should not leave a timer armed when a failed response is not read", async () => {
+    vi.useFakeTimers();
+    try {
+      mockFetch.mockResolvedValueOnce(errorResponse(401, "bad credentials"));
+
+      await expect(githubProvider.getAuthenticatedUser?.("token-abc")).resolves.toBeNull();
+
+      // A leaked timer is still queued. Only the ones this test created should
+      // remain, and there should be none.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("githubProvider.createComment", () => {
