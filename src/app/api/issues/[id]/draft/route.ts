@@ -164,10 +164,32 @@ export async function PATCH(_req: Request, { params }: { params: Promise<{ id: s
     return NextResponse.json({ error: "Issue not found" }, { status: 404 });
   }
 
-  const released = await releaseSendClaim(session.user.id, id);
-  if (!released) {
-    return NextResponse.json({ error: "This draft has no unresolved send" }, { status: 404 });
-  }
+  // The attempt the user was looking at. A tab whose view has been superseded
+  // must not release the claim a newer send now holds.
+  const { searchParams } = new URL(_req.url);
+  const claimId = searchParams.get("claimId") ?? undefined;
 
-  return NextResponse.json({ ok: true });
+  const outcome = await releaseSendClaim(session.user.id, id, claimId);
+  switch (outcome) {
+    case "released":
+      return NextResponse.json({ ok: true });
+    case "in_flight":
+      return NextResponse.json(
+        {
+          error:
+            "This reply is still being sent. Wait for it to finish before marking the outcome.",
+        },
+        { status: 409 }
+      );
+    case "mismatch":
+      return NextResponse.json(
+        { error: "This send was already resolved in another tab." },
+        { status: 409 }
+      );
+    default:
+      // Already released by another path. The caller's intent — "this attempt is
+      // settled" — is satisfied, so this is not an error: reporting one would
+      // leave the user unable to finish reconciling a draft that is already free.
+      return NextResponse.json({ ok: true, alreadyReleased: true });
+  }
 }

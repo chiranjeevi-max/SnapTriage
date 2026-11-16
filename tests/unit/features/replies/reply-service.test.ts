@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   clearDraft,
   findDraft,
+  releaseSendClaim,
   saveDraft,
   sendReply,
   resolveIdentity,
@@ -252,6 +253,7 @@ describe("findDraft", () => {
       body: "Thanks for the report — can you share the stack trace?",
       version: 1,
       sendAttemptedAt: null,
+      sendClaimId: null,
       updatedAt: "2026-01-05T00:00:00.000Z",
     });
   });
@@ -709,5 +711,90 @@ describe("resolveIdentity", () => {
 
     expect(await resolveIdentity("user-1", "github")).toBeNull();
     expect(fakeDb.state.rows.provider_identity).toHaveLength(0);
+  });
+});
+
+describe("releaseSendClaim", () => {
+  /**
+   * @target releaseSendClaim
+   * @dependencies reply_drafts.sendClaimId
+   * @scenario The tab releases an attempt that another send has since replaced
+   * @expectedOutput `mismatch`, and the newer claim is still held. Releasing
+   *                 whatever marker happens to be set would free a send that is
+   *                 still running, and a second call could publish the same text.
+   */
+  it("should refuse to release a claim another attempt now holds", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({
+        sendAttemptedAt: new Date("2026-01-05T00:00:00.000Z"),
+        sendClaimId: "claim-new",
+      })
+    );
+
+    const outcome = await releaseSendClaim("user-1", ISSUE_ID, "claim-old");
+
+    expect(outcome).toBe("mismatch");
+    expect(fakeDb.state.rows.reply_draft[0].sendClaimId).toBe("claim-new");
+    expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).not.toBeNull();
+  });
+
+  /**
+   * @target releaseSendClaim
+   * @dependencies reply_drafts.sendInFlightUntil
+   * @scenario The provider call has not finished yet
+   * @expectedOutput `in_flight`, and the claim is kept. Releasing here lets a
+   *                 second call start while the first can still publish.
+   */
+  it("should refuse to release while the provider call is still running", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({
+        sendAttemptedAt: new Date("2026-01-05T00:00:00.000Z"),
+        sendClaimId: "claim-1",
+        sendInFlightUntil: new Date(Date.now() + 60_000),
+      })
+    );
+
+    const outcome = await releaseSendClaim("user-1", ISSUE_ID, "claim-1");
+
+    expect(outcome).toBe("in_flight");
+    expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).not.toBeNull();
+  });
+
+  /**
+   * @target releaseSendClaim
+   * @dependencies reply_drafts.sendInFlightUntil
+   * @scenario The lease has expired, as it would after the process died mid-call
+   * @expectedOutput `released`. A lease that never expires would make the draft
+   *                 permanently unreleasable, which is the failure it exists to
+   *                 avoid.
+   */
+  it("should release once the lease has expired", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({
+        sendAttemptedAt: new Date("2026-01-05T00:00:00.000Z"),
+        sendClaimId: "claim-1",
+        sendInFlightUntil: new Date(Date.now() - 1_000),
+      })
+    );
+
+    const outcome = await releaseSendClaim("user-1", ISSUE_ID, "claim-1");
+
+    expect(outcome).toBe("released");
+    expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).toBeNull();
+    expect(fakeDb.state.rows.reply_draft[0].sendClaimId).toBeNull();
+  });
+
+  /**
+   * @target releaseSendClaim
+   * @dependencies none
+   * @scenario The claim is already gone
+   * @expectedOutput `missing`. "This attempt is settled" is already true, so the
+   *                 route answers success rather than an error the user cannot
+   *                 act on.
+   */
+  it("should report an absent claim rather than failing", async () => {
+    fakeDb.state.rows.reply_draft.push(replyDraftRow({ sendAttemptedAt: null }));
+
+    await expect(releaseSendClaim("user-1", ISSUE_ID, "claim-1")).resolves.toBe("missing");
   });
 });

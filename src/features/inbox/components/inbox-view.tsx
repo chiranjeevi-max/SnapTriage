@@ -160,19 +160,22 @@ export function InboxView() {
    * here rather than carried as two unions through every prop: `FollowUpEntry`
    * names the issue `issueId`, and the pane only needs an id to fetch by.
    */
-  const currentIssue: IssueDetailTarget | null = useMemo(
-    () =>
-      pinnedIssue !== null
-        ? {
-            id: pinnedIssue.issueId,
-            provider: pinnedIssue.provider,
-            url: pinnedIssue.url,
-            number: pinnedIssue.number,
-            title: pinnedIssue.title,
-          }
-        : queueIssue,
-    [pinnedIssue, queueIssue]
-  );
+  const currentIssue: IssueDetailTarget | null = useMemo(() => {
+    // A selected queue row wins. The pin exists to show an issue that is *not*
+    // in the queue, and `handleOpenFollowUp` sets the index to -1 for exactly
+    // that reason. If a stale pin outranked the selection, moving down from the
+    // follow-up list would display one issue while every shortcut acted on
+    // another — the dismiss would land on a row the user cannot see.
+    if (queueIssue) return queueIssue;
+    if (pinnedIssue === null) return null;
+    return {
+      id: pinnedIssue.issueId,
+      provider: pinnedIssue.provider,
+      url: pinnedIssue.url,
+      number: pinnedIssue.number,
+      title: pinnedIssue.title,
+    };
+  }, [pinnedIssue, queueIssue]);
 
   // Stabilize selection after data refresh
   const selectedIdRef = useRef<string | null>(null);

@@ -20,7 +20,7 @@
  * That is weaker than a distributed transaction. Recovering an unconfirmed send
  * is a manual act: the user checks the issue before trying again.
  */
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { issues, providerIdentities, replyDrafts, repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
@@ -36,6 +36,8 @@ export interface StoredDraft {
   body: string;
   version: number;
   sendAttemptedAt: string | null;
+  /** Which attempt holds the claim, so a release can name it. */
+  sendClaimId: string | null;
   updatedAt: string;
 }
 
@@ -118,6 +120,7 @@ export async function findDraft(userId: string, issueId: string): Promise<Stored
     body: row.body,
     version: row.version,
     sendAttemptedAt: row.sendAttemptedAt?.toISOString() ?? null,
+    sendClaimId: row.sendClaimId ?? null,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -236,6 +239,12 @@ export async function clearDraft(
   const existing = await findDraft(userId, issueId);
   if (!existing) return "missing";
   if (existing.sendAttemptedAt) return "claimed";
+
+  // `0` means "this tab had no stored draft, so the stored one must still be
+  // absent for this delete to be about the tab's own text". Without it, a tab
+  // that never loaded a draft would delete one another tab has since written,
+  // and the user would lose text that was never on their screen.
+  if (expectedVersion === 0) return "stale";
 
   const removed = await typedDb
     .delete(replyDrafts)
@@ -362,6 +371,11 @@ export async function sendReply(
 
     // Anything else — a timeout, an abort, a 5xx — might have been accepted.
     // The attempt marker stays so the draft is not offered for sending again.
+    //
+    // The lease ends, though: this call is over, so there is no longer a second
+    // publish in flight to protect against. Keeping it would make the claim
+    // unreleasable for the whole lease window even though nothing is running.
+    await endAttemptLease(userId, target.issueId);
     apiLogger.warn(
       { issueId: target.issueId, provider: target.provider, error: String(error) },
       "Reply outcome unknown; draft left unconfirmed"
@@ -375,6 +389,16 @@ export async function sendReply(
     };
   }
 }
+
+/**
+ * How long a provider call is assumed to take before the claim stops counting as
+ * "in flight".
+ *
+ * The client aborts at 30 seconds, so this is comfortably beyond any call that
+ * could still be running. It exists so a crashed process cannot make a draft
+ * permanently unreleasable; it is not a timeout on the call itself.
+ */
+const SEND_LEASE_MS = 120_000;
 
 /**
  * Claim the right to send, atomically, storing the text being sent.
@@ -402,14 +426,15 @@ export async function sendReply(
  * @param issueId - The issue being replied to.
  * @param body - The text being sent.
  * @param expectedVersion - The version the composer displayed, or `null`.
- * @returns Why the claim failed, or `null` when this caller owns the attempt.
+ * @returns Why the claim failed, or the identity it took when this caller owns
+ *          the attempt. The identity is what a later release must match.
  */
 async function claimAttempt(
   userId: string,
   issueId: string,
   body: string,
   expectedVersion: number | null
-): Promise<"unresolved" | "stale" | null> {
+): Promise<"unresolved" | "stale" | { claimId: string }> {
   const now = new Date();
 
   await typedDb
@@ -417,9 +442,19 @@ async function claimAttempt(
     .values({ issueId, userId, body, sendAttemptedAt: null, updatedAt: now })
     .onConflictDoNothing({ target: [replyDrafts.issueId, replyDrafts.userId] });
 
+  const claimId = crypto.randomUUID();
   const claimed = await typedDb
     .update(replyDrafts)
-    .set({ sendAttemptedAt: now, body, updatedAt: now })
+    .set({
+      sendAttemptedAt: now,
+      sendClaimId: claimId,
+      // A lease, not a flag: if this process dies mid-call the row must not stay
+      // unreleasable forever. Past this instant the call is taken to have ended
+      // however it ended, and the claim becomes an ordinary unresolved one.
+      sendInFlightUntil: new Date(now.getTime() + SEND_LEASE_MS),
+      body,
+      updatedAt: now,
+    })
     .where(
       and(
         eq(replyDrafts.issueId, issueId),
@@ -430,7 +465,7 @@ async function claimAttempt(
     )
     .returning({ id: replyDrafts.id });
 
-  if (claimed.length > 0) return null;
+  if (claimed.length > 0) return { claimId };
 
   // Two different reasons reach this point, and the user's next action differs:
   // an unresolved attempt means check the provider, a stale draft means reload.
@@ -455,20 +490,62 @@ async function claimAttempt(
  * @param issueId - The issue being reconciled.
  * @returns Whether a claimed draft was released.
  */
-export async function releaseSendClaim(userId: string, issueId: string): Promise<boolean> {
+export async function releaseSendClaim(
+  userId: string,
+  issueId: string,
+  claimId?: string
+): Promise<"released" | "in_flight" | "mismatch" | "missing"> {
+  const now = new Date();
+
   const released = await typedDb
     .update(replyDrafts)
-    .set({ sendAttemptedAt: null, updatedAt: new Date() })
+    .set({
+      sendAttemptedAt: null,
+      sendClaimId: null,
+      sendInFlightUntil: null,
+      updatedAt: now,
+    })
     .where(
       and(
         eq(replyDrafts.issueId, issueId),
         eq(replyDrafts.userId, userId),
-        isNotNull(replyDrafts.sendAttemptedAt)
+        isNotNull(replyDrafts.sendAttemptedAt),
+        // The attempt the user was looking at. Without this, a tab holding a
+        // stale "unconfirmed" view could release a claim another tab has since
+        // taken, and two sends would overlap.
+        claimId === undefined ? undefined : eq(replyDrafts.sendClaimId, claimId),
+        // Refuse while the provider call may still be running. Releasing then
+        // lets a second call start while the first can still publish, which is
+        // the duplicate this whole marker exists to prevent.
+        or(isNull(replyDrafts.sendInFlightUntil), lte(replyDrafts.sendInFlightUntil, now))
       )
     )
     .returning({ id: replyDrafts.id });
 
-  return released.length > 0;
+  if (released.length > 0) return "released";
+
+  // Say why, because the caller's next action differs: waiting is right for an
+  // active call, reloading is right for a superseded attempt.
+  const current = await findDraft(userId, issueId);
+  if (!current?.sendAttemptedAt) return "missing";
+  if (claimId !== undefined && current.sendClaimId !== claimId) return "mismatch";
+  return "in_flight";
+}
+
+/**
+ * Drop the in-flight lease without touching the claim.
+ *
+ * Marks the provider call as finished while leaving the attempt unresolved, so
+ * the user may reconcile it. Called on every path that ends a call.
+ *
+ * @param userId - The authenticated user.
+ * @param issueId - The issue being replied to.
+ */
+async function endAttemptLease(userId: string, issueId: string): Promise<void> {
+  await typedDb
+    .update(replyDrafts)
+    .set({ sendInFlightUntil: null })
+    .where(and(eq(replyDrafts.issueId, issueId), eq(replyDrafts.userId, userId)));
 }
 
 /**

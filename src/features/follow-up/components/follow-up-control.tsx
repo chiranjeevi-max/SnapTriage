@@ -60,24 +60,39 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
   const entry = data?.entries.find((item) => item.issueId === issueId) ?? null;
   const state = entry?.state ?? null;
 
+  // Keep the request until the list has answered. Acting on it while the list is
+  // still loading means `entry` is null for a reason that has nothing to do with
+  // the issue, and arming then would silently dismiss a resurface the user has
+  // not read. A failed load drops the request: arming on top of unknown state is
+  // the same mistake.
   useEffect(() => {
     if (armRequested === null) return;
-    setArmRequested(null);
-    if (armRequested !== issueId) return;
+    if (isError) {
+      setArmRequested(null);
+      return;
+    }
+    if (isPending) return;
+    if (armRequested !== issueId) {
+      setArmRequested(null);
+      return;
+    }
 
-    // Re-arming clears the baseline and the reason, which would silently dismiss
-    // a resurface the user has not read. When one already exists the key opens
-    // the details, which is derived below rather than set here: re-reading the
-    // baseline is an explicit button in that dialog.
-    if (entry === null) arm({ action: "wait" });
-  }, [armRequested, issueId, entry, setArmRequested, arm]);
+    // An existing follow-up opens its details instead of re-arming. The request
+    // is deliberately left in place: the dialog's open state is derived from it
+    // below, and clearing it here would leave the dialog closed. It is cleared
+    // when the dialog closes, which is also what stops the key firing twice.
+    if (entry === null) {
+      setArmRequested(null);
+      arm({ action: "wait" });
+    }
+  }, [armRequested, issueId, entry, isPending, isError, setArmRequested, arm]);
 
   /**
    * Whether the details dialog is open.
    *
-   * Opening is derived from the request rather than mirrored into state, so the
-   * `w` key can open it without an effect setting state on every render. The
-   * user's own clicks still control `detailsOpen`.
+   * Derived from the request as well as the click state, so `w` can open it
+   * without an effect setting state on the next render. The request is cleared
+   * when the dialog closes.
    */
   const showDetails = detailsOpen || (armRequested === issueId && entry !== null);
 
@@ -132,7 +147,15 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
         </TooltipContent>
       </Tooltip>
 
-      <Dialog open={showDetails} onOpenChange={setDetailsOpen}>
+      <Dialog
+        open={showDetails}
+        onOpenChange={(open) => {
+          setDetailsOpen(open);
+          // Consume the keyboard request here. Leaving it set would reopen the
+          // dialog the moment this component re-rendered.
+          if (!open) setArmRequested(null);
+        }}
+      >
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-4 sm:max-w-sm">
           <DialogHeader className="shrink-0 pr-6">
             <DialogTitle className="flex items-center gap-2">

@@ -118,13 +118,17 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
       selected
         ? resolvePreset(
             selected.actions,
-            // Resolve against what the push will produce in batch mode, so the
-            // preview matches the diff the server computes. A staged removal of a
-            // label the preset adds would otherwise read as a no-op here too.
-            { ...issue, ...effectiveTriageState(issue, issue.triage?.pendingChanges) }
+            // Only when this apply will actually stage. Resolving against the
+            // staged diff unconditionally reports "already applied" for a preset
+            // whose label only appears in staging, while a live apply resolves
+            // against the cached issue and would add it — the preview would
+            // refuse a change the server was about to make.
+            stageMode
+              ? { ...issue, ...effectiveTriageState(issue, issue.triage?.pendingChanges) }
+              : issue
           )
         : null,
-    [selected, issue]
+    [selected, issue, stageMode]
   );
 
   function backToBrowse() {

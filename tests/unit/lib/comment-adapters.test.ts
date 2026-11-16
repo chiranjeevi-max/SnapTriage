@@ -260,6 +260,51 @@ describe("githubProvider.fetchComments", () => {
   });
 });
 
+  /**
+   * @target githubProvider.fetchComments
+   * @dependencies fetch
+   * @scenario A `since` result spans three pages, walked by cursor
+   * @expectedOutput The cursor advances 2, then 3, then stops. Walking it
+   *                 backwards returns to page 1 and never reads page 3, so a
+   *                 reply on the last page stays unread.
+   */
+  it("should walk since-filtered pages forwards to the end", async () => {
+    const since = new Date("2026-01-01T00:00:00.000Z");
+    mockFetch
+      .mockResolvedValueOnce(
+        jsonResponse([githubComment({ id: 1, body: "One" })], {
+          headers: {
+            link: `<${GITHUB_COMMENTS_URL}?per_page=30&page=2>; rel="next", <${GITHUB_COMMENTS_URL}?per_page=30&page=3>; rel="last"`,
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse([githubComment({ id: 2, body: "Two" })], {
+          headers: {
+            link: `<${GITHUB_COMMENTS_URL}?per_page=30&page=3>; rel="next"`,
+          },
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse([githubComment({ id: 3, body: "Three" })]));
+
+    const first = await githubProvider.fetchComments?.("octo", "repo", 7, "token-abc", { since });
+    expect(first?.olderCursor).toBe("2");
+
+    const second = await githubProvider.fetchComments?.("octo", "repo", 7, "token-abc", {
+      since,
+      cursor: "2",
+    });
+    expect(second?.olderCursor).toBe("3");
+    expect(second?.comments.map((comment) => comment.body)).toEqual(["Two"]);
+
+    const third = await githubProvider.fetchComments?.("octo", "repo", 7, "token-abc", {
+      since,
+      cursor: "3",
+    });
+    expect(third?.olderCursor).toBeNull();
+    expect(third?.comments.map((comment) => comment.body)).toEqual(["Three"]);
+  });
+
 describe("githubProvider.createComment", () => {
   /**
    * @target githubProvider.createComment

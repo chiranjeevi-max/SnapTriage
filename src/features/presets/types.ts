@@ -239,7 +239,18 @@ export function describeResolution(resolution: PresetResolution): string {
  */
 export function invertToPayload(
   resolution: PresetResolution,
-  previous: { priority: number | null; labels: string[]; assignees: string[] }
+  previous: { priority: number | null; labels: string[]; assignees: string[] },
+  /**
+   * What was already staged before the apply, in batch mode.
+   *
+   * An apply can cancel a staged removal by adding the same label back. Undoing
+   * it has to restore that removal, and `previous.labels` cannot: it is the
+   * cached set, which still contains the label the staging was going to remove.
+   */
+  staged: {
+    labels?: { add?: string[]; remove?: string[] };
+    assignees?: { add?: string[]; remove?: string[] };
+  } | null = null
 ): TriagePayload {
   const inverse: TriagePayload = {};
 
@@ -248,17 +259,26 @@ export function invertToPayload(
   }
 
   const addedLabels = resolution.payload.labels?.add ?? [];
-  if (addedLabels.length > 0) {
+  const cancelledLabelRemovals = (staged?.labels?.remove ?? []).filter((label) =>
+    addedLabels.includes(label)
+  );
+  if (addedLabels.length > 0 || cancelledLabelRemovals.length > 0) {
     // A label the apply read already carried was not added by the preset, so it
     // is filtered out of the removal set.
     const added = addedLabels.filter((label) => !previous.labels.includes(label));
-    inverse.labels = { add: [], remove: added };
+    inverse.labels = { add: [], remove: [...new Set([...added, ...cancelledLabelRemovals])] };
   }
 
   const addedAssignees = resolution.payload.assignees?.add ?? [];
-  if (addedAssignees.length > 0) {
+  const cancelledAssigneeRemovals = (staged?.assignees?.remove ?? []).filter((login) =>
+    addedAssignees.includes(login)
+  );
+  if (addedAssignees.length > 0 || cancelledAssigneeRemovals.length > 0) {
     const added = addedAssignees.filter((login) => !previous.assignees.includes(login));
-    inverse.assignees = { add: [], remove: added };
+    inverse.assignees = {
+      add: [],
+      remove: [...new Set([...added, ...cancelledAssigneeRemovals])],
+    };
   }
 
   return inverse;

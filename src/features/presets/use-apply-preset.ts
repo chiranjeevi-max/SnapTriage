@@ -39,8 +39,19 @@ export interface ApplyPresetResult {
   applied: TriagePayload;
   /** The preview lines the server computed with the same resolver the pane used. */
   changes: PreviewChange[];
-  /** The values the server read before writing, authoritative for undo. */
+  /** The values the write replaced, read inside the same operation. */
   previous: { priority: number | null; labels: string[]; assignees: string[] };
+  /**
+   * The staged diff that was in place before a batch apply, or null.
+   *
+   * Needed to undo correctly: an apply can cancel a staged removal by adding the
+   * same label back, and `previous` cannot restore it because the cached set
+   * still contains it.
+   */
+  staged: {
+    labels?: { add?: string[]; remove?: string[] };
+    assignees?: { add?: string[]; remove?: string[] };
+  } | null;
 }
 
 /** Arguments for {@link useApplyPreset}. */
@@ -160,7 +171,7 @@ export function useApplyPreset() {
       // cache can be older than the write: another tab may have changed priority
       // in between, and an inverse derived from the stale copy would restore a
       // value the issue never carried.
-      const inverse = invertToPayload(resolution, result.previous);
+      const inverse = invertToPayload(resolution, result.previous, result.staged);
 
       if (result.mode === "batch") {
         pushUndo({

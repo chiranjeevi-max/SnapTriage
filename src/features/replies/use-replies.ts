@@ -64,6 +64,13 @@ export interface ReplyDraft {
   version: number;
   /** Set while a send's outcome is unknown; Send is withheld until it clears. */
   sendAttemptedAt: string | null;
+  /**
+   * Which attempt holds the claim.
+   *
+   * Sent back when reconciling so the release targets the attempt this tab is
+   * showing. A tab whose view was superseded must not release a newer one.
+   */
+  sendClaimId: string | null;
   updatedAt: string;
 }
 
@@ -403,10 +410,14 @@ export function useSendReply(issueId: string | undefined) {
 export function useReleaseSendClaim(issueId: string | undefined) {
   const queryClient = useQueryClient();
 
-  return useMutation<{ ok: true }, Error, void>({
-    mutationFn: async () => {
+  return useMutation<{ ok: true }, Error, { claimId?: string | null } | void>({
+    mutationFn: async (input) => {
       if (!issueId) throw new Error("No issue selected");
-      const res = await fetch(`/api/issues/${issueId}/draft`, { method: "PATCH" });
+      // The attempt this tab is showing. Naming it stops a superseded view from
+      // releasing a claim a newer send now holds.
+      const claimId = input && "claimId" in input ? input.claimId : null;
+      const query = claimId ? `?claimId=${encodeURIComponent(claimId)}` : "";
+      const res = await fetch(`/api/issues/${issueId}/draft${query}`, { method: "PATCH" });
       if (!res.ok) throw new Error(await readApiError(res, "Failed to release the send claim"));
       return res.json();
     },

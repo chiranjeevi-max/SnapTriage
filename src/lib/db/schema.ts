@@ -290,6 +290,14 @@ export const triageState = sqliteTable(
     snoozedUntil: integer("snoozedUntil", { mode: "timestamp_ms" }),
     dismissed: integer("dismissed", { mode: "boolean" }).notNull().default(false),
     batchPending: integer("batchPending", { mode: "boolean" }).notNull().default(false),
+    /**
+     * Bumped on every write, and used as the compare-and-set token for staging.
+     *
+     * Not `updatedAt`: two writers in the same millisecond read and write the
+     * same value, so the second comparison passes and the loser's merge is
+     * overwritten. A counter has no such tie.
+     */
+    revision: integer("revision").notNull().default(0),
     pendingChanges: text("pendingChanges", { mode: "json" })
       .$type<Record<string, unknown>>()
       .default({}),
@@ -393,6 +401,25 @@ export const replyDrafts = sqliteTable(
      * confirmed send or an explicit reconciliation.
      */
     sendAttemptedAt: integer("sendAttemptedAt", { mode: "timestamp_ms" }),
+    /**
+     * Identifies the attempt that took the claim.
+     *
+     * A tab that shows "unconfirmed" must release *that* attempt, not whatever
+     * marker happens to be set when the request arrives: another tab can release
+     * and re-claim in between, and releasing the newer claim would let two sends
+     * overlap. Compared, never interpreted.
+     */
+    sendClaimId: text("sendClaimId"),
+    /**
+     * When the provider call is expected to have finished, or null when no call
+     * is in flight.
+     *
+     * A lease rather than a boolean: a process that dies mid-call must not leave
+     * the draft permanently unreleasable. Past this instant the call is assumed
+     * to have ended however it ended, and the claim becomes a normal unresolved
+     * one the user may reconcile.
+     */
+    sendInFlightUntil: integer("sendInFlightUntil", { mode: "timestamp_ms" }),
     createdAt: integer("createdAt", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),

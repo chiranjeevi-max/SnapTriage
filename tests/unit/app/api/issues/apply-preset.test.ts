@@ -527,9 +527,13 @@ describe("POST /api/issues/:id/apply-preset — response", () => {
         { kind: "label", value: "triage", operation: "=" },
         { kind: "label", value: "bug", operation: "+" },
       ],
-      // The values read before the write. Undo is built from these rather than
-      // from the client's cache, which can be older than the write.
+      // The values this write replaced, read inside the same operation. Undo is
+      // built from these rather than from the client's cache or an earlier read,
+      // either of which can be older than the write.
       previous: { priority: null, labels: ["triage"], assignees: [] },
+      // Null in live mode: there is no staged diff to restore, because the
+      // provider was already contacted.
+      staged: null,
     });
     expect(fakeDb.state.rows.issue[0].labels).toEqual(["triage", "bug"]);
   });

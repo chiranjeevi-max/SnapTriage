@@ -424,6 +424,18 @@ export const githubProvider: IssueProvider = {
         });
       }
       const current = await readPage(page);
+
+      if (options.since) {
+        // A `since` result is walked forwards, oldest page first, because the
+        // filter is on the server and the set only grows from the baseline. A
+        // backwards cursor here would return to page 1 and never reach the later
+        // pages, leaving a reply unread.
+        return {
+          comments: current.comments,
+          olderCursor: current.hasNext ? String(page + 1) : null,
+        };
+      }
+
       return { comments: current.comments, olderCursor: page > 1 ? String(page - 1) : null };
     }
 

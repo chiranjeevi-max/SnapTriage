@@ -96,6 +96,7 @@ function draft(overrides: Partial<ReplyDraft> = {}): ReplyDraft {
     body: "",
     version: 1,
     sendAttemptedAt: null,
+    sendClaimId: null,
     updatedAt: new Date().toISOString(),
     ...overrides,
   };

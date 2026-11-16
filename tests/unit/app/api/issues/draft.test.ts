@@ -143,6 +143,7 @@ describe("GET /api/issues/:id/draft", () => {
       body: "Thanks for the report — can you share the stack trace?",
       version: 1,
       sendAttemptedAt: null,
+      sendClaimId: null,
       updatedAt: "2026-01-05T00:00:00.000Z",
     });
   });

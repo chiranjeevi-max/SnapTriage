@@ -220,8 +220,13 @@ export function Composer({ issue, className }: ComposerProps) {
   // debounce. Cleared when a save succeeds, which is what makes the flush below
   // send only text the server does not already have.
   useEffect(() => {
-    unsaved.current = dirty && !notice ? { body: text, expectedVersion: version } : null;
-  }, [dirty, notice, text, version]);
+    // `sending` is included deliberately: once Send owns this text, a flush must
+    // not write it back. A send that succeeds deletes the draft, and a flush that
+    // lands afterwards would recreate the published text as a fresh unsent
+    // draft, which reads as a reply that never went out.
+    unsaved.current =
+      dirty && !notice && !sending ? { body: text, expectedVersion: version } : null;
+  }, [dirty, notice, sending, text, version]);
 
   // Flush on unmount. Switching issues, or losing the pane to a re-render, would
   // otherwise discard text typed inside the debounce window with no copy
@@ -376,7 +381,9 @@ export function Composer({ issue, className }: ComposerProps) {
 
   function handleDiscard() {
     discardDraft.mutate(
-      { expectedVersion: draft?.version },
+      // `0` asserts "this tab never saw a stored draft", so the server refuses
+      // rather than deleting one another tab wrote while this one was open.
+      { expectedVersion: draft?.version ?? 0 },
       {
         onSuccess: () => {
           setTyped(null);
@@ -430,7 +437,18 @@ export function Composer({ issue, className }: ComposerProps) {
               size="sm"
               className="mt-2 h-8 px-2.5 text-xs"
               disabled={releaseClaim.isPending}
-              onClick={() => releaseClaim.mutate()}
+              onClick={() =>
+                releaseClaim.mutate(
+                  { claimId: draft?.sendClaimId },
+                  {
+                    // The server claim is gone, so the local error describing it
+                    // is stale. Without this the composer keeps rendering
+                    // "unconfirmed" from the failed mutation and Send stays
+                    // hidden, even though the draft is editable again.
+                    onSuccess: () => send.reset(),
+                  }
+                )
+              }
             >
               {releaseClaim.isPending ? "Releasing…" : "I checked the issue"}
             </Button>

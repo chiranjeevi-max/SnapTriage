@@ -15,6 +15,7 @@ import {
   describeResolution,
   effectiveTriageState,
   invertResolution,
+  invertToPayload,
   resolvePreset,
   type PresetActions,
   type ResolvableIssue,
@@ -266,5 +267,43 @@ describe("effectiveTriageState", () => {
 
     expect(resolution.noChange).toBe(false);
     expect(resolution.payload.labels).toEqual({ add: ["bug"] });
+  });
+});
+
+describe("invertToPayload", () => {
+  const previous = { priority: null, labels: ["triage"], assignees: [] };
+
+  /**
+   * @target invertToPayload
+   * @dependencies none
+   * @scenario The preset adds a label that was already staged for removal
+   * @expectedOutput The inverse still removes that label. The apply cancelled the
+   *                 staged removal by adding it back, so undo must restore it —
+   *                 and `previous` cannot, because the cached set never lost it.
+   */
+  it("should restore a staged removal the apply cancelled", () => {
+    const inverse = invertToPayload(
+      { payload: { labels: { add: ["bug"], remove: [] } }, changes: [], noChange: false },
+      previous,
+      { labels: { add: [], remove: ["bug"] } }
+    );
+
+    expect(inverse.labels).toEqual({ add: [], remove: ["bug"] });
+  });
+
+  /**
+   * @target invertToPayload
+   * @dependencies none
+   * @scenario A live apply, so there is no staged diff
+   * @expectedOutput Only the labels the apply actually added are removed.
+   */
+  it("should ignore staging when there was none", () => {
+    const inverse = invertToPayload(
+      { payload: { labels: { add: ["bug"], remove: [] } }, changes: [], noChange: false },
+      previous,
+      null
+    );
+
+    expect(inverse.labels).toEqual({ add: [], remove: ["bug"] });
   });
 });

@@ -51,8 +51,15 @@ export interface ApplyTriageInput {
  * in the route that called this service, so an exception would only be
  * re-caught at the boundary it came from.
  */
+/** The triage values a write replaced, as read inside the same operation. */
+export interface ReplacedValues {
+  priority: number | null;
+  labels: string[];
+  assignees: string[];
+}
+
 export type ApplyTriageResult =
-  | { ok: true; mode: TriageMode; applied: TriagePayload }
+  | { ok: true; mode: TriageMode; applied: TriagePayload; previous: ReplacedValues }
   | { ok: false; status: number; error: string };
 
 /**
@@ -183,6 +190,15 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
   if (!context) return { ok: false, status: 404, error: "Issue not found" };
   const { issue, repo, triage } = context;
 
+  // Captured from the same read the write is computed from. A snapshot taken by a
+  // caller before this call can name values another writer has already replaced,
+  // and an undo built from it would restore a state the issue never had.
+  const previous: ReplacedValues = {
+    priority: triage?.priority ?? null,
+    labels: [...(issue.labels ?? [])],
+    assignees: [...(issue.assignees ?? [])],
+  };
+
   const { labels, assignees, state } = payload;
   const touchesProvider = Boolean(labels || assignees || state);
 
@@ -249,7 +265,7 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
 
   if (mode === "batch") {
     if (!personal && !touchesProvider) {
-      return { ok: true, mode, applied: payload };
+      return { ok: true, mode, applied: payload, previous };
     }
 
     const triageId = await ensureTriageRow();
@@ -262,7 +278,7 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
       // against the row the winner left behind rather than silently overwritten.
       for (let attempt = 0; attempt < STAGE_RETRIES; attempt++) {
         const current = await typedDb
-          .select({ updatedAt: triageState.updatedAt, pendingChanges: triageState.pendingChanges })
+          .select({ revision: triageState.revision, pendingChanges: triageState.pendingChanges })
           .from(triageState)
           .where(eq(triageState.id, triageId));
         const seen = current[0];
@@ -279,16 +295,12 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
             ...personal,
             batchPending: true,
             pendingChanges: merged as Record<string, unknown>,
+            // The token and the value that invalidates it move together, so a
+            // concurrent writer always sees a revision it did not read.
+            revision: seen.revision + 1,
             updatedAt: new Date(),
           })
-          .where(
-            and(
-              eq(triageState.id, triageId),
-              // Three-valued logic: `updatedAt` is never null for a row that
-              // exists, so a null here means the row moved out from under us.
-              eq(triageState.updatedAt, seen.updatedAt)
-            )
-          )
+          .where(and(eq(triageState.id, triageId), eq(triageState.revision, seen.revision)))
           .returning({ id: triageState.id });
 
         if (written.length > 0) {
@@ -296,7 +308,7 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
             { issueId, mode, durationMs: Math.round(performance.now() - startedAt) },
             "Triage write staged for batch push"
           );
-          return { ok: true, mode, applied: payload };
+          return { ok: true, mode, applied: payload, previous };
         }
       }
 
@@ -316,7 +328,7 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
       { issueId, mode, durationMs: Math.round(performance.now() - startedAt) },
       "Triage write staged for batch push"
     );
-    return { ok: true, mode, applied: payload };
+    return { ok: true, mode, applied: payload, previous };
   }
 
   if (touchesProvider) {
@@ -358,5 +370,5 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
     { issueId, mode, durationMs: Math.round(performance.now() - startedAt) },
     "Triage write completed"
   );
-  return { ok: true, mode, applied: payload };
+  return { ok: true, mode, applied: payload, previous };
 }
