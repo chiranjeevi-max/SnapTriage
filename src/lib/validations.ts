@@ -202,9 +202,16 @@ export const saveDraftSchema = z.object({
 
 export type SaveDraftInput = z.infer<typeof saveDraftSchema>;
 
-/** Schema for POST /api/issues/:id/replies: publish the draft as a comment. */
+/**
+ * Schema for POST /api/issues/:id/replies: publish the draft as a comment.
+ *
+ * `expectedVersion` is the draft version the composer was showing. Without it a
+ * tab left open on an older copy could post superseded text and then delete the
+ * newer draft on success. Omitted when the composer holds no stored draft.
+ */
 export const sendReplySchema = z.object({
   body: z.string().trim().min(1).max(1_000_000),
+  expectedVersion: z.number().int().min(1).optional(),
 });
 
 export type SendReplyInput = z.infer<typeof sendReplySchema>;

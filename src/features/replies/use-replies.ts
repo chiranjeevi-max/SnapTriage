@@ -322,13 +322,18 @@ async function readSendFailure(res: Response): Promise<{ message: string; unconf
  * already be public.
  *
  * @param issueId - The issue being replied to.
- * @returns A TanStack mutation; `mutate` accepts the comment body.
+ * @returns A TanStack mutation; `mutate` accepts a {@link SendReplyInput}.
  */
+export interface SendReplyInput {
+  body: string;
+  expectedVersion?: number;
+}
+
 export function useSendReply(issueId: string | undefined) {
   const queryClient = useQueryClient();
 
-  return useMutation<PostedReply, Error, string>({
-    mutationFn: async (body) => {
+  return useMutation<PostedReply, Error, SendReplyInput>({
+    mutationFn: async ({ body, expectedVersion }) => {
       if (!issueId) throw new Error("No issue selected");
 
       let res: Response;
@@ -336,7 +341,7 @@ export function useSendReply(issueId: string | undefined) {
         res = await fetch(`/api/issues/${issueId}/replies`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body }),
+          body: JSON.stringify({ body, expectedVersion }),
         });
       } catch {
         throw new UnconfirmedSendError(

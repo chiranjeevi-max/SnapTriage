@@ -220,14 +220,36 @@ export async function saveDraft(
 /**
  * Clear the user's draft for one issue.
  *
- * @returns Whether a row was removed.
+ * A claimed row is left in place. It is what stops a second tab from posting
+ * the same reply, so deleting it would release that lock while the first send
+ * is still unresolved. The caller is told the draft is still claimed rather
+ * than being given a silent success.
+ *
+ * @returns `cleared`, `claimed` when an unresolved send owns the row, or
+ *   `missing` when there was nothing to remove.
  */
-export async function clearDraft(userId: string, issueId: string): Promise<boolean> {
+export async function clearDraft(
+  userId: string,
+  issueId: string
+): Promise<"cleared" | "claimed" | "missing"> {
+  const existing = await findDraft(userId, issueId);
+  if (!existing) return "missing";
+  if (existing.sendAttemptedAt) return "claimed";
+
   const removed = await typedDb
     .delete(replyDrafts)
-    .where(and(eq(replyDrafts.issueId, issueId), eq(replyDrafts.userId, userId)))
+    .where(
+      and(
+        eq(replyDrafts.issueId, issueId),
+        eq(replyDrafts.userId, userId),
+        // Re-checked in the predicate, not only above: a send can claim the row
+        // between the read and this delete.
+        isNull(replyDrafts.sendAttemptedAt)
+      )
+    )
     .returning({ id: replyDrafts.id });
-  return removed.length > 0;
+
+  return removed.length > 0 ? "cleared" : "claimed";
 }
 
 /**
@@ -246,12 +268,16 @@ export async function clearDraft(userId: string, issueId: string): Promise<boole
  * @param userId - The authenticated user.
  * @param target - The issue and its provider coordinates.
  * @param body - The comment text.
+ * @param expectedVersion - The draft version the composer was showing, or `null`
+ *   to send without a draft. When supplied, a send whose draft has since moved
+ *   on is refused: the user is looking at text that is no longer the stored one.
  * @returns The created comment, or a failure that says whether it is ambiguous.
  */
 export async function sendReply(
   userId: string,
   target: ReplyTarget,
-  body: string
+  body: string,
+  expectedVersion: number | null = null
 ): Promise<SendReplyResult> {
   const limits = providerLimits[target.provider];
   if (body.length > limits.comment) {
@@ -275,8 +301,15 @@ export async function sendReply(
   // Claim the attempt atomically. A read-then-write would leave a window in
   // which two tabs both observe "no attempt yet" and both post; the conditional
   // update closes it because only one statement can match an unclaimed row.
-  const claimed = await claimAttempt(userId, target.issueId, body);
-  if (!claimed) {
+  const refused = await claimAttempt(userId, target.issueId, body, expectedVersion);
+  if (refused === "stale") {
+    return {
+      ok: false,
+      status: 409,
+      error: "This draft changed in another tab. Reload it before sending.",
+    };
+  }
+  if (refused === "unresolved") {
     return {
       ok: false,
       status: 409,
@@ -295,7 +328,12 @@ export async function sendReply(
       body
     );
 
-    await clearDraft(userId, target.issueId);
+    // The comment is published, so the draft and its claim are both spent.
+    // Removed directly rather than through `clearDraft`, which deliberately
+    // refuses a claimed row because every other caller is a user action.
+    await typedDb
+      .delete(replyDrafts)
+      .where(and(eq(replyDrafts.issueId, target.issueId), eq(replyDrafts.userId, userId)));
     apiLogger.info(
       { issueId: target.issueId, provider: target.provider, commentId: comment.id },
       "Reply published"
@@ -350,12 +388,23 @@ export async function sendReply(
  * The update also writes `body`, which is what makes the stored draft equal to
  * what was actually submitted even when autosave had not caught up.
  *
+ * `expectedVersion` closes a gap the claim alone leaves open: a tab that has
+ * been sitting on an old copy could otherwise post text another tab has since
+ * replaced, and then delete that newer draft on success. Passing `null` opts out
+ * for a composer that never stored a draft.
+ *
  * @param userId - The authenticated user.
  * @param issueId - The issue being replied to.
  * @param body - The text being sent.
- * @returns `true` when this caller owns the attempt.
+ * @param expectedVersion - The version the composer displayed, or `null`.
+ * @returns Why the claim failed, or `null` when this caller owns the attempt.
  */
-async function claimAttempt(userId: string, issueId: string, body: string): Promise<boolean> {
+async function claimAttempt(
+  userId: string,
+  issueId: string,
+  body: string,
+  expectedVersion: number | null
+): Promise<"unresolved" | "stale" | null> {
   const now = new Date();
 
   await typedDb
@@ -370,12 +419,18 @@ async function claimAttempt(userId: string, issueId: string, body: string): Prom
       and(
         eq(replyDrafts.issueId, issueId),
         eq(replyDrafts.userId, userId),
-        isNull(replyDrafts.sendAttemptedAt)
+        isNull(replyDrafts.sendAttemptedAt),
+        expectedVersion === null ? undefined : eq(replyDrafts.version, expectedVersion)
       )
     )
     .returning({ id: replyDrafts.id });
 
-  return claimed.length > 0;
+  if (claimed.length > 0) return null;
+
+  // Two different reasons reach this point, and the user's next action differs:
+  // an unresolved attempt means check the provider, a stale draft means reload.
+  const current = await findDraft(userId, issueId);
+  return current?.sendAttemptedAt ? "unresolved" : "stale";
 }
 
 /**
@@ -397,17 +452,24 @@ export interface ProviderIdentity {
   avatar: string | null;
 }
 
+/** How long a cached provider login is trusted before it is re-read. */
+const IDENTITY_TTL_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Read the cached provider login, refreshing it when missing or stale.
+ * Read the cached provider login, refreshing it when older than a day.
  *
- * This identity is what lets the follow-up check tell a reporter's reply from
- * the user's own. It is cached because it changes roughly never, and refreshed
- * lazily so a rotation of the token's account is picked up on the next read
- * rather than requiring a sign-out.
+ * The login lets the follow-up check tell a reporter's reply from the user's
+ * own. It changes roughly never, so caching is right, but caching it forever is
+ * not: reconnecting a different account would leave the old login in place and
+ * every comment from the new account would read as somebody else's.
+ *
+ * A failed refresh keeps the cached value. Dropping it would make the check
+ * treat the user's own comments as news, which is the false positive the
+ * identity exists to prevent.
  *
  * @param userId - The authenticated user.
  * @param provider - The provider to identify against.
- * @returns The login, or `null` when it cannot be resolved right now.
+ * @returns The login, or `null` when it has never been resolved.
  */
 export async function resolveIdentity(
   userId: string,
@@ -419,16 +481,19 @@ export async function resolveIdentity(
     .where(and(eq(providerIdentities.userId, userId), eq(providerIdentities.provider, provider)));
 
   const cached = rows[0];
-  if (cached) return { login: cached.login, avatar: cached.avatar };
+  const fresh = cached && Date.now() - cached.fetchedAt.getTime() < IDENTITY_TTL_MS;
+  if (fresh) return { login: cached.login, avatar: cached.avatar };
 
   const token = await getProviderToken(userId, provider);
-  if (!token) return null;
+  if (!token) return cached ? { login: cached.login, avatar: cached.avatar } : null;
 
   const client = getProvider(provider);
-  if (!client.getAuthenticatedUser) return null;
+  if (!client.getAuthenticatedUser) {
+    return cached ? { login: cached.login, avatar: cached.avatar } : null;
+  }
 
   const identity = await client.getAuthenticatedUser(token);
-  if (!identity) return null;
+  if (!identity) return cached ? { login: cached.login, avatar: cached.avatar } : null;
 
   await typedDb
     .insert(providerIdentities)

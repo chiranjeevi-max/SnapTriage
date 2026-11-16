@@ -275,17 +275,23 @@ export function Composer({ issue, className }: ComposerProps) {
 
   function handleSend() {
     if (!canSend(sendState, text) || over) return;
-    send.mutate(text, {
-      // The draft row is gone server-side, so the local text goes with it. Done
-      // in the callback rather than in an effect so nothing can repaint the old
-      // reply after the success banner appears.
-      onSuccess: () => {
-        setTyped(null);
-        setTypedBeforeLoad(false);
-        setConflict(null);
-        setSaveFailure(null);
-      },
-    });
+    send.mutate(
+      // The version on screen when Send was pressed. The server refuses a send
+      // whose draft has moved on, which is what stops this tab from publishing
+      // text another tab already replaced.
+      { body: text, expectedVersion: draft?.version || undefined },
+      {
+        // The draft row is gone server-side, so the local text goes with it. Done
+        // in the callback rather than in an effect so nothing can repaint the old
+        // reply after the success banner appears.
+        onSuccess: () => {
+          setTyped(null);
+          setTypedBeforeLoad(false);
+          setConflict(null);
+          setSaveFailure(null);
+        },
+      }
+    );
   }
 
   function handleDiscard() {

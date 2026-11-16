@@ -90,6 +90,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 /**
  * Discards the draft.
  *
+ * Refused while a send owns the row. That row is the lock preventing a second
+ * tab from posting the same reply, so discarding it mid-flight would release
+ * the lock while the provider call is still unresolved.
+ *
  * @param _req - Incoming request (unused).
  * @param params - Dynamic route params containing `id`.
  */
@@ -105,6 +109,16 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Issue not found" }, { status: 404 });
   }
 
-  await clearDraft(session.user.id, id);
+  const outcome = await clearDraft(session.user.id, id);
+  if (outcome === "claimed") {
+    return NextResponse.json(
+      {
+        error:
+          "A reply from this draft may already be posted. Check the issue before discarding it.",
+      },
+      { status: 409 }
+    );
+  }
+
   return NextResponse.json({ ok: true });
 }

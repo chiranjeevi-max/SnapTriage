@@ -290,20 +290,39 @@ describe("clearDraft", () => {
   it("should remove the draft and report that it did", async () => {
     fakeDb.state.rows.reply_draft.push(replyDraftRow());
 
-    expect(await clearDraft("user-1", ISSUE_ID)).toBe(true);
+    expect(await clearDraft("user-1", ISSUE_ID)).toBe("cleared");
     expect(fakeDb.state.rows.reply_draft).toHaveLength(0);
+  });
+
+  /**
+   * @target clearDraft
+   * @dependencies findDraft, isNull(sendAttemptedAt)
+   * @scenario A send has claimed the draft and its outcome is still unknown
+   * @expectedOutput `claimed` and the row survives. The row is the lock that
+   *                 stops a second tab posting the same reply, so deleting it
+   *                 would let a duplicate through while the first is resolved.
+   */
+  it("should refuse to remove a draft a send has claimed", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({ body: "On its way.", sendAttemptedAt: new Date("2026-01-05T00:10:00.000Z") })
+    );
+
+    expect(await clearDraft("user-1", ISSUE_ID)).toBe("claimed");
+    expect(fakeDb.state.rows.reply_draft).toHaveLength(1);
+    expect(fakeDb.state.rows.reply_draft[0].body).toBe("On its way.");
   });
 
   /**
    * @target clearDraft
    * @dependencies typedDb.delete(reply_drafts)
    * @scenario Another user's draft is the only one present
-   * @expectedOutput `false` and the row survives
+   * @expectedOutput `missing` and the row survives: the lookup is scoped by
+   *                 user, so another user's draft is not there to remove
    */
   it("should not remove another user's draft", async () => {
     fakeDb.state.rows.reply_draft.push(replyDraftRow({ userId: "user-2" }));
 
-    expect(await clearDraft("user-1", ISSUE_ID)).toBe(false);
+    expect(await clearDraft("user-1", ISSUE_ID)).toBe("missing");
     expect(fakeDb.state.rows.reply_draft).toHaveLength(1);
   });
 });
@@ -493,6 +512,28 @@ describe("sendReply — outcomes that are not success", () => {
   /**
    * @target sendReply
    * @dependencies claimAttempt
+   * @scenario This tab is showing version 2, but another tab has already saved
+   *           version 3 with different text
+   * @expectedOutput 409, no provider call, and the newer draft left alone. A
+   *                 claim that ignored the version would publish superseded text
+   *                 and then delete the newer draft on success.
+   */
+  it("should refuse a send whose draft has moved on", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({ body: "Newer text from another tab", version: 3 })
+    );
+
+    const failure = sendFailure(await sendReply("user-1", TARGET, "Stale text", 2));
+
+    expect(failure.status).toBe(409);
+    expect(provider.createComment).not.toHaveBeenCalled();
+    expect(fakeDb.state.rows.reply_draft[0].body).toBe("Newer text from another tab");
+    expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).toBeNull();
+  });
+
+  /**
+   * @target sendReply
+   * @dependencies claimAttempt
    * @scenario A second send is attempted while the first outcome is unknown
    * @expectedOutput 409 flagged unconfirmed and the provider called exactly
    *                 once across both attempts — the duplicate-prevention guarantee
@@ -600,13 +641,61 @@ describe("resolveIdentity", () => {
    * @expectedOutput The cached value is returned with no provider call at all
    */
   it("should answer from the cache without touching the provider", async () => {
-    fakeDb.state.rows.provider_identity.push(providerIdentityRow({ login: "cached-me" }));
+    fakeDb.state.rows.provider_identity.push(
+      providerIdentityRow({ login: "cached-me", fetchedAt: new Date() })
+    );
 
     const identity = await resolveIdentity("user-1", "github");
 
     expect(identity).toEqual({ login: "cached-me", avatar: null });
     expect(mockGetProvider).not.toHaveBeenCalled();
     expect(mockGetProviderToken).not.toHaveBeenCalled();
+  });
+
+  /**
+   * @target resolveIdentity
+   * @dependencies getAuthenticatedUser, fetchedAt
+   * @scenario The cached login was recorded more than a day ago, as it would be
+   *           after reconnecting a different provider account
+   * @expectedOutput The login is re-read and the cache updated. A cache that
+   *                 never expires leaves the old login in place, so the new
+   *                 account's comments read as somebody else's and every issue
+   *                 they touch resurfaces.
+   */
+  it("should refresh a login cached more than a day ago", async () => {
+    fakeDb.state.rows.provider_identity.push(
+      providerIdentityRow({
+        login: "old-account",
+        fetchedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      })
+    );
+    provider.getAuthenticatedUser = vi.fn().mockResolvedValue({ login: "new-account", avatar: null });
+
+    const identity = await resolveIdentity("user-1", "github");
+
+    expect(identity).toEqual({ login: "new-account", avatar: null });
+    expect(fakeDb.state.rows.provider_identity[0].login).toBe("new-account");
+  });
+
+  /**
+   * @target resolveIdentity
+   * @dependencies getAuthenticatedUser
+   * @scenario A stale cache entry and a refresh that fails
+   * @expectedOutput The cached login. Returning null would make the follow-up
+   *                 check treat the user's own comments as external.
+   */
+  it("should keep the cached login when the refresh fails", async () => {
+    fakeDb.state.rows.provider_identity.push(
+      providerIdentityRow({
+        login: "old-account",
+        fetchedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      })
+    );
+    provider.getAuthenticatedUser = vi.fn().mockResolvedValue(null);
+
+    const identity = await resolveIdentity("user-1", "github");
+
+    expect(identity).toEqual({ login: "old-account", avatar: null });
   });
 
   /**

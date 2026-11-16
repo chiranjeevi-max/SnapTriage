@@ -50,7 +50,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Issue not found" }, { status: 404 });
   }
 
-  const result = await sendReply(session.user.id, target, parsed.data.body);
+  const result = await sendReply(
+    session.user.id,
+    target,
+    parsed.data.body,
+    parsed.data.expectedVersion ?? null
+  );
   if (!result.ok) {
     return NextResponse.json(
       { error: result.error, ...(result.unconfirmed ? { unconfirmed: true } : {}) },

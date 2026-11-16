@@ -252,6 +252,25 @@ describe("DELETE /api/issues/:id/draft", () => {
   /**
    * @target DELETE /api/issues/:id/draft
    * @dependencies clearDraft
+   * @scenario A send owns the draft and its outcome is still unknown
+   * @expectedOutput 409 and the row untouched. That row is the lock keeping a
+   *                 second tab from posting the same reply, so removing it
+   *                 would let a duplicate through.
+   */
+  it("should refuse to discard a draft a send has claimed", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({ body: "On its way.", sendAttemptedAt: new Date("2026-01-05T00:10:00.000Z") })
+    );
+
+    const res = await deleteDraft();
+
+    expect(res.status).toBe(409);
+    expect(fakeDb.state.rows.reply_draft).toHaveLength(1);
+  });
+
+  /**
+   * @target DELETE /api/issues/:id/draft
+   * @dependencies clearDraft
    * @scenario There is nothing to discard
    * @expectedOutput 200 and `{ ok: true }`: discarding twice is not an error
    */
