@@ -67,13 +67,21 @@ export interface PendingChanges {
  * Handles deduplication and cancellation logic for labels and assignees
  * (e.g., adding a label that was pending removal cancels the removal).
  *
+ * `appliedLabels` is the set of labels the issue actually carries upstream. It is
+ * needed for one case the diff alone cannot express: a removal of a label that is
+ * currently staged as an addition. That is a no-op when the label was never
+ * applied, but it is a real removal when it was — which is exactly the state the
+ * undo of a preset creates, having cancelled a staged removal with an addition.
+ *
  * @param existing - The current accumulated pending changes.
  * @param incoming - The new payload to merge in.
+ * @param appliedLabels - Labels the issue carries upstream, for the case above.
  * @returns A new {@link PendingChanges} object with the incoming changes folded in.
  */
 export function mergePendingChanges(
   existing: PendingChanges,
-  incoming: TriagePayload
+  incoming: TriagePayload,
+  appliedLabels: readonly string[] = []
 ): PendingChanges {
   const merged = { ...existing };
 
@@ -109,10 +117,15 @@ export function mergePendingChanges(
       const pendingAdds = [...addSet].filter(
         (candidate) => candidate.toLowerCase() === l.toLowerCase()
       );
+      const wasApplied = appliedLabels.some((applied) => applied.toLowerCase() === l.toLowerCase());
       if (pendingAdds.length > 0) {
-        // Cancels a pending addition: there is nothing to remove, because the
-        // label was never applied.
+        // Cancels the pending addition: the label never needs to reach the
+        // provider as an addition.
         for (const pending of pendingAdds) addSet.delete(pending);
+        // It still needs to reach the provider as a *removal* when the issue
+        // already carries it. That is the undo of a preset that cancelled a
+        // staged removal, and dropping it left the label on the issue at push.
+        if (wasApplied) removeSet.add(l);
       } else {
         removeSet.add(l);
       }

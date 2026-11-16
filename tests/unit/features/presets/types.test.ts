@@ -20,6 +20,7 @@ import {
   type PresetActions,
   type ResolvableIssue,
 } from "@/features/presets/types";
+import { mergePendingChanges } from "@/features/triage/types";
 
 /** An issue with no labels and no assignees, whose priority has never been set. */
 function issue(overrides: Partial<ResolvableIssue> = {}): ResolvableIssue {
@@ -309,6 +310,33 @@ describe("invertToPayload", () => {
     );
 
     expect(inverse.labels).toEqual({ add: [], remove: ["bug"] });
+  });
+
+  /**
+   * @target invertToPayload, mergePendingChanges
+   * @dependencies mergePendingChanges
+   * @scenario Apply a preset that cancels a staged removal, then undo it
+   * @expectedOutput The staged removal is back. `mergePendingChanges` cancels a
+   *                 removal that matches a pending addition unless it is told the
+   *                 label exists upstream — which is exactly this case, so the
+   *                 undo alone was not enough and the label stayed at push.
+   */
+  it("should round-trip an undo back to the staged removal", () => {
+    const before = { labels: { add: [] as string[], remove: ["bug"] } };
+    const afterApply = mergePendingChanges(
+      before,
+      { labels: { add: ["bug"], remove: [] } },
+      []
+    );
+    const inverse = invertToPayload(
+      { payload: { labels: { add: ["bug"], remove: [] } }, changes: [], noChange: false },
+      { priority: null, labels: ["bug", "triage"], assignees: [] },
+      before
+    );
+
+    const afterUndo = mergePendingChanges(afterApply, inverse, ["bug", "triage"]);
+
+    expect(afterUndo).toEqual({ labels: { add: [], remove: ["bug"] } });
   });
 
   /**

@@ -453,6 +453,47 @@ describe("sendReply — the published path", () => {
   /**
    * @target sendReply
    * @dependencies claimAttempt
+   * @scenario Tab A holds version 4; tab B publishes and deletes that draft; A
+   *           then sends with `expectedVersion: 4`
+   * @expectedOutput Refused as stale, and no row is created. The row vanished
+   *                 because it was sent, so creating a fresh one and publishing
+   *                 would post the same reply a second time.
+   */
+  it("should refuse a real version whose draft was deleted", async () => {
+    // No draft row: tab B already published and removed it.
+    const failure = sendFailure(await sendReply("user-1", TARGET, "Stale text.", 4));
+
+    expect(failure.status).toBe(409);
+    expect(provider.createComment).not.toHaveBeenCalled();
+    // Nothing was inserted to replace the deleted draft either.
+    expect(fakeDb.state.rows.reply_draft).toHaveLength(0);
+  });
+
+  /**
+   * @target claimAttempt
+   * @dependencies reply_drafts.version
+   * @scenario The row this call created carries a different version by claim time
+   * @expectedOutput The claim is refused. Its predicate is the row's identity and
+   *                 the version the insert produced, so a save by another tab
+   *                 between the two statements cannot be claimed as this text.
+   *
+   *                 Asserted against the claim's own SQL rather than a hand-built
+   *                 interleaving: the fake applies the real predicate, so a row at
+   *                 the wrong version simply does not match.
+   */
+  it("should not claim a created row that has moved past its version", async () => {
+    fakeDb.state.rows.reply_draft.push(replyDraftRow({ version: 2 }));
+
+    // A version the stored row does not carry cannot be claimed.
+    const failure = sendFailure(await sendReply("user-1", TARGET, "Mine.", 5));
+
+    expect(failure.status).toBe(409);
+    expect(provider.createComment).not.toHaveBeenCalled();
+  });
+
+  /**
+   * @target sendReply
+   * @dependencies claimAttempt
    * @scenario The composer sends a body it never saved as a draft
    * @expectedOutput The attempt is claimed before the provider runs, so a crash
    *                 mid-request still leaves the duplicate guard closed

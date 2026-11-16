@@ -455,16 +455,26 @@ async function claimAttempt(
 ): Promise<"unresolved" | "stale" | { claimId: string }> {
   const now = new Date();
 
-  // `RETURNING` reports whether this call actually created the row. That is the
-  // only way to honour `expectedVersion: 0` — it asserts "no stored draft when
-  // this editor started", so it must succeed when this call created one and be
-  // refused when another tab's row was already there. Matching the number 0
-  // literally could never succeed, because the insert writes version 1.
-  const created = await typedDb
-    .insert(replyDrafts)
-    .values({ issueId, userId, body, sendAttemptedAt: null, updatedAt: now })
-    .onConflictDoNothing({ target: [replyDrafts.issueId, replyDrafts.userId] })
-    .returning({ id: replyDrafts.id });
+  // A row is created only when the caller expects no stored draft: `null` (no
+  // opinion) or `0` (asserts absence). A caller holding a real version expects
+  // its row to exist, so inserting one here would be replacing a draft another tab
+  // has already sent and deleted — and publishing it would post the reply twice.
+  const mayCreate = expectedVersion === null || expectedVersion === 0;
+
+  const created = mayCreate
+    ? await typedDb
+        .insert(replyDrafts)
+        .values({ issueId, userId, body, sendAttemptedAt: null, updatedAt: now })
+        .onConflictDoNothing({ target: [replyDrafts.issueId, replyDrafts.userId] })
+        .returning({ id: replyDrafts.id, version: replyDrafts.version })
+    : [];
+
+  const creator = created[0] ?? null;
+
+  // `0` asserts no stored draft existed when this editor started. If no row was
+  // created, another tab's draft was already there — publishing over it would post
+  // text this tab never saw.
+  if (expectedVersion === 0 && creator === null) return "stale";
 
   const claimId = crypto.randomUUID();
   const claimed = await typedDb
@@ -484,12 +494,15 @@ async function claimAttempt(
         eq(replyDrafts.issueId, issueId),
         eq(replyDrafts.userId, userId),
         isNull(replyDrafts.sendAttemptedAt),
-        // Skipped only for the row this call created, whose version it already
-        // knows. A row that pre-existed must satisfy the caller's expectation,
-        // and version 0 can never do that — so a fresh composer whose draft
-        // appeared in another tab is refused rather than published over it.
-        created.length > 0
-          ? undefined
+        // Three cases, and they are not the same:
+        //  - this call created the row: condition on that row and its version, so
+        //    a save by another tab between the insert and here is detected rather
+        //    than claimed;
+        //  - `0` with no row created: another tab's draft appeared, which is
+        //    exactly what `0` asserts cannot happen, so refuse;
+        //  - a real version: the row must still carry it.
+        creator !== null
+          ? and(eq(replyDrafts.id, creator.id), eq(replyDrafts.version, creator.version))
           : expectedVersion === null
             ? undefined
             : eq(replyDrafts.version, expectedVersion)
