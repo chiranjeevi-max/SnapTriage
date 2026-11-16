@@ -118,7 +118,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           // issue's follow-up state arms it when it sees the flag, so this
           // dispatcher never needs the issue id or a TanStack mutation.
           if (!currentIssue) break;
-          setFollowUpArmRequested(true);
+          setFollowUpArmRequested(currentIssue?.id ?? null);
           break;
         case "undo": {
           const action = popUndo();

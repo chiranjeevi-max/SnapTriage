@@ -37,8 +37,18 @@ import { useKeyboardStore, Kbd } from "@/features/keyboard";
 import { Discussion, Composer } from "@/features/replies";
 import { FollowUpControl } from "@/features/follow-up";
 
+/**
+ * The least the pane needs to start: an issue id.
+ *
+ * `IssueDetail` loads the full issue by id, so a queue row is a convenience, not
+ * a requirement. A follow-up on a closed issue has no queue row at all, and this
+ * is what lets it open in the pane instead of resolving to nothing.
+ */
+export type IssueDetailTarget = Pick<IssueWithTriage, "id"> &
+  Partial<Pick<IssueWithTriage, "repoId" | "provider" | "url" | "number" | "title">>;
+
 interface IssueDetailProps {
-  issue: IssueWithTriage | null;
+  issue: IssueDetailTarget | null;
   onClose: () => void;
 }
 

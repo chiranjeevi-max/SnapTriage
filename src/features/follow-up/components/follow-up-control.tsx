@@ -52,14 +52,17 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
   const setPanelOpen = useKeyboardStore((state) => state.setFollowUpPanelOpen);
   const arm = action.mutate;
 
-  // The shortcut sets a flag rather than reaching into this component. The flag
-  // is cleared before the mutation starts, so a failed arm cannot leave it set
-  // and re-fire on the next render.
+  // The shortcut records which issue it was pressed for rather than reaching into
+  // this component. Only a request naming this control's issue is acted on: the
+  // request can outlive the selection that made it, and a bare flag would let a
+  // control for a different issue consume it and arm the wrong one. The request
+  // is cleared before the mutation starts, so a failed arm cannot re-fire.
   useEffect(() => {
-    if (!armRequested) return;
-    setArmRequested(false);
+    if (armRequested === null) return;
+    setArmRequested(null);
+    if (armRequested !== issueId) return;
     arm({ action: "wait" });
-  }, [armRequested, setArmRequested, arm]);
+  }, [armRequested, issueId, setArmRequested, arm]);
 
   // The details dialog is a dialog with plain buttons, so the global shortcut
   // listener needs to be told it is open; otherwise `d` would dismiss the issue

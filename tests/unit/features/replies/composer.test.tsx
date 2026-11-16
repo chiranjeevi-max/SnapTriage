@@ -43,10 +43,28 @@ const TYPED = "Thanks, reproduced on main.";
 /**
  * The list the shortcut hook receives in the typing-guard test.
  *
- * Empty, because the assertion is that no action ran at all: a non-empty list
- * would let a mutation fire and muddy what failed.
+ * Deliberately not empty. With no selection the `l` and `w` handlers bail on
+ * their own guard, so the test would pass even if the editable-element check
+ * were removed; a selected row is what makes those keys reach the dispatcher.
  */
-const NO_ISSUES: IssueWithTriage[] = [];
+const SHORTCUT_ISSUE: IssueWithTriage = {
+  id: ISSUE.id,
+  repoId: "repo-1",
+  provider: ISSUE.provider,
+  number: 42,
+  title: "Crash on start",
+  author: "nadia",
+  authorAvatar: null,
+  state: "open",
+  labels: [],
+  assignees: [],
+  url: ISSUE.url,
+  providerIssueId: "gh-42",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  fetchedAt: new Date().toISOString(),
+  triage: null,
+};
 
 /**
  * A render harness with the query client the composer's hooks need.
@@ -371,7 +389,10 @@ describe("Composer", () => {
     // matching. `l` opens the label picker through the store, so it is an
     // observable effect of a shortcut that must not happen mid-sentence.
     function Harness() {
-      useKeyboardShortcuts(NO_ISSUES);
+      // A real selected issue, not an empty list. With `NO_ISSUES` the `l` and
+      // `w` handlers bail on their own "no current issue" guard, so the test
+      // would pass even if the editable-element check were removed.
+      useKeyboardShortcuts([SHORTCUT_ISSUE]);
       return <Composer issue={ISSUE} />;
     }
 
@@ -399,7 +420,7 @@ describe("Composer", () => {
     fireEvent.keyDown(textarea(), { key: "w" });
 
     expect(useKeyboardStore.getState().labelPickerOpen).toBe(false);
-    expect(useKeyboardStore.getState().followUpArmRequested).toBe(false);
+    expect(useKeyboardStore.getState().followUpArmRequested).toBeNull();
     expect(textarea().value).toBe("lo");
 
     // The listener is attached: the same kind of key outside the textarea does

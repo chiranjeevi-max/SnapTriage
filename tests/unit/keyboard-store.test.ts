@@ -18,7 +18,7 @@ describe("keyboard-store", () => {
       expect(state.presetPickerOpen).toBe(false);
       expect(state.savedReplyPickerOpen).toBe(false);
       expect(state.followUpPanelOpen).toBe(false);
-      expect(state.followUpArmRequested).toBe(false);
+      expect(state.followUpArmRequested).toBeNull();
     });
   });
 
@@ -135,19 +135,20 @@ describe("keyboard-store", () => {
   });
 
   describe("followUpArmRequested", () => {
-    it("is set by the shortcut's request and cleared by its consumer", () => {
+    it("carries the issue the shortcut was pressed for", () => {
       const state = useKeyboardStore.getState();
-      state.setFollowUpArmRequested(true);
-      expect(useKeyboardStore.getState().followUpArmRequested).toBe(true);
+      state.setFollowUpArmRequested("issue-7");
+      expect(useKeyboardStore.getState().followUpArmRequested).toBe("issue-7");
 
-      state.setFollowUpArmRequested(false);
-      expect(useKeyboardStore.getState().followUpArmRequested).toBe(false);
+      // The consumer clears it, so a failed arm cannot re-fire on the next render.
+      state.setFollowUpArmRequested(null);
+      expect(useKeyboardStore.getState().followUpArmRequested).toBeNull();
     });
 
     it("does not make the store think a dialog is open", () => {
       // The flag is a one-shot request, not a modal. Treating it as one would
       // mute the keyboard until the next unrelated picker closed.
-      useKeyboardStore.getState().setFollowUpArmRequested(true);
+      useKeyboardStore.getState().setFollowUpArmRequested("issue-7");
       expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(false);
     });
   });
@@ -207,7 +208,7 @@ describe("keyboard-store", () => {
       state.setPresetPickerOpen(true);
       state.setSavedReplyPickerOpen(true);
       state.setFollowUpPanelOpen(true);
-      state.setFollowUpArmRequested(true);
+      state.setFollowUpArmRequested("issue-7");
 
       state.reset();
 
@@ -221,7 +222,7 @@ describe("keyboard-store", () => {
       expect(newState.presetPickerOpen).toBe(false);
       expect(newState.savedReplyPickerOpen).toBe(false);
       expect(newState.followUpPanelOpen).toBe(false);
-      expect(newState.followUpArmRequested).toBe(false);
+      expect(newState.followUpArmRequested).toBeNull();
     });
 
     it("leaves no dialog flag set, so the keyboard is not muted after a sign-out", () => {
@@ -232,6 +233,41 @@ describe("keyboard-store", () => {
       state.reset();
 
       expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(false);
+    });
+  });
+  describe("setIssueCount", () => {
+    /**
+     * @target setIssueCount
+     * @dependencies selectedIndex
+     * @scenario The queue shrinks to fewer rows than the current selection
+     * @expectedOutput The selection clamps, so navigation stays inside the list
+     */
+    it("clamps the selection when the queue shrinks", () => {
+      const state = useKeyboardStore.getState();
+      state.setIssueCount(10);
+      state.setSelectedIndex(7);
+
+      state.setIssueCount(3);
+
+      expect(useKeyboardStore.getState().selectedIndex).toBe(2);
+    });
+
+    /**
+     * @target setIssueCount
+     * @dependencies selectedIndex
+     * @scenario The follow-up surface is shown, which is not the queue
+     * @expectedOutput The queue selection survives. Reporting a count of zero
+     *                 would move the detail pane to row 0 and, if that pane is
+     *                 uncached, unmount the composer with text still in it.
+     */
+    it("preserves the queue selection when no list is being navigated", () => {
+      const state = useKeyboardStore.getState();
+      state.setIssueCount(10);
+      state.setSelectedIndex(7);
+
+      state.setIssueCount(null);
+
+      expect(useKeyboardStore.getState().selectedIndex).toBe(7);
     });
   });
 });

@@ -210,7 +210,12 @@ export type SaveDraftInput = z.infer<typeof saveDraftSchema>;
  * newer draft on success. Omitted when the composer holds no stored draft.
  */
 export const sendReplySchema = z.object({
-  body: z.string().trim().min(1).max(1_000_000),
+  // Not trimmed: leading indentation is code, and trailing spaces are hard line
+  // breaks in Markdown. Whitespace-only input is rejected without rewriting it.
+  body: z
+    .string()
+    .refine((value) => value.trim().length > 0, "A reply needs some text")
+    .max(1_000_000),
   expectedVersion: z.number().int().min(1).optional(),
 });
 
@@ -219,7 +224,10 @@ export type SendReplyInput = z.infer<typeof sendReplySchema>;
 /** Schema for POST /api/saved-replies: create a personal reply template. */
 export const createSavedReplySchema = z.object({
   name: z.string().trim().min(1).max(80),
-  body: z.string().trim().min(1).max(1_000_000),
+  body: z
+    .string()
+    .refine((value) => value.trim().length > 0, "A saved reply needs some text")
+    .max(1_000_000),
 });
 
 export type CreateSavedReplyInput = z.infer<typeof createSavedReplySchema>;
@@ -228,7 +236,11 @@ export type CreateSavedReplyInput = z.infer<typeof createSavedReplySchema>;
 export const updateSavedReplySchema = z
   .object({
     name: z.string().trim().min(1).max(80).optional(),
-    body: z.string().trim().min(1).max(1_000_000).optional(),
+    body: z
+      .string()
+      .refine((value) => value.trim().length > 0, "A saved reply needs some text")
+      .max(1_000_000)
+      .optional(),
   })
   .strict()
   .refine((data) => data.name !== undefined || data.body !== undefined, {

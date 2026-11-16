@@ -25,17 +25,17 @@ interface KeyboardState {
   savedReplyPickerOpen: boolean;
   followUpPanelOpen: boolean;
   /**
-   * Set by the `follow-up` shortcut and consumed by the detail pane's
-   * follow-up control.
+   * The issue the `follow-up` shortcut was pressed for, or `null`.
    *
-   * A request rather than an open flag, because arming reads the provider for a
-   * baseline and that mutation lives in the pane that knows which issue is
-   * selected. The consumer clears it, so it cannot fire twice.
+   * Carries the id rather than a boolean because the request outlives the
+   * selection that produced it: a control for a different issue mounts during a
+   * pane load, and a bare flag would let it arm the wrong issue. The control only
+   * consumes a request naming its own issue, and clears it when it does.
    */
-  followUpArmRequested: boolean;
+  followUpArmRequested: string | null;
 
   setSelectedIndex: (i: number) => void;
-  setIssueCount: (n: number) => void;
+  setIssueCount: (n: number | null) => void;
   moveSelection: (delta: number) => void;
   toggleOverlay: () => void;
   setLabelPickerOpen: (open: boolean) => void;
@@ -44,7 +44,7 @@ interface KeyboardState {
   setPresetPickerOpen: (open: boolean) => void;
   setSavedReplyPickerOpen: (open: boolean) => void;
   setFollowUpPanelOpen: (open: boolean) => void;
-  setFollowUpArmRequested: (requested: boolean) => void;
+  setFollowUpArmRequested: (issueId: string | null) => void;
   isAnyPickerOpen: () => boolean;
   reset: () => void;
 }
@@ -60,15 +60,26 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   presetPickerOpen: false,
   savedReplyPickerOpen: false,
   followUpPanelOpen: false,
-  followUpArmRequested: false,
+  followUpArmRequested: null,
 
   setSelectedIndex: (i) => set({ selectedIndex: i }),
 
+  /**
+   * Report the length of the list the keyboard is navigating.
+   *
+   * `null` means "no list on screen" rather than "an empty list". The two are
+   * different: an empty queue legitimately clamps the selection to zero, while a
+   * surface that is not the queue at all must leave the selection untouched so
+   * returning to it restores the row the user was on. Clamping on the
+   * follow-up surface would move the detail pane to row 0 and, if that pane is
+   * uncached, unmount the composer with text still in it.
+   */
   setIssueCount: (n) =>
-    set((state) => ({
-      issueCount: n,
-      selectedIndex: Math.min(state.selectedIndex, Math.max(0, n - 1)),
-    })),
+    set((state) =>
+      n === null
+        ? { issueCount: 0 }
+        : { issueCount: n, selectedIndex: Math.min(state.selectedIndex, Math.max(0, n - 1)) }
+    ),
 
   moveSelection: (delta) =>
     set((state) => {
@@ -85,7 +96,7 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   setPresetPickerOpen: (open) => set({ presetPickerOpen: open }),
   setSavedReplyPickerOpen: (open) => set({ savedReplyPickerOpen: open }),
   setFollowUpPanelOpen: (open) => set({ followUpPanelOpen: open }),
-  setFollowUpArmRequested: (requested) => set({ followUpArmRequested: requested }),
+  setFollowUpArmRequested: (issueId) => set({ followUpArmRequested: issueId }),
 
   // The two dialogs that belong to the reply surface are counted here even
   // though they are not triage controls: their buttons are not editable
@@ -114,6 +125,6 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
       presetPickerOpen: false,
       savedReplyPickerOpen: false,
       followUpPanelOpen: false,
-      followUpArmRequested: false,
+      followUpArmRequested: null,
     }),
 }));

@@ -41,6 +41,16 @@ export function providerLimitViolation(provider: string, actions: PresetActions)
     return `Logins are limited to ${limits.login} characters on ${provider}; "${tooLongLogin}" is longer.`;
   }
 
+  // GitLab reads a label list as comma-separated, so `bug,urgent` would arrive
+  // as two labels. The triage service rejects that at apply time; rejecting it
+  // here too keeps a preset from being saved in a state it can never apply.
+  if (provider === "gitlab") {
+    const commaLabel = (actions.labels?.add ?? []).find((label) => label.includes(","));
+    if (commaLabel) {
+      return `Label names cannot contain commas on gitlab; "${commaLabel}" does.`;
+    }
+  }
+
   return null;
 }
 

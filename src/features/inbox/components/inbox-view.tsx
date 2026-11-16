@@ -24,7 +24,7 @@ import { SegmentedControl } from "@/components/segmented-control";
 import { SelectField } from "@/components/select-field";
 import { cn } from "@/lib/utils";
 import { IssueList } from "@/features/inbox/components/issue-list";
-import { IssueDetail } from "@/features/inbox/components/issue-detail";
+import { IssueDetail, type IssueDetailTarget } from "@/features/inbox/components/issue-detail";
 import { useIssues } from "@/features/inbox/use-issues";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 import { useIssueFilter } from "@/features/inbox/use-issue-filter";
@@ -69,6 +69,13 @@ export function InboxView() {
   const [filter, setFilter] = useIssueFilter();
   const [surface, setSurface] = useState<InboxSurface>("queue");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  /**
+   * A follow-up entry the queue cannot reach, shown instead of the queue row.
+   *
+   * Closed issues are absent from the queue by design, so this is the only way
+   * the pane can show one. Cleared as soon as the user selects a real row.
+   */
+  const [pinnedIssue, setPinnedIssue] = useState<FollowUpEntry | null>(null);
   const [namingView, setNamingView] = useState(false);
   const [viewName, setViewName] = useState("");
   const bulkTriage = useBulkTriage();
@@ -105,10 +112,12 @@ export function InboxView() {
   // restores the same selection.
   const shownIssues = surface === "queue" ? filteredIssues : NO_ISSUES;
 
-  // Keep issueCount in sync with the rendered list so keyboard nav stays in bounds
+  // Keep issueCount in sync with the list the keyboard is actually navigating.
+  // `null` on the follow-up surface: it is not the queue, so the preserved queue
+  // selection must survive a visit there unchanged.
   useEffect(() => {
-    setIssueCount(shownIssues.length);
-  }, [shownIssues.length, setIssueCount]);
+    setIssueCount(surface === "queue" ? filteredIssues.length : null);
+  }, [surface, filteredIssues.length, setIssueCount]);
 
   const toggleSelected = useCallback((issueId: string) => {
     setSelectedIds((previous) => {
@@ -145,7 +154,25 @@ export function InboxView() {
   // follow-ups are up, because it holds the reply composer and swapping in an
   // empty state would discard text that has not been saved yet. The keyboard is
   // told about the empty list separately, so the shortcuts still do nothing.
-  const currentIssue = selectedIndex >= 0 ? (filteredIssues[selectedIndex] ?? null) : null;
+  const queueIssue = selectedIndex >= 0 ? (filteredIssues[selectedIndex] ?? null) : null;
+  /**
+   * The entry the pane shows. A pinned follow-up is mapped to the pane's shape
+   * here rather than carried as two unions through every prop: `FollowUpEntry`
+   * names the issue `issueId`, and the pane only needs an id to fetch by.
+   */
+  const currentIssue: IssueDetailTarget | null = useMemo(
+    () =>
+      pinnedIssue !== null
+        ? {
+            id: pinnedIssue.issueId,
+            provider: pinnedIssue.provider,
+            url: pinnedIssue.url,
+            number: pinnedIssue.number,
+            title: pinnedIssue.title,
+          }
+        : queueIssue,
+    [pinnedIssue, queueIssue]
+  );
 
   // Stabilize selection after data refresh
   const selectedIdRef = useRef<string | null>(null);
@@ -165,7 +192,10 @@ export function InboxView() {
   const handleSelect = useCallback(
     (issue: { id: string }) => {
       const idx = filteredIssues.findIndex((i) => i.id === issue.id);
-      if (idx >= 0) setSelectedIndex(idx);
+      if (idx >= 0) {
+        setPinnedIssue(null);
+        setSelectedIndex(idx);
+      }
     },
     [filteredIssues, setSelectedIndex]
   );
@@ -178,12 +208,22 @@ export function InboxView() {
    * a filter change would select a different row or none. The filter is reset to
    * `all` so the row the user clicked is the row that gets rendered.
    */
+  /**
+   * Open a follow-up entry in the detail pane.
+   *
+   * `useIssues` asks the server for `state=open`, so a closed issue is never in
+   * the queue and cannot be selected by index. Waiting can be armed on a closed
+   * issue and the follow-up queue lists it, so the entry itself becomes the
+   * pane's source: `IssueDetail` fetches by id, and a closed issue resolves
+   * through that even though it has no row in the list.
+   */
   const handleOpenFollowUp = useCallback(
     (entry: FollowUpEntry) => {
+      const idx = filterIssues(issueList, "all").findIndex((issue) => issue.id === entry.issueId);
+      setPinnedIssue(idx >= 0 ? null : entry);
       setSurface("queue");
       setFilter("all");
-      const idx = filterIssues(issueList, "all").findIndex((issue) => issue.id === entry.issueId);
-      setSelectedIndex(idx >= 0 ? idx : -1);
+      setSelectedIndex(idx);
     },
     [issueList, setFilter, setSelectedIndex]
   );
@@ -396,22 +436,17 @@ export function InboxView() {
       <BatchStatusBar />
 
       {/* Picker dialogs */}
-      <LabelPicker open={labelPickerOpen} onOpenChange={setLabelPickerOpen} issue={currentIssue} />
+      <LabelPicker open={labelPickerOpen} onOpenChange={setLabelPickerOpen} issue={queueIssue} />
+      {/* The pickers edit the selected queue row. A pinned follow-up has no row
+          and no cached labels or assignees, so it gets none of them rather than
+          acting on the row that happens to be selected behind it. */}
       <AssigneePicker
         open={assigneePickerOpen}
         onOpenChange={setAssigneePickerOpen}
-        issue={currentIssue}
+        issue={queueIssue}
       />
-      <SnoozePicker
-        open={snoozePickerOpen}
-        onOpenChange={setSnoozePickerOpen}
-        issue={currentIssue}
-      />
-      <PresetPicker
-        open={presetPickerOpen}
-        onOpenChange={setPresetPickerOpen}
-        issue={currentIssue}
-      />
+      <SnoozePicker open={snoozePickerOpen} onOpenChange={setSnoozePickerOpen} issue={queueIssue} />
+      <PresetPicker open={presetPickerOpen} onOpenChange={setPresetPickerOpen} issue={queueIssue} />
 
       <ShortcutOverlay />
     </div>
