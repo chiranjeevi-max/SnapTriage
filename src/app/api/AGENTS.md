@@ -16,4 +16,7 @@ Session-guarded REST layer. All routes `force-dynamic`.
 - The follow-up and reply routes are deliberately separate from `PATCH /api/issues/[id]`. A follow-up is not a triage decision, and folding it in would let an unrelated triage retry re-arm a watch.
 - `GET /api/issues/[id]/comments` returns `supported: false` when the provider implements no comment API. Never return an empty thread for that case: "nobody replied" and "we cannot see" lead a maintainer to different actions.
 - `proxy.ts` owns route gating (`/inbox,/repos,/settings` → `/login`). Don't re-implement redirects in handlers.
+
+## Validation
+
 Done = `lint + typecheck` + route-level test or `curl` against dev server + `build` if matcher/touching auth.

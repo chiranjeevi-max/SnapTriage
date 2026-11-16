@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 **Keyboard-driven inbox for triaging GitHub and GitLab issues fast.** Think "Superhuman for issue triage."
 
@@ -33,6 +34,9 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 - **Webhook sync**: connect GitHub/GitLab webhooks to trigger an instant repo sync
 - **Label & assignee pickers**: searchable command palettes for quick editing
 - **Saved views**: keep named inbox filters (all, open, dismissed, snoozed, urgent) for one-click switching
+- **Presets**: save a recurring decision (labels, assignees, priority) as a named preset, preview the diff against the issue, then apply it with `T`
+- **Reply in place**: read the discussion and post a reply without leaving the inbox
+- **Follow-ups**: park an issue with `W` until someone replies or it reopens, then work it in the follow-up queue
 - **Snooze**: hide issues until a specific time
 - **Secure by default**: AES-256 encrypted tokens at rest, a nonce-based Content-Security-Policy, and webhooks authenticated in a request header instead of a URL
 - **Dark mode**: dark theme by default, light and system themes available
@@ -40,19 +44,23 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 
 ## Keyboard Shortcuts
 
-| Key | Action |
-|-----|--------|
-| `J` / `K` | Navigate down / up |
+| Key                | Action              |
+| ------------------ | ------------------- |
+| `J` / `K`          | Navigate down / up  |
 | `Enter` / `Escape` | Open / close detail |
-| `1` - `4` | Set priority P0-P3 |
-| `D` | Dismiss / undismiss |
-| `L` | Edit labels |
-| `A` | Edit assignees |
-| `S` | Snooze issue |
-| `Z` | Undo last action |
-| `R` | Sync issues |
-| `Shift+P` | Push batch changes |
-| `?` | Show all shortcuts |
+| `1` - `4`          | Set priority P0-P3  |
+| `D`                | Dismiss / undismiss |
+| `L`                | Edit labels         |
+| `A`                | Edit assignees      |
+| `S`                | Snooze issue        |
+| `T`                | Apply a preset      |
+| `W`                | Wait for a reply    |
+| `Z`                | Undo last action    |
+| `R`                | Sync issues         |
+| `Shift+P`          | Push batch changes  |
+| `?`                | Show all shortcuts  |
+
+Reply to an issue with `Ctrl+Enter` (or `Cmd+Enter`) from the composer.
 
 ## Quick Start
 
@@ -96,15 +104,15 @@ Set `WEBHOOK_SECRET` and point the provider at `/api/webhooks/github` (or `/api/
 
 ## Tech Stack
 
-| Layer | Choice |
-|-------|--------|
-| Framework | Next.js 16 (App Router) + TypeScript |
-| Styling | Tailwind CSS 4 + shadcn/ui |
-| Database | SQLite (default) + Postgres via Drizzle ORM |
-| Auth | Auth.js, GitHub/GitLab OAuth + PAT fallback (encrypted) |
-| State | TanStack Query + Zustand |
-| Logging | Pino (structured JSON logger) |
-| Testing | Vitest + Playwright |
+| Layer     | Choice                                                  |
+| --------- | ------------------------------------------------------- |
+| Framework | Next.js 16 (App Router) + TypeScript                    |
+| Styling   | Tailwind CSS 4 + shadcn/ui                              |
+| Database  | SQLite (default) + Postgres via Drizzle ORM             |
+| Auth      | Auth.js, GitHub/GitLab OAuth + PAT fallback (encrypted) |
+| State     | TanStack Query + Zustand                                |
+| Logging   | Pino (structured JSON logger)                           |
+| Testing   | Vitest + Playwright                                     |
 
 ## Roadmap
 
@@ -112,6 +120,9 @@ SnapTriage is production-ready today. What's next:
 
 - [ ] **AI-assisted triage**: auto-suggest labels, priority, and assignees based on issue content
 - [x] **Saved filters & views**: custom inbox views with persistent filter sets
+- [x] **Triage presets**: save a recurring decision and apply it by name
+- [x] **In-place replies**: read the discussion and reply without leaving the inbox
+- [x] **Follow-ups**: park an issue until someone replies or it reopens
 - [ ] **Team sync**: shared triage queues with real-time presence
 - [ ] **Jira & Linear providers**: extend the provider abstraction beyond GitHub/GitLab
 - [x] **Bulk actions**: select multiple issues, apply changes in one shot
@@ -122,21 +133,21 @@ SnapTriage is production-ready today. What's next:
 <details>
 <summary><strong>Scripts</strong></summary>
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start dev server |
-| `npm run build` | Production build |
-| `npm run start` | Serve the production build |
-| `npm run lint` | Run ESLint |
-| `npm run typecheck` | TypeScript type check |
-| `npm test` | Run unit tests once |
-| `npm run test:watch` | Run unit tests in watch mode |
-| `npm run test:e2e` | Run E2E tests |
-| `npm run format` | Format with Prettier |
-| `npm run format:check` | Check formatting without writing |
-| `npm run db:generate` | Generate Drizzle migrations for SQLite and Postgres |
-| `npm run db:migrate` | Run migrations (on Postgres when `DATABASE_URL` is set) |
-| `npm run db:studio` | Open Drizzle Studio |
+| Command                | Description                                             |
+| ---------------------- | ------------------------------------------------------- |
+| `npm run dev`          | Start dev server                                        |
+| `npm run build`        | Production build                                        |
+| `npm run start`        | Serve the production build                              |
+| `npm run lint`         | Run ESLint                                              |
+| `npm run typecheck`    | TypeScript type check                                   |
+| `npm test`             | Run unit tests once                                     |
+| `npm run test:watch`   | Run unit tests in watch mode                            |
+| `npm run test:e2e`     | Run E2E tests                                           |
+| `npm run format`       | Format with Prettier                                    |
+| `npm run format:check` | Check formatting without writing                        |
+| `npm run db:generate`  | Generate Drizzle migrations for SQLite and Postgres     |
+| `npm run db:migrate`   | Run migrations (on Postgres when `DATABASE_URL` is set) |
+| `npm run db:studio`    | Open Drizzle Studio                                     |
 
 </details>
 
@@ -145,25 +156,25 @@ SnapTriage is production-ready today. What's next:
 
 See [`.env.example`](.env.example) for the full list. Required:
 
-| Variable | Description |
-|----------|-------------|
+| Variable      | Description                                       |
+| ------------- | ------------------------------------------------- |
 | `AUTH_SECRET` | Secret for Auth.js session and AES key derivation |
 
 For GitHub OAuth sign-in, also set `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET`. GitLab-only or PAT-only deployments can leave them unset.
 
 Optional:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AUTH_URL` | Base URL for Auth.js callbacks | `http://localhost:3000` |
-| `AUTH_SALT` | Cryptographic salt for AES encryption (an empty value is an error) | (built-in default) |
-| `DATABASE_URL` | Postgres connection string | (uses SQLite) |
-| `SQLITE_PATH` | SQLite database file path | `./data/snaptriage.db` |
-| `AUTH_GITLAB_ID` | GitLab OAuth App ID | |
-| `AUTH_GITLAB_SECRET` | GitLab OAuth App secret | |
-| `AUTH_GITLAB_URL` | Self-hosted GitLab URL | `https://gitlab.com` |
-| `WEBHOOK_SECRET` | Shared secret for GitHub/GitLab webhook sync, sent in the provider's signature header (never in the URL) | (webhook sync disabled) |
-| `TRUSTED_PROXY_HOPS` | How many proxies append the client address to `X-Forwarded-For`; the rate limiter trusts only those entries | `0` |
+| Variable             | Description                                                                                                 | Default                 |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `AUTH_URL`           | Base URL for Auth.js callbacks                                                                              | `http://localhost:3000` |
+| `AUTH_SALT`          | Cryptographic salt for AES encryption (an empty value is an error)                                          | (built-in default)      |
+| `DATABASE_URL`       | Postgres connection string                                                                                  | (uses SQLite)           |
+| `SQLITE_PATH`        | SQLite database file path                                                                                   | `./data/snaptriage.db`  |
+| `AUTH_GITLAB_ID`     | GitLab OAuth App ID                                                                                         |                         |
+| `AUTH_GITLAB_SECRET` | GitLab OAuth App secret                                                                                     |                         |
+| `AUTH_GITLAB_URL`    | Self-hosted GitLab URL                                                                                      | `https://gitlab.com`    |
+| `WEBHOOK_SECRET`     | Shared secret for GitHub/GitLab webhook sync, sent in the provider's signature header (never in the URL)    | (webhook sync disabled) |
+| `TRUSTED_PROXY_HOPS` | How many proxies append the client address to `X-Forwarded-For`; the rate limiter trusts only those entries | `0`                     |
 
 </details>
 
@@ -172,6 +183,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 ## Documentation
 
 For more detail on how SnapTriage works:
+
 - [Architecture & Tech Stack](docs/architecture.md)
 - [Security Overview](docs/security.md)
 

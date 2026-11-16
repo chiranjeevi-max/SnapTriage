@@ -15,4 +15,7 @@ Dual-driver Drizzle layer. SQLite default, Neon Postgres when `DATABASE_URL` is 
 - `access_token` upserts on `(userId, provider)` and is unique on `(provider, providerAccountId)`, the `<instance>/<id>` account PAT sign-in resolves to. `providerAccountId` is null only on rows stored before it was recorded.
 - Rate limit state lives in `rate_limit_bucket`; upserts use their natural keys (the key already carries its scope, e.g. `pat:validate:<ip>`). Migrations and unique indexes must ship together.
 - `webhook_delivery` records seen delivery IDs for replay protection; rows are purged after 7 days.
+
+## Validation
+
 Done = `typecheck` + focused `vitest` + `db:generate` produces no unexpected diff.
