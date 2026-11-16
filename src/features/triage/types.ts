@@ -87,22 +87,32 @@ export function mergePendingChanges(
     const addSet = new Set(prev.add);
     const removeSet = new Set(prev.remove);
 
-    // Compared case-insensitively, like `resolvePreset`. GitHub and GitLab treat
-    // `Bug` and `bug` as the same label, so a case-sensitive cancel left a staged
-    // removal in place that the provider had already been told to add — and the
-    // push then removed a label the user had just applied.
+    // Every comparison here is case-insensitive, like `resolvePreset`. GitHub and
+    // GitLab treat `Bug` and `bug` as one label, so a case-sensitive comparison
+    // would leave a staged removal in place for a label the preset had just
+    // added — and the push would then remove what the user applied.
     for (const l of incoming.labels.add ?? []) {
       for (const pending of [...removeSet]) {
         if (pending.toLowerCase() === l.toLowerCase()) removeSet.delete(pending);
       }
+      // One entry per label whatever its casing. Staging `bug` then `Bug` must not
+      // leave both, or a later removal of `bug` cancels only the first and the
+      // other still reaches the provider.
+      for (const pending of [...addSet]) {
+        if (pending.toLowerCase() === l.toLowerCase()) addSet.delete(pending);
+      }
       addSet.add(l);
     }
     for (const l of incoming.labels.remove ?? []) {
-      const pendingAdd = [...addSet].find(
+      // Every case variant, not only the first. `find` would leave a second
+      // variant staged as an addition, so the removal could not take effect.
+      const pendingAdds = [...addSet].filter(
         (candidate) => candidate.toLowerCase() === l.toLowerCase()
       );
-      if (pendingAdd !== undefined) {
-        addSet.delete(pendingAdd); // cancel pending addition; no need to remove what was never applied
+      if (pendingAdds.length > 0) {
+        // Cancels a pending addition: there is nothing to remove, because the
+        // label was never applied.
+        for (const pending of pendingAdds) addSet.delete(pending);
       } else {
         removeSet.add(l);
       }

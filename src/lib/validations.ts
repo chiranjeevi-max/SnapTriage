@@ -219,7 +219,9 @@ export type SaveDraftInput = z.infer<typeof saveDraftSchema>;
  *
  * `expectedVersion` is the draft version the composer was showing. Without it a
  * tab left open on an older copy could post superseded text and then delete the
- * newer draft on success. Omitted when the composer holds no stored draft.
+ * newer draft on success. `0` is the composer's value when it holds no stored
+ * draft: it asserts absence, so a send whose draft another tab has since created
+ * is refused rather than published over it. That is why the floor is 0 and not 1.
  */
 export const sendReplySchema = z.object({
   // Not trimmed: leading indentation is code, and trailing spaces are hard line
@@ -228,7 +230,7 @@ export const sendReplySchema = z.object({
     .string()
     .refine((value) => value.trim().length > 0, "A reply needs some text")
     .max(1_000_000),
-  expectedVersion: z.number().int().min(1).max(2_147_483_647).optional(),
+  expectedVersion: z.number().int().min(0).max(2_147_483_647).optional(),
 });
 
 export type SendReplyInput = z.infer<typeof sendReplySchema>;

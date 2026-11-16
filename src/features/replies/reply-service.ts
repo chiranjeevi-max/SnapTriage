@@ -309,7 +309,14 @@ export async function sendReply(
 
   const provider = getProvider(target.provider);
   if (!provider.createComment) {
-    return { ok: false, status: 501, error: "This provider does not support comments yet." };
+    return {
+      ok: false,
+      // A capability gap, not a transient one: nothing was sent and nothing can
+      // be. Reported as 5xx it would read to the client as "maybe it posted",
+      // which would latch the composer unconfirmed over a request never made.
+      status: 422,
+      error: "This provider does not support comments yet.",
+    };
   }
 
   // Claim the attempt atomically. A read-then-write would leave a window in
@@ -371,7 +378,11 @@ export async function sendReply(
       );
       return {
         ok: false,
-        status: 502,
+        // 422, not 502: this is a definitive answer, and the client treats every
+        // 5xx as ambiguous because a gateway can drop the `unconfirmed` flag. A
+        // rejection reported as 5xx would leave the draft unconfirmed forever and
+        // withhold Send for nothing.
+        status: 422,
         error: "The provider rejected this reply. Your draft has been kept.",
       };
     }
@@ -444,10 +455,16 @@ async function claimAttempt(
 ): Promise<"unresolved" | "stale" | { claimId: string }> {
   const now = new Date();
 
-  await typedDb
+  // `RETURNING` reports whether this call actually created the row. That is the
+  // only way to honour `expectedVersion: 0` — it asserts "no stored draft when
+  // this editor started", so it must succeed when this call created one and be
+  // refused when another tab's row was already there. Matching the number 0
+  // literally could never succeed, because the insert writes version 1.
+  const created = await typedDb
     .insert(replyDrafts)
     .values({ issueId, userId, body, sendAttemptedAt: null, updatedAt: now })
-    .onConflictDoNothing({ target: [replyDrafts.issueId, replyDrafts.userId] });
+    .onConflictDoNothing({ target: [replyDrafts.issueId, replyDrafts.userId] })
+    .returning({ id: replyDrafts.id });
 
   const claimId = crypto.randomUUID();
   const claimed = await typedDb
@@ -467,7 +484,15 @@ async function claimAttempt(
         eq(replyDrafts.issueId, issueId),
         eq(replyDrafts.userId, userId),
         isNull(replyDrafts.sendAttemptedAt),
-        expectedVersion === null ? undefined : eq(replyDrafts.version, expectedVersion)
+        // Skipped only for the row this call created, whose version it already
+        // knows. A row that pre-existed must satisfy the caller's expectation,
+        // and version 0 can never do that — so a fresh composer whose draft
+        // appeared in another tab is refused rather than published over it.
+        created.length > 0
+          ? undefined
+          : expectedVersion === null
+            ? undefined
+            : eq(replyDrafts.version, expectedVersion)
       )
     )
     .returning({ id: replyDrafts.id });

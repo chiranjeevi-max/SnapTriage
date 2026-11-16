@@ -314,6 +314,9 @@ export const followUps = pgTable(
   (table) => [
     uniqueIndex("follow_up_issue_user_unique").on(table.issueId, table.userId),
     index("follow_up_user_state_idx").on(table.userId, table.state),
+    // Mirrors the SQLite index. Both dialects must declare the same indexes, or
+    // one deployment sorts every waiting row per check pass.
+    index("follow_up_due_idx").on(table.userId, table.state, table.attemptedAt, table.checkedAt),
   ]
 );
 

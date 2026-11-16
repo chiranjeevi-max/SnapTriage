@@ -418,6 +418,41 @@ describe("sendReply — the published path", () => {
   /**
    * @target sendReply
    * @dependencies claimAttempt
+   * @scenario A first reply from a composer that never held a draft, which sends
+   *           `expectedVersion: 0`
+   * @expectedOutput Published. The insert creates the row, so this call is the
+   *                 one that established "no stored draft"; matching the literal
+   *                 version 0 could never succeed because the insert writes 1.
+   */
+  it("should publish a first reply sent with expectedVersion 0", async () => {
+    const result = await sendReply("user-1", TARGET, "First reply here.", 0);
+
+    expect(result).toMatchObject({ ok: true, draftCleared: true });
+    expect(provider.createComment).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * @target sendReply
+   * @dependencies claimAttempt
+   * @scenario A composer sends with `expectedVersion: 0` but another tab has
+   *           already created a draft for this issue
+   * @expectedOutput Refused as stale, and nothing published. `0` asserts absence,
+   *                 so a row that pre-existed disproves it — publishing would
+   *                 post over text this tab never saw.
+   */
+  it("should refuse expectedVersion 0 when a draft already exists", async () => {
+    fakeDb.state.rows.reply_draft.push(replyDraftRow({ version: 2 }));
+
+    const failure = sendFailure(await sendReply("user-1", TARGET, "Mine.", 0));
+
+    expect(failure.status).toBe(409);
+    expect(provider.createComment).not.toHaveBeenCalled();
+    expect(fakeDb.state.rows.reply_draft).toHaveLength(1);
+  });
+
+  /**
+   * @target sendReply
+   * @dependencies claimAttempt
    * @scenario The composer sends a body it never saved as a draft
    * @expectedOutput The attempt is claimed before the provider runs, so a crash
    *                 mid-request still leaves the duplicate guard closed
@@ -487,14 +522,18 @@ describe("sendReply — the published path", () => {
    * @target sendReply
    * @dependencies getProvider.createComment
    * @scenario The provider implementation has no comment support
-   * @expectedOutput 501 and nothing recorded, so the draft is not left unconfirmed
+   * @expectedOutput 422 and nothing recorded. Not 5xx: the client treats every
+   *                 5xx as "maybe it posted" because a gateway can drop the flag
+   *                 that says otherwise, so a capability gap reported that way
+   *                 would latch the composer unconfirmed over a request that never
+   *                 left the server.
    */
-  it("should return 501 for a provider without comment support", async () => {
+  it("should return 422 for a provider without comment support", async () => {
     mockGetProvider.mockReturnValue(providerWithoutComments());
 
     const failure = sendFailure(await sendReply("user-1", TARGET, "Hello"));
 
-    expect(failure.status).toBe(501);
+    expect(failure.status).toBe(422);
     expect(fakeDb.state.rows.reply_draft).toHaveLength(0);
   });
 });
@@ -520,7 +559,9 @@ describe("sendReply — outcomes that are not success", () => {
 
     const failure = sendFailure(await sendReply("user-1", TARGET, "Thanks."));
 
-    expect(failure.status).toBe(502);
+    // 422, not 502: the provider answered and refused. It must not be reported as
+    // a gateway error, because the client reads every 5xx as possibly-published.
+    expect(failure.status).toBe(422);
     expect(failure.unconfirmed).toBeUndefined();
     expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).toBeNull();
     expect(fakeDb.state.rows.reply_draft[0].body).toBe("Thanks.");

@@ -79,6 +79,15 @@ const STORED_DRAFT_ARRIVED_LATE =
   "This issue already had a saved draft, which arrived after you started typing.";
 
 /**
+ * Shown when text came back from a flush that could not be saved.
+ *
+ * The flush runs as the composer unmounts, so the failure had nowhere to report
+ * to. This is the only place the user learns the text survived.
+ */
+const RECOVERED_TEXT_NOTICE =
+  "A reply you were writing could not be saved when you left this issue.";
+
+/**
  * The provider's comment cap, or `null` for a provider this build does not
  * know. An unknown provider must not silently inherit GitHub's limit.
  *
@@ -184,6 +193,19 @@ export function Composer({ issue, className }: ComposerProps) {
     storedBody !== typed;
   const notice = conflict ?? (lateArrival ? STORED_DRAFT_ARRIVED_LATE : null);
 
+  // Text an unmount flush could not save, recovered when the composer is opened
+  // again. Read once on mount and removed from the stash, so it is offered
+  // exactly once: the user either keeps it or discards it deliberately, rather
+  // than finding the same text reappear every time the pane is opened.
+  const [recovered] = useState(() => {
+    const stashed = stashedFlush.get(issue.id);
+    if (stashed === undefined) return null;
+    stashedFlush.delete(issue.id);
+    return stashed;
+  });
+  /** Set when the user has answered the recovery banner, either way. */
+  const [recoveredDismissed, setRecoveredDismissed] = useState(false);
+
   // Send is withheld until the draft has loaded. Without this an early Ctrl+Enter
   // would post with no version, the server would skip its version predicate, and
   // an unread draft could be published over and then deleted.
@@ -256,19 +278,17 @@ export function Composer({ issue, className }: ComposerProps) {
         keepalive: true,
       })
         .then((res) => {
-          // A 409 means this text lost to a newer version and the module state
-          // it lived in is gone. Keep a copy so returning to the issue can offer
-          // it rather than silently discarding what the user typed.
-          if (res.status === 409) {
+          // Any failure keeps a copy. The component that owned this text is
+          // already gone, so a 400, a 401, a 5xx or a 409 all leave the user with
+          // nothing unless the text is held somewhere they can get it back from.
+          if (!res.ok) {
             stashedFlush.set(issue.id, pending.body);
             return;
           }
-          if (res.ok) {
-            // The flush wrote a revision the cache does not know about. Without
-            // this the next visit shows the older cached draft for up to a
-            // minute and the user's newest text looks lost.
-            void queryClient.invalidateQueries({ queryKey: ["draft", issue.id] });
-          }
+          // The flush wrote a revision the cache does not know about. Without
+          // this the next visit shows the older cached draft for up to a minute
+          // and the user's newest text looks lost.
+          void queryClient.invalidateQueries({ queryKey: ["draft", issue.id] });
         })
         .catch(() => {
           stashedFlush.set(issue.id, pending.body);
@@ -414,9 +434,12 @@ export function Composer({ issue, className }: ComposerProps) {
 
   function handleDiscard() {
     discardDraft.mutate(
-      // `0` asserts "this tab never saw a stored draft", so the server refuses
-      // rather than deleting one another tab wrote while this one was open.
-      { expectedVersion: draft?.version ?? 0 },
+      // The version this editor is writing against, matching `handleSend`. Using
+      // the refetched `draft.version` instead would delete a draft this tab never
+      // saw: after a failed send or a claim release the refetch can carry a newer
+      // version, and the delete would then be authorised against text that is not
+      // the text on screen. `0` still asserts "no stored draft was ever seen".
+      { expectedVersion: version },
       {
         onSuccess: () => {
           setTyped(null);
@@ -485,6 +508,39 @@ export function Composer({ issue, className }: ComposerProps) {
               }
             >
               {releaseClaim.isPending ? "Releasing…" : "I checked the issue"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {recovered !== null && !recoveredDismissed && typed === null && (
+        <div role="alert" className="mb-3 rounded-md border border-dashed px-3 py-2">
+          <p className="text-xs leading-relaxed">{RECOVERED_TEXT_NOTICE}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Not saved. Keep it to carry on where you left off, or discard it.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2.5 text-xs"
+              // Pins the base at the loaded version: this text was never written
+              // against one, so the first save has to be conditional on the draft
+              // as it stands now rather than on nothing.
+              onClick={() => {
+                setPinnedVersion(draft?.version ?? 0);
+                setTyped(recovered);
+              }}
+            >
+              Keep my text
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2.5 text-xs"
+              onClick={() => setRecoveredDismissed(true)}
+            >
+              Discard
             </Button>
           </div>
         </div>

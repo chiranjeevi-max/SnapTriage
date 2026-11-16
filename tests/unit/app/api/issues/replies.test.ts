@@ -283,9 +283,11 @@ describe("POST /api/issues/:id/replies — outcomes", () => {
    * @target POST /api/issues/:id/replies
    * @dependencies sendReply
    * @scenario The provider refuses the body definitively
-   * @expectedOutput 502 without the unconfirmed flag, since the provider did answer
+   * @expectedOutput 422 without the unconfirmed flag, since the provider did
+   *                 answer. Not 5xx: the client reads every 5xx as possibly
+   *                 published, which would withhold Send on an outright refusal.
    */
-  it("should return 502 when the provider rejects the reply", async () => {
+  it("should return 422 when the provider rejects the reply", async () => {
     provider.createComment.mockRejectedValue(
       new ProviderApiError(422, "unprocessable", {
         provider: "github",
@@ -297,7 +299,10 @@ describe("POST /api/issues/:id/replies — outcomes", () => {
 
     const res = await postReply({ body: "Thanks" });
 
-    expect(res.status).toBe(502);
+    // 422 because the refusal is definitive. The client treats every 5xx as
+    // possibly-published, so reporting a refusal that way would withhold Send on
+    // a reply the provider declined outright.
+    expect(res.status).toBe(422);
     expect((res.body as { unconfirmed?: true }).unconfirmed).toBeUndefined();
     expect((res.body as { error: string }).error).toContain("rejected");
   });

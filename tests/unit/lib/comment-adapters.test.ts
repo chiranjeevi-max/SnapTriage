@@ -258,7 +258,6 @@ describe("githubProvider.fetchComments", () => {
       githubProvider.fetchComments?.("octo", "repo", 7, "token-abc")
     ).rejects.toMatchObject({ status: 500, operation: "fetchComments", provider: "github" });
   });
-});
 
   /**
    * @target githubProvider.fetchComments
@@ -304,6 +303,40 @@ describe("githubProvider.fetchComments", () => {
     expect(third?.olderCursor).toBeNull();
     expect(third?.comments.map((comment) => comment.body)).toEqual(["Three"]);
   });
+
+  /**
+   * @target githubProvider.fetchComments
+   * @dependencies ghFetch
+   * @scenario A rate-limited read whose reset lands beyond the request deadline
+   * @expectedOutput The retry is abandoned rather than slept through. The wait and
+   *                 the retry share one deadline; letting the retry start a fresh
+   *                 timeout means one call can take the wait plus a full timeout,
+   *                 which is longer than the lease that stops a second send
+   *                 overlapping it.
+   */
+  it("should not retry when the wait would outlast the deadline", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(
+        { message: "rate limited" },
+        {
+          status: 403,
+          headers: {
+            "x-ratelimit-remaining": "0",
+            // An hour away: far beyond the request deadline.
+            "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3_600),
+          },
+        }
+      )
+    );
+
+    await expect(
+      githubProvider.fetchComments?.("octo", "repo", 7, "token-abc")
+    ).rejects.toBeInstanceOf(ProviderApiError);
+
+    // One request only: the retry never ran.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("githubProvider.createComment", () => {
   /**

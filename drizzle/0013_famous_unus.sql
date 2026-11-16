@@ -1,0 +1,1 @@
+CREATE INDEX `follow_up_due_idx` ON `follow_up` (`userId`,`state`,`attemptedAt`,`checkedAt`);

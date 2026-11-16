@@ -70,13 +70,28 @@ function isIdempotent(method: string | undefined): boolean {
  * @param init - Optional fetch RequestInit overrides.
  * @returns The fetch Response (original or retried).
  */
-async function ghFetch(url: string, token: string, init?: RequestInit): Promise<Response> {
+async function ghFetch(
+  url: string,
+  token: string,
+  init?: RequestInit & { deadlineAt?: number }
+): Promise<Response> {
   // The controller is aborted by the timer *and* stays attached to the response,
   // so the body read that follows is covered by the same deadline. Clearing the
   // timer when the headers arrive left `res.json()` unbounded: a provider that
   // sent headers and then stalled would hold this call open indefinitely.
+  //
+  // The deadline is absolute and inherited by a retry, so a wait plus a retry
+  // cannot add up to more than one timeout. A publish that outlives the
+  // send-claim lease can overlap a second send, which is the duplicate this
+  // whole mechanism exists to prevent.
+  const deadlineAt = init?.deadlineAt ?? Date.now() + REQUEST_TIMEOUT_MS;
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) {
+    throw new Error("GitHub request deadline passed before it was sent");
+  }
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), remainingMs);
   const signal = init?.signal ?? controller.signal;
 
   let res: Response;
@@ -102,10 +117,16 @@ async function ghFetch(url: string, token: string, init?: RequestInit): Promise<
 
     if (remaining === "0" && resetAt) {
       const waitMs = Math.max(0, Number(resetAt) * 1000 - Date.now()) + 1000;
-      await sleep(Math.min(waitMs, 60_000));
-      // The retry is a fresh request with its own deadline.
-      release();
-      return ghFetch(url, token, { ...init, signal });
+      const budgetLeft = deadlineAt - Date.now();
+      // The wait comes out of the same budget, so a wait plus a retry can never
+      // exceed one timeout. If the reset lands after the deadline there is no
+      // room for a retry at all, and waiting would only delay the error.
+      if (waitMs < budgetLeft) {
+        await sleep(waitMs);
+        if (signal.aborted) throw new Error("GitHub request aborted while waiting to retry");
+        release();
+        return ghFetch(url, token, { ...init, signal, deadlineAt });
+      }
     }
   }
 
