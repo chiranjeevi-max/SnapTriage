@@ -10,7 +10,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DELETE, PATCH } from "@/app/api/presets/[id]/route";
 import { auth } from "@/auth";
-import { PRESET_ID, REPO_ID, fakeDb, presetRow, repoRow } from "../../../../support/fake-db";
+import {
+  PRESET_ID,
+  REPO_ID,
+  fakeDb,
+  issueRow,
+  presetRow,
+  repoRow,
+} from "../../../../support/fake-db";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/db/query", async () => {
@@ -186,13 +193,30 @@ describe("DELETE /api/presets/:id", () => {
    *                 never reverts an earlier application, which is triage state
    *                 the issue owns
    */
-  it("should delete the preset and remove it", async () => {
+  it("should delete the preset and leave applied triage state alone", async () => {
     fakeDb.state.rows.triage_preset.push(presetRow());
+    // An issue that has a preset already applied to it. Deleting the preset must
+    // not reach back and undo it: the preset is a recipe, and the triage row is
+    // the record of what was actually done.
+    fakeDb.state.rows.issue.push(issueRow({ id: "issue-applied" }));
+    fakeDb.state.rows.triage_state.push({
+      issueId: "issue-applied",
+      userId: "user-1",
+      priority: 1,
+      labels: ["bug"],
+      assignees: [],
+      snoozedUntil: null,
+      dismissed: false,
+      pendingChanges: null,
+      updatedAt: new Date("2026-01-07T00:00:00.000Z"),
+    } as never);
 
     const res = await deletePreset();
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
     expect(fakeDb.state.rows.triage_preset).toHaveLength(0);
+    expect(fakeDb.state.rows.triage_state).toHaveLength(1);
+    expect(fakeDb.state.rows.triage_state[0]).toMatchObject({ priority: 1, labels: ["bug"] });
   });
 });

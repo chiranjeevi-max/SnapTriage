@@ -304,6 +304,35 @@ describe("Composer", () => {
     expect(textarea().value).toBe("Start Could you add the exact command?");
   });
 
+  /**
+   * @target Composer
+   * @dependencies saved replies
+   * @scenario A template is chosen while the composer is empty
+   * @expectedOutput The body is inserted directly, with no question about where.
+   *                 Asking "insert at cursor or replace?" on an empty composer
+   *                 offers a choice that does not exist.
+   */
+  it("inserts a template into an empty composer without asking", async () => {
+    const templates = [
+      { id: "tpl-1", name: "Needs a reproduction", body: "Could you add the exact command?" },
+    ];
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/draft")) return json(null);
+      if (url.endsWith("/saved-replies")) return json(templates);
+      return json({});
+    }) as unknown as typeof fetch;
+
+    renderComposer();
+    await waitFor(() => expect(textarea()).toBeDefined());
+
+    fireEvent.click(screen.getByRole("button", { name: "Saved replies" }));
+    fireEvent.click(await screen.findByText("Needs a reproduction"));
+
+    expect(screen.queryByRole("button", { name: "Insert at cursor" })).toBeNull();
+    expect(textarea().value).toBe("Could you add the exact command?");
+  });
+
   it("shows the character counter only near the limit and never blocks typing below it", async () => {
     const limit = providerLimits.github.comment;
     renderComposer();
