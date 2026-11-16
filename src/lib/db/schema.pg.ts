@@ -202,6 +202,7 @@ export const triageState = pgTable(
     snoozedUntil: epochMs("snoozedUntil"),
     dismissed: boolean("dismissed").notNull().default(false),
     batchPending: boolean("batchPending").notNull().default(false),
+    revision: integer("revision").notNull().default(0),
     pendingChanges: text("pendingChanges").default("{}"),
     updatedAt: epochMs("updatedAt").notNull(),
   },
@@ -226,4 +227,112 @@ export const syncLog = pgTable(
     completedAt: epochMs("completedAt"),
   },
   (table) => [index("syncLog_repoId_idx").on(table.repoId)]
+);
+
+export const triagePresets = pgTable(
+  "triage_preset",
+  {
+    id: text("id").primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    repoId: text("repoId")
+      .notNull()
+      .references(() => repos.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    actions: text("actions").notNull().default("{}"),
+    createdAt: epochMs("createdAt").notNull(),
+    updatedAt: epochMs("updatedAt").notNull(),
+  },
+  (table) => [
+    index("triage_preset_userId_repoId_idx").on(table.userId, table.repoId),
+    index("triage_preset_repoId_idx").on(table.repoId),
+  ]
+);
+
+export const replyDrafts = pgTable(
+  "reply_draft",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issueId")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull().default(""),
+    version: integer("version").notNull().default(1),
+    sendAttemptedAt: epochMs("sendAttemptedAt"),
+    sendClaimId: text("sendClaimId"),
+    sendInFlightUntil: epochMs("sendInFlightUntil"),
+    createdAt: epochMs("createdAt").notNull(),
+    updatedAt: epochMs("updatedAt").notNull(),
+  },
+  (table) => [
+    uniqueIndex("reply_draft_issue_user_unique").on(table.issueId, table.userId),
+    index("reply_draft_userId_idx").on(table.userId),
+  ]
+);
+
+export const savedReplies = pgTable(
+  "saved_reply",
+  {
+    id: text("id").primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    body: text("body").notNull(),
+    createdAt: epochMs("createdAt").notNull(),
+    updatedAt: epochMs("updatedAt").notNull(),
+  },
+  (table) => [index("saved_reply_userId_idx").on(table.userId)]
+);
+
+export const followUps = pgTable(
+  "follow_up",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issueId")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    state: text("state").notNull().default("waiting"),
+    lastSeenCommentId: text("lastSeenCommentId"),
+    lastSeenCommentAt: epochMs("lastSeenCommentAt"),
+    stateAtBaseline: text("stateAtBaseline").notNull().default("open"),
+    lastObservedState: text("lastObservedState"),
+    reviewedCommentId: text("reviewedCommentId"),
+    reason: text("reason"),
+    checkedAt: epochMs("checkedAt"),
+    attemptedAt: epochMs("attemptedAt"),
+    createdAt: epochMs("createdAt").notNull(),
+    updatedAt: epochMs("updatedAt").notNull(),
+  },
+  (table) => [
+    uniqueIndex("follow_up_issue_user_unique").on(table.issueId, table.userId),
+    index("follow_up_user_state_idx").on(table.userId, table.state),
+    // Mirrors the SQLite index. Both dialects must declare the same indexes, or
+    // one deployment sorts every waiting row per check pass.
+    index("follow_up_due_idx").on(table.userId, table.state, table.attemptedAt, table.checkedAt),
+  ]
+);
+
+export const providerIdentities = pgTable(
+  "provider_identity",
+  {
+    id: text("id").primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    login: text("login").notNull(),
+    avatar: text("avatar"),
+    fetchedAt: epochMs("fetchedAt").notNull(),
+  },
+  (table) => [
+    uniqueIndex("provider_identity_user_provider_unique").on(table.userId, table.provider),
+  ]
 );

@@ -16,10 +16,7 @@ import { matchShortcut, formatKey, shortcuts } from "@/features/keyboard/shortcu
  * Creates a minimal mock KeyboardEvent for testing shortcut matching
  * without requiring a full DOM environment.
  */
-function makeKeyboardEvent(
-  key: string,
-  options: { shiftKey?: boolean } = {}
-): KeyboardEvent {
+function makeKeyboardEvent(key: string, options: { shiftKey?: boolean } = {}): KeyboardEvent {
   // Create a minimal object matching the KeyboardEvent interface
   // to avoid needing jsdom in the test environment
   return {
@@ -129,9 +126,61 @@ describe("shortcut-registry", () => {
       expect(result?.id).toBe("undo");
     });
 
+    it("matches t to presets", () => {
+      const result = matchShortcut(makeKeyboardEvent("t"));
+      expect(result?.id).toBe("presets");
+    });
+
+    it("binds presets to a key no other shortcut claims", () => {
+      const presets = shortcuts.find((shortcut) => shortcut.id === "presets");
+      expect(presets).toBeDefined();
+      expect(presets?.key).toBe("t");
+      expect(presets?.category).toBe("triage");
+
+      const collisions = shortcuts.filter(
+        (shortcut) =>
+          shortcut.id !== "presets" &&
+          shortcut.key.toLowerCase() === "t" &&
+          (shortcut.shift ?? false) === (presets?.shift ?? false)
+      );
+      expect(collisions).toEqual([]);
+      // `t` must also resolve to exactly one shortcut when matched at runtime.
+      expect(shortcuts.filter((shortcut) => shortcut.key.toLowerCase() === "t")).toHaveLength(1);
+    });
+
     it("matches Shift+P to batch-push", () => {
       const result = matchShortcut(makeKeyboardEvent("P", { shiftKey: true }));
       expect(result?.id).toBe("batch-push");
+    });
+
+    it("matches w to follow-up", () => {
+      const result = matchShortcut(makeKeyboardEvent("w"));
+      expect(result?.id).toBe("follow-up");
+    });
+
+    it("binds follow-up to a key no other shortcut claims", () => {
+      const followUp = shortcuts.find((shortcut) => shortcut.id === "follow-up");
+      expect(followUp).toBeDefined();
+      expect(followUp?.key).toBe("w");
+      expect(followUp?.category).toBe("triage");
+
+      // `w` was free when this was added: the letters in use were d, l, a, s,
+      // t, z, and Shift+P. A collision here would silently shadow one of them.
+      const collisions = shortcuts.filter(
+        (shortcut) =>
+          shortcut.id !== "follow-up" &&
+          shortcut.key.toLowerCase() === "w" &&
+          (shortcut.shift ?? false) === (followUp?.shift ?? false)
+      );
+      expect(collisions).toEqual([]);
+      expect(shortcuts.filter((shortcut) => shortcut.key.toLowerCase() === "w")).toHaveLength(1);
+    });
+
+    it("keeps every triage key distinct so no action shadows another", () => {
+      const bound = shortcuts
+        .filter((shortcut) => shortcut.category === "triage")
+        .map((shortcut) => `${shortcut.key.toLowerCase()}:${shortcut.shift ?? false}`);
+      expect(new Set(bound).size).toBe(bound.length);
     });
   });
 

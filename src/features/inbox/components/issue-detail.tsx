@@ -3,8 +3,8 @@
  *
  * Right-pane component that renders the full details of the currently selected issue.
  * Includes: header with state/number/snooze badge, priority buttons, triage action
- * buttons (dismiss, labels, assignees, snooze), label/assignee chips, and the
- * rendered Markdown body.
+ * buttons (dismiss, labels, assignees, snooze, follow-up, presets), label/assignee
+ * chips, the rendered Markdown body, the discussion, and the reply composer.
  */
 "use client";
 
@@ -15,6 +15,7 @@ import {
   CircleDot,
   Clock,
   ExternalLink,
+  Layers,
   MessageSquare,
   Tag,
   User,
@@ -33,9 +34,21 @@ import { useIssue } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { priorityOptions } from "@/features/triage/priority";
 import { useKeyboardStore, Kbd } from "@/features/keyboard";
+import { Discussion, Composer } from "@/features/replies";
+import { FollowUpControl } from "@/features/follow-up";
+
+/**
+ * The least the pane needs to start: an issue id.
+ *
+ * `IssueDetail` loads the full issue by id, so a queue row is a convenience, not
+ * a requirement. A follow-up on a closed issue has no queue row at all, and this
+ * is what lets it open in the pane instead of resolving to nothing.
+ */
+export type IssueDetailTarget = Pick<IssueWithTriage, "id"> &
+  Partial<Pick<IssueWithTriage, "repoId" | "provider" | "url" | "number" | "title">>;
 
 interface IssueDetailProps {
-  issue: IssueWithTriage | null;
+  issue: IssueDetailTarget | null;
   onClose: () => void;
 }
 
@@ -62,7 +75,8 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
   const { data: issue } = useIssue(issueSummary?.id);
   const triage = useTriageMutation();
   const resolvedIssue = (issue ?? issueSummary) as IssueDetail;
-  const { setLabelPickerOpen, setAssigneePickerOpen, setSnoozePickerOpen } = useKeyboardStore();
+  const { setLabelPickerOpen, setAssigneePickerOpen, setSnoozePickerOpen, setPresetPickerOpen } =
+    useKeyboardStore();
 
   if (!issue) {
     return (
@@ -263,6 +277,29 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
               <Kbd>S</Kbd>
             </TooltipContent>
           </Tooltip>
+
+          {/* Deliberately not a snooze variant: waiting for a reply is an
+              explicit state that survives a snooze expiring, and it is what the
+              follow-up queue lists. */}
+          <FollowUpControl issueId={issue.id} />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                onClick={() => setPresetPickerOpen(true)}
+              >
+                <Layers className="h-3 w-3" />
+                Presets
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="flex items-center gap-1.5">
+              <span>Apply a preset</span>
+              <Kbd>T</Kbd>
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -310,7 +347,12 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
           its widest descendant, so a markdown table would widen the whole
           pane instead of scrolling inside it. Pinning that wrapper to the
           viewport width breaks the loop; `contain: inline-size` on the body
-          (globals.css) keeps the same guarantee if the wrapper ever changes. */}
+          (globals.css) keeps the same guarantee if the wrapper ever changes.
+
+          This is the pane's only unrestricted scroll region. The discussion
+          below it is a sibling with a bounded height rather than a child: a
+          scroller inside a scroller makes the wheel ambiguous at the inner
+          element's boundary, and the description is long enough to reach it. */}
       <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:w-full">
         <div className="mx-auto w-full max-w-[var(--reading-width)] p-6">
           {resolvedIssue.body ? (
@@ -322,6 +364,30 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
           )}
         </div>
       </ScrollArea>
+
+      {/* Discussion and composer are siblings of the body, not children of it. A
+          scroller inside a scroller makes the wheel ambiguous at the inner
+          element's boundary, and a description is long enough to reach it.
+          Bounding the discussion means the body keeps the wheel for its whole
+          length, and neither of these can push the composer off the bottom.
+
+          The discussion may shrink and the composer may not: on a short viewport
+          the thread is the thing that can give up height, because it scrolls
+          internally, while the composer has to stay reachable. */}
+      <Discussion
+        issueId={issue.id}
+        providerUrl={resolvedIssue.url}
+        className="max-h-[min(18rem,30dvh)] min-h-0"
+      />
+      {/* Keyed by issue so switching rows remounts the composer. Without it,
+          every piece of local state (typed text, conflict banner, the
+          unconfirmed-send latch) survives the switch and would autosave to, or
+          publish on, an issue the user never wrote it for. */}
+      <Composer
+        key={issue.id}
+        issue={{ id: issue.id, url: resolvedIssue.url, provider: issue.provider }}
+        className="shrink-0"
+      />
     </div>
   );
 }

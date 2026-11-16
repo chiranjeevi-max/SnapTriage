@@ -67,13 +67,23 @@ export interface PendingChanges {
  * Handles deduplication and cancellation logic for labels and assignees
  * (e.g., adding a label that was pending removal cancels the removal).
  *
+ * `appliedLabels` is the set of labels the issue actually carries upstream. It is
+ * needed for one case the diff alone cannot express: a removal of a label that is
+ * currently staged as an addition. That is a no-op when the label was never
+ * applied, but it is a real removal when it was — which is exactly the state the
+ * undo of a preset creates, having cancelled a staged removal with an addition.
+ *
  * @param existing - The current accumulated pending changes.
  * @param incoming - The new payload to merge in.
+ * @param appliedLabels - Labels the issue carries upstream, for the case above.
+ * @param appliedAssignees - Assignees the issue carries upstream, same rule.
  * @returns A new {@link PendingChanges} object with the incoming changes folded in.
  */
 export function mergePendingChanges(
   existing: PendingChanges,
-  incoming: TriagePayload
+  incoming: TriagePayload,
+  appliedLabels: readonly string[] = [],
+  appliedAssignees: readonly string[] = []
 ): PendingChanges {
   const merged = { ...existing };
 
@@ -87,13 +97,37 @@ export function mergePendingChanges(
     const addSet = new Set(prev.add);
     const removeSet = new Set(prev.remove);
 
+    // Every comparison here is case-insensitive, like `resolvePreset`. GitHub and
+    // GitLab treat `Bug` and `bug` as one label, so a case-sensitive comparison
+    // would leave a staged removal in place for a label the preset had just
+    // added — and the push would then remove what the user applied.
     for (const l of incoming.labels.add ?? []) {
-      removeSet.delete(l); // cancel pending removal
+      for (const pending of [...removeSet]) {
+        if (pending.toLowerCase() === l.toLowerCase()) removeSet.delete(pending);
+      }
+      // One entry per label whatever its casing. Staging `bug` then `Bug` must not
+      // leave both, or a later removal of `bug` cancels only the first and the
+      // other still reaches the provider.
+      for (const pending of [...addSet]) {
+        if (pending.toLowerCase() === l.toLowerCase()) addSet.delete(pending);
+      }
       addSet.add(l);
     }
     for (const l of incoming.labels.remove ?? []) {
-      if (addSet.has(l)) {
-        addSet.delete(l); // cancel pending addition; no need to remove what was never applied
+      // Every case variant, not only the first. `find` would leave a second
+      // variant staged as an addition, so the removal could not take effect.
+      const pendingAdds = [...addSet].filter(
+        (candidate) => candidate.toLowerCase() === l.toLowerCase()
+      );
+      const wasApplied = appliedLabels.some((applied) => applied.toLowerCase() === l.toLowerCase());
+      if (pendingAdds.length > 0) {
+        // Cancels the pending addition: the label never needs to reach the
+        // provider as an addition.
+        for (const pending of pendingAdds) addSet.delete(pending);
+        // It still needs to reach the provider as a *removal* when the issue
+        // already carries it. That is the undo of a preset that cancelled a
+        // staged removal, and dropping it left the label on the issue at push.
+        if (wasApplied) removeSet.add(l);
       } else {
         removeSet.add(l);
       }
@@ -114,6 +148,10 @@ export function mergePendingChanges(
     for (const a of incoming.assignees.remove ?? []) {
       if (addSet.has(a)) {
         addSet.delete(a);
+        // Same rule as labels: a removal of something staged as an addition is
+        // still a real removal when the issue already has it, which is the undo of
+        // an apply that cancelled a staged removal.
+        if (appliedAssignees.includes(a)) removeSet.add(a);
       } else {
         removeSet.add(a);
       }

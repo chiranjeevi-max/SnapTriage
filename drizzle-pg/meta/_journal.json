@@ -15,6 +15,48 @@
       "when": 1793683764002,
       "tag": "0001_far_lenny_balinger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794804985974,
+      "tag": "0002_late_caretaker",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794829958770,
+      "tag": "0003_fast_meteorite",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794830121092,
+      "tag": "0004_green_leper_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794841841246,
+      "tag": "0005_organic_phalanx",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794842135638,
+      "tag": "0006_dark_giant_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794848105181,
+      "tag": "0007_slippery_gladiator",
+      "breakpoints": true
     }
   ]
 }

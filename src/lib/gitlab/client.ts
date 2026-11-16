@@ -13,10 +13,13 @@
  */
 import { z } from "zod";
 import type {
+  CommentPage,
+  FetchCommentsOptions,
   IssueProvider,
+  ProviderCollaborator,
+  ProviderComment,
   ProviderIssue,
   ProviderLabel,
-  ProviderCollaborator,
 } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
 import { providerLogger } from "@/lib/logger";
@@ -47,14 +50,72 @@ function projectPath(owner: string, repo: string) {
   return encodeURIComponent(`${owner}/${repo}`);
 }
 
-/** Abort fetches that hang against a provider. */
+/**
+ * How long one provider request may take, headers and body together.
+ *
+ * Comfortably inside the send-claim lease, so a call can never outlive the window
+ * that protects against a second publish.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Abort fetches that hang against a provider.
+ *
+ * The signal stays live after the response headers arrive, so the body read that
+ * follows is covered by the same deadline. Clearing the timer on the response
+ * left `res.json()` unbounded: a provider that sent headers and then stalled held
+ * the call open indefinitely, which for a publish means outliving the send-claim
+ * lease that prevents a second one.
+ *
+ * The timer is therefore cleared by the caller once the body has been read. It is
+ * attached to the response as `releaseTimeout` rather than cleared here.
+ *
+ * @param input - Request URL.
+ * @param init - Optional request options.
+ * @returns The response, with its timeout still armed.
+ */
 async function timedFetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
-  } finally {
+    const res = await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
+    // `unref` keeps a pending timer from holding the process open on the server.
+    (timeout as unknown as { unref?: () => void }).unref?.();
+    return Object.assign(res, { releaseTimeout: () => clearTimeout(timeout) });
+  } catch (error) {
     clearTimeout(timeout);
+    throw error;
+  }
+}
+
+/**
+ * Read a response body, then release the timer that guarded it.
+ *
+ * Every `timedFetch` response must go through this. Reading the body directly
+ * leaves the timeout armed until it fires, which aborts a signal nobody is using
+ * and keeps a timer alive for the rest of the request.
+ *
+ * @param res - A response returned by {@link timedFetch}.
+ * @returns The parsed body.
+ */
+/**
+ * Release a response whose body will not be read.
+ *
+ * Call this on every `!res.ok` early return. Skipping it leaves the request's
+ * timer armed for its full duration, which leaks one timer per failed call.
+ *
+ * @param res - A response returned by {@link timedFetch} that will not be read.
+ */
+function discard(res: Response): void {
+  (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
+}
+
+async function readJson<T>(res: Response): Promise<T> {
+  const release = (res as unknown as { releaseTimeout?: () => void }).releaseTimeout;
+  try {
+    return (await res.json()) as T;
+  } finally {
+    release?.();
   }
 }
 
@@ -63,6 +124,30 @@ const gitlabUserSchema = z.object({ id: z.number(), username: z.string() });
 
 /** The part of a GitLab issue that assignee updates are computed from. */
 const issueAssigneesSchema = z.object({ assignees: z.array(gitlabUserSchema) });
+
+/** Normalise a GitLab note into the provider-neutral shape. */
+function toProviderComment(raw: {
+  id: number;
+  body: string;
+  author?: { username: string; avatar_url: string | null } | null;
+  created_at: string;
+  updated_at: string;
+  system?: boolean;
+}): ProviderComment {
+  return {
+    id: String(raw.id),
+    body: raw.body ?? "",
+    author: raw.author?.username ?? null,
+    authorAvatar: raw.author?.avatar_url ?? null,
+    createdAt: new Date(raw.created_at),
+    updatedAt: new Date(raw.updated_at),
+    // GitLab returns generated activity in the same stream as comments, unlike
+    // GitHub. The flag is what keeps "added label bug" out of the follow-up
+    // check; the request also asks for comments only, so this is belt and brace.
+    isSystem: raw.system === true,
+    url: null,
+  };
+}
 
 /** GitLab implementation of the {@link IssueProvider} interface. */
 export const gitlabProvider: IssueProvider = {
@@ -110,7 +195,21 @@ export const gitlabProvider: IssueProvider = {
         });
       }
 
-      const data = await res.json();
+      const data = await readJson<
+        Array<{
+          id: number;
+          iid: number;
+          title: string;
+          description: string | null;
+          author?: { username: string; avatar_url: string | null } | null;
+          state: string;
+          labels?: string[];
+          assignees?: Array<{ username: string }> | null;
+          web_url: string;
+          created_at: string;
+          updated_at: string;
+        }>
+      >(res);
       if (data.length === 0) break;
 
       for (const item of data) {
@@ -176,7 +275,7 @@ export const gitlabProvider: IssueProvider = {
         const body = await issueRes.text().catch(() => "");
         throw new ProviderApiError(issueRes.status, body, context);
       }
-      const current = issueAssigneesSchema.safeParse(await issueRes.json());
+      const current = issueAssigneesSchema.safeParse(await readJson<unknown>(issueRes));
       if (!current.success) throw new Error("GitLab returned an issue in an unexpected shape");
 
       // Current assignees come with their ids; only added usernames are looked up.
@@ -193,7 +292,7 @@ export const gitlabProvider: IssueProvider = {
           const body = await userRes.text().catch(() => "");
           throw new ProviderApiError(userRes.status, body, context);
         }
-        const found = z.array(gitlabUserSchema).safeParse(await userRes.json());
+        const found = z.array(gitlabUserSchema).safeParse(await readJson<unknown>(userRes));
         if (!found.success) throw new Error("GitLab returned a user search in an unexpected shape");
         const [user] = found.data;
         if (!user) throw new Error(`GitLab has no user named ${username}`);
@@ -236,10 +335,17 @@ export const gitlabProvider: IssueProvider = {
     });
 
     // 404 means the token cannot see this project at all.
-    if (res.status === 404) return null;
-    if (!res.ok) return null;
+    if (!res.ok) {
+      discard(res);
+      return null;
+    }
 
-    const data = await res.json();
+    const data = await readJson<{
+      permissions?: {
+        project_access?: { access_level?: number } | null;
+        group_access?: { access_level?: number } | null;
+      } | null;
+    }>(res);
     const accessLevel = data.permissions?.project_access?.access_level ?? 0;
     const groupLevel = data.permissions?.group_access?.access_level ?? 0;
     const maxLevel = Math.max(accessLevel, groupLevel);
@@ -268,9 +374,15 @@ export const gitlabProvider: IssueProvider = {
       const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}/labels?${params}`, {
         headers: headers(token),
       });
-      if (!res.ok) break;
+      if (!res.ok) {
+        discard(res);
+        break;
+      }
 
-      const data = await res.json();
+      const data =
+        await readJson<Array<{ name: string; color?: string | null; description?: string | null }>>(
+          res
+        );
       if (data.length === 0) break;
 
       for (const item of data) {
@@ -307,13 +419,19 @@ export const gitlabProvider: IssueProvider = {
       const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}/members/all?${params}`, {
         headers: headers(token),
       });
-      if (!res.ok) break;
+      if (!res.ok) {
+        discard(res);
+        break;
+      }
 
-      const data = await res.json();
+      const data =
+        await readJson<
+          Array<{ access_level: number; username: string; avatar_url?: string | null }>
+        >(res);
       if (data.length === 0) break;
 
       for (const item of data) {
-        const accessLevel = item.access_level as number;
+        const accessLevel = item.access_level;
         let permission: "admin" | "write" | "read" = "read";
         if (accessLevel >= 40) permission = "admin";
         else if (accessLevel >= 30) permission = "write";
@@ -330,5 +448,141 @@ export const gitlabProvider: IssueProvider = {
     }
 
     return collaborators;
+  },
+
+  /**
+   * Fetch one page of an issue's notes, oldest first.
+   *
+   * GitLab's notes endpoint mixes human comments with generated activity and
+   * lets the caller filter: `activity_filter=only_comments` drops system notes
+   * server-side, which keeps the payload small and means a thread of pure
+   * label changes reads as empty rather than as a conversation.
+   *
+   * Pages are requested newest-first, so page 1 is the most recent activity and
+   * the cursor walks towards older history exactly as it does for GitHub. Each
+   * page is then reversed before it is returned, because both providers hand
+   * the caller "oldest first within the page" — a thread should read in the
+   * order it was written no matter which way the API paged it.
+   *
+   * @param options - Cursor from a previous call, optional `since` filter, page size.
+   */
+  async fetchComments(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    token: string,
+    options: FetchCommentsOptions = {}
+  ): Promise<CommentPage> {
+    const baseUrl = getBaseUrl();
+    const project = projectPath(owner, repo);
+    const requested = options.limit ?? 30;
+    const perPage = Number.isFinite(requested)
+      ? Math.min(Math.max(Math.trunc(requested), 1), 100)
+      : 30;
+
+    const page = options.cursor ? Number(options.cursor) : 1;
+    if (!Number.isInteger(page) || page < 1) {
+      throw new ProviderApiError(400, "Invalid comment cursor", {
+        provider: "gitlab",
+        operation: "fetchComments",
+        owner,
+        repo,
+      });
+    }
+
+    const params = new URLSearchParams({
+      per_page: String(perPage),
+      page: String(page),
+      sort: "desc",
+      order_by: "created_at",
+      activity_filter: "only_comments",
+    });
+    if (options.since) params.set("updated_after", options.since.toISOString());
+
+    const res = await timedFetch(
+      `${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}/notes?${params}`,
+      { headers: headers(token) }
+    );
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new ProviderApiError(res.status, body, {
+        provider: "gitlab",
+        operation: "fetchComments",
+        owner,
+        repo,
+      });
+    }
+
+    const raw = await readJson<Parameters<typeof toProviderComment>[0][]>(res);
+    // The header carries the page number GitLab wants next; use its value rather
+    // than assuming contiguity, so a server that skips a page is followed.
+    const nextPage = res.headers.get("x-next-page");
+
+    return {
+      comments: raw
+        .filter((note) => note.system !== true)
+        .map(toProviderComment)
+        .reverse(),
+      olderCursor: nextPage ? nextPage : null,
+    };
+  },
+
+  /**
+   * Post a comment on an issue.
+   *
+   * GitLab normalises the body before storing it: quick actions are executed
+   * and removed, carriage returns are stripped, and trailing whitespace is
+   * trimmed. The returned comment is therefore what GitLab kept, not
+   * necessarily what was sent, which is why the caller stores the response.
+   *
+   * @returns The note as GitLab stored it, including its id.
+   */
+  async createComment(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    token: string,
+    body: string
+  ): Promise<ProviderComment> {
+    const baseUrl = getBaseUrl();
+    const project = projectPath(owner, repo);
+
+    const res = await timedFetch(
+      `${baseUrl}/api/v4/projects/${project}/issues/${issueNumber}/notes`,
+      {
+        method: "POST",
+        headers: { ...headers(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      }
+    );
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new ProviderApiError(res.status, text, {
+        provider: "gitlab",
+        operation: "createComment",
+        owner,
+        repo,
+      });
+    }
+
+    return toProviderComment(await readJson<Parameters<typeof toProviderComment>[0]>(res));
+  },
+
+  /**
+   * Resolve the username behind a GitLab token.
+   *
+   * @returns The authenticated username and avatar, or `null`.
+   */
+  async getAuthenticatedUser(token: string) {
+    const res = await timedFetch(`${getBaseUrl()}/api/v4/user`, { headers: headers(token) });
+    if (!res.ok) {
+      discard(res);
+      return null;
+    }
+    const user = await readJson<{ username?: string; avatar_url?: string | null }>(res);
+    if (!user?.username) return null;
+    return { login: user.username as string, avatar: (user.avatar_url as string) ?? null };
   },
 };

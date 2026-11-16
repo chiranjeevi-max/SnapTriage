@@ -136,7 +136,10 @@ export function useTriageMutation() {
  * @param payload - The triage payload to apply.
  * @returns A new {@link IssueWithTriage} with the payload applied.
  */
-function applyPayloadToIssue(issue: IssueWithTriage, payload: TriagePayload): IssueWithTriage {
+export function applyPayloadToIssue(
+  issue: IssueWithTriage,
+  payload: TriagePayload
+): IssueWithTriage {
   const triage = issue.triage ?? {
     id: "",
     priority: null,

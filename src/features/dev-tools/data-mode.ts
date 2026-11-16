@@ -15,9 +15,12 @@ import type {
   FixtureAccount,
   FixtureAvailableRepo,
   FixtureIssue,
+  FixturePreset,
   FixtureRepo,
   FixtureView,
 } from "./fixtures";
+import type { ReplyComment, SavedReply } from "@/features/replies/use-replies";
+import type { FollowUpList } from "@/features/follow-up/use-follow-ups";
 
 /** The datasets the toggle switches between. */
 export type DataMode = "demo" | "worst" | "empty" | "one" | "many";
@@ -134,6 +137,17 @@ export async function devAvailableRepos(mode: DataMode): Promise<FixtureAvailabl
 }
 
 /**
+ * Returns the worst-case presets for a mode.
+ *
+ * @param mode - The active mode.
+ * @returns The presets, or `null` when the real data should be used.
+ */
+export async function devPresets(mode: DataMode): Promise<FixturePreset[] | null> {
+  const fixtures = await loadFixtures(mode);
+  return fixtures?.presetsForMode(mode) ?? null;
+}
+
+/**
  * Returns the worst-case saved views for a mode.
  *
  * @param mode - The active mode.
@@ -142,4 +156,37 @@ export async function devAvailableRepos(mode: DataMode): Promise<FixtureAvailabl
 export async function devViews(mode: DataMode): Promise<FixtureView[] | null> {
   const fixtures = await loadFixtures(mode);
   return fixtures?.viewsForMode(mode) ?? null;
+}
+
+/**
+ * Returns the worst-case discussion for a mode.
+ *
+ * @param mode - The active mode.
+ * @returns The comments, or `null` when the real data should be used.
+ */
+export async function devComments(mode: DataMode): Promise<ReplyComment[] | null> {
+  const fixtures = await loadFixtures(mode);
+  return fixtures?.commentsForMode(mode) ?? null;
+}
+
+/**
+ * Returns the worst-case follow-up queue for a mode.
+ *
+ * @param mode - The active mode.
+ * @returns The queue, or `null` when the real data should be used.
+ */
+export async function devFollowUps(mode: DataMode): Promise<FollowUpList | null> {
+  const fixtures = await loadFixtures(mode);
+  return fixtures?.followUpsForMode(mode) ?? null;
+}
+
+/**
+ * Returns the worst-case saved replies for a mode.
+ *
+ * @param mode - The active mode.
+ * @returns The templates, or `null` when the real data should be used.
+ */
+export async function devSavedReplies(mode: DataMode): Promise<SavedReply[] | null> {
+  const fixtures = await loadFixtures(mode);
+  return fixtures?.savedRepliesForMode(mode) ?? null;
 }

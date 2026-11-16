@@ -4,22 +4,29 @@
  * Main inbox layout component. Combines the issue list, detail pane, triage pickers,
  * batch status bar, and keyboard shortcut overlay into a resizable split-pane view.
  *
+ * The toolbar also swaps the queue for the follow-up list. That is a separate
+ * surface rather than a sixth filter for `issue-filters.ts`: a follow-up is
+ * cross-state, so it has to show issues a filter would hide, and
+ * `matchesIssueFilter` is pure and pinned to five values by its own test.
+ *
  * State flow:
  * - Issues are fetched via {@link useIssues} (auto-polling)
  * - Selection index lives in the global keyboard store (Zustand)
- * - Picker dialogs (labels, assignees, snooze) are toggled via keyboard store flags
+ * - Picker dialogs (labels, assignees, snooze, presets) are toggled via keyboard store flags
  */
 "use client";
 
 import { useEffect, useMemo, useRef, useCallback, useState } from "react";
-import { BookmarkPlus } from "lucide-react";
+import { BellRing, BookmarkPlus, List } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/segmented-control";
 import { SelectField } from "@/components/select-field";
 import { cn } from "@/lib/utils";
 import { IssueList } from "@/features/inbox/components/issue-list";
-import { IssueDetail } from "@/features/inbox/components/issue-detail";
+import { IssueDetail, type IssueDetailTarget } from "@/features/inbox/components/issue-detail";
 import { useIssues } from "@/features/inbox/use-issues";
+import type { IssueWithTriage } from "@/features/inbox/use-issues";
 import { useIssueFilter } from "@/features/inbox/use-issue-filter";
 import { filterIssues, ISSUE_FILTERS } from "@/features/inbox/issue-filters";
 import { useSavedViews, useSaveCurrentView } from "@/features/inbox/use-saved-views";
@@ -33,6 +40,53 @@ import {
   BatchStatusBar,
   SyncStatus,
 } from "@/features/triage";
+import { PresetPicker } from "@/features/presets";
+import { FollowUpView, type FollowUpEntry } from "@/features/follow-up";
+
+/** Which surface the list pane is showing. */
+type InboxSurface = "queue" | "follow-ups";
+
+/** The toolbar toggle's options. */
+const SURFACES: Array<{ value: InboxSurface; label: string; icon: React.ReactNode }> = [
+  { value: "queue", label: "Queue", icon: <List className="h-3 w-3" /> },
+  { value: "follow-ups", label: "Follow-ups", icon: <BellRing className="h-3 w-3" /> },
+];
+
+/**
+ * The list the keyboard dispatcher receives while the follow-ups are showing.
+ *
+ * A shared empty array rather than a fresh `[]` per render, so the memoised
+ * dispatcher is not rebuilt for a list that is empty by definition.
+ */
+const NO_ISSUES: IssueWithTriage[] = [];
+
+/**
+ * What the detail pane shows: a selected queue row, or the pinned follow-up.
+ *
+ * A selected queue row wins. The pin exists for an issue that is *not* in the
+ * queue, which is why `handleOpenFollowUp` sets the index to -1 when it pins. If
+ * a stale pin outranked the selection, moving down from the follow-up list would
+ * display one issue while every shortcut acted on another — the dismiss would
+ * land on a row the user cannot see.
+ *
+ * @param pinned - The follow-up pinned into the pane, if any.
+ * @param queueIssue - The row the queue selection points at, if any.
+ * @returns The issue the pane should render.
+ */
+export function resolveDetailTarget(
+  pinned: FollowUpEntry | null,
+  queueIssue: IssueDetailTarget | null
+): IssueDetailTarget | null {
+  if (queueIssue) return queueIssue;
+  if (pinned === null) return null;
+  return {
+    id: pinned.issueId,
+    provider: pinned.provider,
+    url: pinned.url,
+    number: pinned.number,
+    title: pinned.title,
+  };
+}
 
 /**
  * Top-level inbox view with resizable issue list + detail split pane.
@@ -41,7 +95,15 @@ import {
 export function InboxView() {
   const { data: issues, isLoading } = useIssues();
   const [filter, setFilter] = useIssueFilter();
+  const [surface, setSurface] = useState<InboxSurface>("queue");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  /**
+   * A follow-up entry the queue cannot reach, shown instead of the queue row.
+   *
+   * Closed issues are absent from the queue by design, so this is the only way
+   * the pane can show one. Cleared as soon as the user selects a real row.
+   */
+  const [pinnedIssue, setPinnedIssue] = useState<FollowUpEntry | null>(null);
   const [namingView, setNamingView] = useState(false);
   const [viewName, setViewName] = useState("");
   const bulkTriage = useBulkTriage();
@@ -61,12 +123,29 @@ export function InboxView() {
     setAssigneePickerOpen,
     snoozePickerOpen,
     setSnoozePickerOpen,
+    presetPickerOpen,
+    setPresetPickerOpen,
   } = useKeyboardStore();
 
-  // Keep issueCount in sync with the filtered list so keyboard nav stays in bounds
+  // The follow-up surface replaces the queue in the list pane, so the keyboard
+  // must act on what is on screen and nothing else. An empty list makes every
+  // action a no-op while the follow-ups are showing: `d` behind the queue would
+  // otherwise dismiss an issue nobody can see. `setIssueCount` only clamps the
+  // selection downwards, so returning to the queue keeps the row that was
+  // selected when the user left it.
+  //
+  // It replaces the list, not the whole split pane. The detail pane holds the
+  // reply composer, and unmounting it to show the queue would throw away text
+  // mid-debounce. `surface` is additive on top of the queue, so coming back
+  // restores the same selection.
+  const shownIssues = surface === "queue" ? filteredIssues : NO_ISSUES;
+
+  // Keep issueCount in sync with the list the keyboard is actually navigating.
+  // `null` on the follow-up surface: it is not the queue, so the preserved queue
+  // selection must survive a visit there unchanged.
   useEffect(() => {
-    setIssueCount(filteredIssues.length);
-  }, [filteredIssues.length, setIssueCount]);
+    setIssueCount(surface === "queue" ? filteredIssues.length : null);
+  }, [surface, filteredIssues.length, setIssueCount]);
 
   const toggleSelected = useCallback((issueId: string) => {
     setSelectedIds((previous) => {
@@ -98,8 +177,21 @@ export function InboxView() {
     [visibleSelectedIds, bulkTriage, clearSelection]
   );
 
-  // Derive current issue from the filtered list so keyboard nav follows the view
-  const currentIssue = selectedIndex >= 0 ? (filteredIssues[selectedIndex] ?? null) : null;
+  // Derive current issue from the filtered list, not from what the list pane is
+  // showing. The detail pane keeps rendering the last selected issue while the
+  // follow-ups are up, because it holds the reply composer and swapping in an
+  // empty state would discard text that has not been saved yet. The keyboard is
+  // told about the empty list separately, so the shortcuts still do nothing.
+  const queueIssue = selectedIndex >= 0 ? (filteredIssues[selectedIndex] ?? null) : null;
+  /**
+   * The entry the pane shows. A pinned follow-up is mapped to the pane's shape
+   * here rather than carried as two unions through every prop: `FollowUpEntry`
+   * names the issue `issueId`, and the pane only needs an id to fetch by.
+   */
+  const currentIssue = useMemo(
+    () => resolveDetailTarget(pinnedIssue, queueIssue),
+    [pinnedIssue, queueIssue]
+  );
 
   // Stabilize selection after data refresh
   const selectedIdRef = useRef<string | null>(null);
@@ -114,14 +206,45 @@ export function InboxView() {
     }
   }, [filteredIssues, setSelectedIndex]);
 
-  useKeyboardShortcuts(filteredIssues);
+  useKeyboardShortcuts(shownIssues);
 
   const handleSelect = useCallback(
     (issue: { id: string }) => {
       const idx = filteredIssues.findIndex((i) => i.id === issue.id);
-      if (idx >= 0) setSelectedIndex(idx);
+      if (idx >= 0) {
+        setPinnedIssue(null);
+        setSelectedIndex(idx);
+      }
     },
     [filteredIssues, setSelectedIndex]
+  );
+
+  /**
+   * Opens one follow-up row in the detail pane.
+   *
+   * A follow-up can point at an issue the current filter hides, and the detail
+   * pane indexes into `filteredIssues`, so switching back to the queue without
+   * a filter change would select a different row or none. The filter is reset to
+   * `all` so the row the user clicked is the row that gets rendered.
+   */
+  /**
+   * Open a follow-up entry in the detail pane.
+   *
+   * `useIssues` asks the server for `state=open`, so a closed issue is never in
+   * the queue and cannot be selected by index. Waiting can be armed on a closed
+   * issue and the follow-up queue lists it, so the entry itself becomes the
+   * pane's source: `IssueDetail` fetches by id, and a closed issue resolves
+   * through that even though it has no row in the list.
+   */
+  const handleOpenFollowUp = useCallback(
+    (entry: FollowUpEntry) => {
+      const idx = filterIssues(issueList, "all").findIndex((issue) => issue.id === entry.issueId);
+      setPinnedIssue(idx >= 0 ? null : entry);
+      setSurface("queue");
+      setFilter("all");
+      setSelectedIndex(idx);
+    },
+    [issueList, setFilter, setSelectedIndex]
   );
 
   /** Saves the current filter as a named view and closes the name field. */
@@ -135,7 +258,10 @@ export function InboxView() {
 
   return (
     <div
-      className={cn("triage-inbox flex h-full min-h-0 flex-col", currentIssue && "has-selection")}
+      className={cn(
+        "triage-inbox flex h-full min-h-0 flex-col",
+        currentIssue && surface === "queue" && "has-selection"
+      )}
     >
       {/* Toolbar */}
       <div
@@ -145,45 +271,64 @@ export function InboxView() {
       >
         <div className="inbox-heading flex min-w-0 items-center gap-3">
           <h1 className="mr-1 shrink-0 text-xl font-semibold tracking-tight">Inbox</h1>
-          {issues && (
+          {issues && surface === "queue" && (
             <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground">
               {filteredIssues.length} of {issues.length}
             </span>
           )}
         </div>
         <div className="inbox-controls flex min-w-0 flex-wrap items-center gap-2">
-          <SelectField
-            aria-label="Filter issues"
-            value={filter}
-            onChange={(event) => {
-              setFilter(event.target.value as (typeof ISSUE_FILTERS)[number]["value"]);
-              clearSelection();
+          <SegmentedControl
+            ariaLabel="Inbox surface"
+            options={SURFACES}
+            value={surface}
+            onChange={(next) => {
+              setSurface(next);
+              // Leaving the queue clears the bulk selection: its buttons act on
+              // queue rows, and those are not on screen while the follow-ups are.
+              if (next === "follow-ups") clearSelection();
             }}
-          >
-            {ISSUE_FILTERS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </SelectField>
-          {savedViews && savedViews.length > 0 && (
-            <SelectField
-              aria-label="Saved views"
-              value=""
-              className="w-full max-w-[8rem] sm:max-w-[12rem]"
-              onChange={(event) => {
-                const view = savedViews.find((item) => item.id === event.target.value);
-                if (view) setFilter(view.filter);
-              }}
-            >
-              <option value="">Saved views</option>
-              {savedViews.map((view) => (
-                <option key={view.id} value={view.id}>
-                  {view.name}
-                </option>
-              ))}
-            </SelectField>
-          )}
+          />
+          {/* The queue filters and the follow-up list are alternatives, not
+              layers: a follow-up row can be dismissed, snoozed, or closed, so
+              applying the queue's filter to it would hide the rows the queue
+              exists to surface. The controls hide rather than sit inert. */}
+          {surface === "queue" ? (
+            <>
+              <SelectField
+                aria-label="Filter issues"
+                value={filter}
+                onChange={(event) => {
+                  setFilter(event.target.value as (typeof ISSUE_FILTERS)[number]["value"]);
+                  clearSelection();
+                }}
+              >
+                {ISSUE_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </SelectField>
+              {savedViews && savedViews.length > 0 && (
+                <SelectField
+                  aria-label="Saved views"
+                  value=""
+                  className="w-full max-w-[8rem] sm:max-w-[12rem]"
+                  onChange={(event) => {
+                    const view = savedViews.find((item) => item.id === event.target.value);
+                    if (view) setFilter(view.filter);
+                  }}
+                >
+                  <option value="">Saved views</option>
+                  {savedViews.map((view) => (
+                    <option key={view.id} value={view.id}>
+                      {view.name}
+                    </option>
+                  ))}
+                </SelectField>
+              )}
+            </>
+          ) : null}
           {namingView ? (
             <input
               autoFocus
@@ -283,36 +428,53 @@ export function InboxView() {
       {/* Split pane */}
       <ResizablePanelGroup orientation="horizontal" className="triage-panels min-h-0 flex-1">
         <ResizablePanel defaultSize="42%" minSize="28%">
-          <IssueList
-            issues={filteredIssues}
-            selectedIndex={selectedIndex}
-            onSelect={handleSelect}
-            isLoading={isLoading}
-            selectedIds={selectedIds}
-            onToggleSelected={toggleSelected}
-          />
+          {surface === "queue" ? (
+            <IssueList
+              issues={filteredIssues}
+              selectedIndex={selectedIndex}
+              onSelect={handleSelect}
+              isLoading={isLoading}
+              selectedIds={selectedIds}
+              onToggleSelected={toggleSelected}
+            />
+          ) : (
+            <FollowUpView onOpenIssue={handleOpenFollowUp} />
+          )}
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel defaultSize="58%" minSize="32%">
-          <IssueDetail issue={currentIssue} onClose={() => setSelectedIndex(-1)} />
+          <IssueDetail
+            issue={currentIssue}
+            onClose={() => {
+              // The pin outlives the selection, so closing has to clear it too.
+              // Without this, Escape closes a pinned follow-up and the pane
+              // reopens it on the next render.
+              setPinnedIssue(null);
+              setSelectedIndex(-1);
+            }}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      {/* Batch status bar */}
+      {/* The follow-up list owns the whole pane on phones. `has-selection` hides
+          the queue and shows the detail at full width; while the follow-ups are
+          up there is no queue row to hide, so the selection class is dropped and
+          the list keeps the screen even though the detail pane still holds the
+          last issue and its unsaved reply. */}
       <BatchStatusBar />
 
       {/* Picker dialogs */}
-      <LabelPicker open={labelPickerOpen} onOpenChange={setLabelPickerOpen} issue={currentIssue} />
+      <LabelPicker open={labelPickerOpen} onOpenChange={setLabelPickerOpen} issue={queueIssue} />
+      {/* The pickers edit the selected queue row. A pinned follow-up has no row
+          and no cached labels or assignees, so it gets none of them rather than
+          acting on the row that happens to be selected behind it. */}
       <AssigneePicker
         open={assigneePickerOpen}
         onOpenChange={setAssigneePickerOpen}
-        issue={currentIssue}
+        issue={queueIssue}
       />
-      <SnoozePicker
-        open={snoozePickerOpen}
-        onOpenChange={setSnoozePickerOpen}
-        issue={currentIssue}
-      />
+      <SnoozePicker open={snoozePickerOpen} onOpenChange={setSnoozePickerOpen} issue={queueIssue} />
+      <PresetPicker open={presetPickerOpen} onOpenChange={setPresetPickerOpen} issue={queueIssue} />
 
       <ShortcutOverlay />
     </div>
