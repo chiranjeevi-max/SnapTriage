@@ -28,6 +28,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, ExternalLink, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,11 +100,22 @@ interface ComposerProps {
 }
 
 /**
+ * Text an unmount flush could not save, keyed by issue.
+ *
+ * Module scope, because the component that owned the text is gone by the time the
+ * request settles. It exists only to keep a copy the user can be offered again —
+ * a 409 or a network failure during unmount otherwise lost their text with no
+ * trace and no way to know it happened.
+ */
+const stashedFlush = new Map<string, string>();
+
+/**
  * Reply composer for one issue.
  *
  * @param props - {@link ComposerProps}
  */
 export function Composer({ issue, className }: ComposerProps) {
+  const queryClient = useQueryClient();
   const draftQuery = useDraft(issue.id);
   const saveDraft = useSaveDraft(issue.id);
   const discardDraft = useDiscardDraft(issue.id);
@@ -242,9 +254,27 @@ export function Composer({ issue, className }: ComposerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pending),
         keepalive: true,
-      }).catch(() => undefined);
+      })
+        .then((res) => {
+          // A 409 means this text lost to a newer version and the module state
+          // it lived in is gone. Keep a copy so returning to the issue can offer
+          // it rather than silently discarding what the user typed.
+          if (res.status === 409) {
+            stashedFlush.set(issue.id, pending.body);
+            return;
+          }
+          if (res.ok) {
+            // The flush wrote a revision the cache does not know about. Without
+            // this the next visit shows the older cached draft for up to a
+            // minute and the user's newest text looks lost.
+            void queryClient.invalidateQueries({ queryKey: ["draft", issue.id] });
+          }
+        })
+        .catch(() => {
+          stashedFlush.set(issue.id, pending.body);
+        });
     };
-  }, [issue.id]);
+  }, [issue.id, queryClient]);
 
   useEffect(() => {
     if (!dirty || notice || sending) return;
@@ -361,10 +391,11 @@ export function Composer({ issue, className }: ComposerProps) {
   function handleSend() {
     if (!canSend(sendState, text) || over || sendBlocked) return;
     send.mutate(
-      // The version on screen when Send was pressed. The server refuses a send
-      // whose draft has moved on, which is what stops this tab from publishing
-      // text another tab already replaced.
-      { body: text, expectedVersion: draft?.version || undefined },
+      // The base this edit began from, not whatever the latest refetch returned.
+      // `version` is the pinned base autosave uses; sending `draft.version`
+      // instead let a send carry a version the text on screen was never written
+      // against, so the server's staleness check compared the wrong pair.
+      { body: text, expectedVersion: version },
       {
         // The draft row is gone server-side, so the local text goes with it. Done
         // in the callback rather than in an effect so nothing can repaint the old
@@ -374,6 +405,8 @@ export function Composer({ issue, className }: ComposerProps) {
           setTypedBeforeLoad(false);
           setConflict(null);
           setSaveFailure(null);
+          // `version` was this draft's; the next edit starts a new base.
+          setPinnedVersion(null);
         },
       }
     );
@@ -390,6 +423,7 @@ export function Composer({ issue, className }: ComposerProps) {
           setTypedBeforeLoad(false);
           setConflict(null);
           setSaveFailure(null);
+          setPinnedVersion(null);
         },
       }
     );

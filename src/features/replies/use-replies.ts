@@ -311,7 +311,10 @@ async function readSendFailure(res: Response): Promise<{ message: string; unconf
         typeof body.error === "string" && body.error.trim().length > 0
           ? body.error
           : "Failed to post the reply",
-      unconfirmed: body.unconfirmed === true,
+      // A 5xx is never a definitive rejection, whatever the body says. A gateway
+      // can swallow the `unconfirmed` flag, and treating that as a refusal drops
+      // the guard on a comment the provider may already have published.
+      unconfirmed: body.unconfirmed === true || res.status >= 500,
     };
   } catch {
     // An unreadable body is not evidence the send failed. A proxy can return an

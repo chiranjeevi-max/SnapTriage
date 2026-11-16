@@ -510,10 +510,14 @@ export async function releaseSendClaim(
         eq(replyDrafts.issueId, issueId),
         eq(replyDrafts.userId, userId),
         isNotNull(replyDrafts.sendAttemptedAt),
-        // The attempt the user was looking at. Without this, a tab holding a
-        // stale "unconfirmed" view could release a claim another tab has since
-        // taken, and two sends would overlap.
-        claimId === undefined ? undefined : eq(replyDrafts.sendClaimId, claimId),
+        // The attempt the user was looking at, and it is required. A caller that
+        // cannot name the claim it is looking at cannot know the claim it would
+        // free: passing `undefined` through as "match anything" let a tab with a
+        // stale view release a newer send. Legacy rows with no id are matched
+        // explicitly, so the absence of an id is a value rather than a wildcard.
+        claimId === undefined
+          ? isNull(replyDrafts.sendClaimId)
+          : eq(replyDrafts.sendClaimId, claimId),
         // Refuse while the provider call may still be running. Releasing then
         // lets a second call start while the first can still publish, which is
         // the duplicate this whole marker exists to prevent.
@@ -528,7 +532,13 @@ export async function releaseSendClaim(
   // active call, reloading is right for a superseded attempt.
   const current = await findDraft(userId, issueId);
   if (!current?.sendAttemptedAt) return "missing";
-  if (claimId !== undefined && current.sendClaimId !== claimId) return "mismatch";
+
+  // A caller with no identity cannot be matched, so it may only be told to
+  // reload. This is the case where a publish succeeded but its response was
+  // lost: the draft is gone, no claim exists, and the release should succeed —
+  // but if a claim *does* exist, it belongs to a send this tab never saw.
+  if (claimId === undefined) return "mismatch";
+  if (current.sendClaimId !== claimId) return "mismatch";
   return "in_flight";
 }
 

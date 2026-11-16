@@ -317,6 +317,14 @@ export async function pushBatchChanges(
 function clearBatchPendingQuery(triageId: string, userId: string) {
   return typedDb
     .update(triageState)
-    .set({ batchPending: false, pendingChanges: {}, updatedAt: new Date() })
+    .set({
+      batchPending: false,
+      pendingChanges: {},
+      // The token moves with the clear. A staging write that read the old
+      // revision can otherwise pass its compare-and-set and replace this clear
+      // with a merge built from the values the push already sent.
+      revision: sql`${triageState.revision} + 1`,
+      updatedAt: new Date(),
+    })
     .where(and(eq(triageState.id, triageId), eq(triageState.userId, userId)));
 }

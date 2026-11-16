@@ -320,6 +320,10 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
     // Provenance is a provider capability, so it is answered once per provider
     // rather than once per issue.
     if (!provider.fetchComments) {
+      // Record the turn even though nothing was read. Without it this row is
+      // still due on the next pass, so twenty such rows occupy the batch forever
+      // and a healthy row behind them is never reached.
+      await markAttempted(row.followUp.id);
       skipped++;
       continue;
     }
@@ -335,6 +339,9 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
         { issueId: row.issue.id, error: String(error) },
         "Follow-up context could not be read; issue skipped"
       );
+      // Same reason as above: a skipped row must not be re-selected ahead of the
+      // ones that have not had a turn.
+      await markAttempted(row.followUp.id);
       skipped++;
       continue;
     }
@@ -464,6 +471,23 @@ async function checkOne(
     );
     return null;
   }
+}
+
+/**
+ * Record that a row has had its turn, without claiming it was checked.
+ *
+ * `attemptedAt` drives scheduling and `checkedAt` means "the last completed
+ * check", so a skip moves only the former. The UI keeps showing the age of the
+ * last real result while the scheduler rotates this row behind the others.
+ *
+ * @param followUpId - The follow-up row that was passed over.
+ */
+async function markAttempted(followUpId: string): Promise<void> {
+  const now = new Date();
+  await typedDb
+    .update(followUps)
+    .set({ attemptedAt: now, updatedAt: now })
+    .where(eq(followUps.id, followUpId));
 }
 
 /** The issue and repository fields a baseline read needs. */

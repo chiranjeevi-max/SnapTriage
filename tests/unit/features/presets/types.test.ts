@@ -294,6 +294,26 @@ describe("invertToPayload", () => {
   /**
    * @target invertToPayload
    * @dependencies none
+   * @scenario The label is in the cached set *and* staged for removal — the case
+   *           that arises when a staged removal is cancelled by an apply
+   * @expectedOutput The removal comes back. Without the staged diff this is the
+   *                 case a naive inverse gets wrong: `previous.labels` already
+   *                 contains the label, so it looks like nothing was added and
+   *                 the removal is dropped, leaving the label on the issue.
+   */
+  it("should restore a staged removal of a label the cache still carries", () => {
+    const inverse = invertToPayload(
+      { payload: { labels: { add: ["bug"], remove: [] } }, changes: [], noChange: false },
+      { priority: null, labels: ["bug", "triage"], assignees: [] },
+      { labels: { add: ["bug"], remove: ["bug"] } }
+    );
+
+    expect(inverse.labels).toEqual({ add: [], remove: ["bug"] });
+  });
+
+  /**
+   * @target invertToPayload
+   * @dependencies none
    * @scenario A live apply, so there is no staged diff
    * @expectedOutput Only the labels the apply actually added are removed.
    */

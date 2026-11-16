@@ -87,13 +87,22 @@ export function mergePendingChanges(
     const addSet = new Set(prev.add);
     const removeSet = new Set(prev.remove);
 
+    // Compared case-insensitively, like `resolvePreset`. GitHub and GitLab treat
+    // `Bug` and `bug` as the same label, so a case-sensitive cancel left a staged
+    // removal in place that the provider had already been told to add — and the
+    // push then removed a label the user had just applied.
     for (const l of incoming.labels.add ?? []) {
-      removeSet.delete(l); // cancel pending removal
+      for (const pending of [...removeSet]) {
+        if (pending.toLowerCase() === l.toLowerCase()) removeSet.delete(pending);
+      }
       addSet.add(l);
     }
     for (const l of incoming.labels.remove ?? []) {
-      if (addSet.has(l)) {
-        addSet.delete(l); // cancel pending addition; no need to remove what was never applied
+      const pendingAdd = [...addSet].find(
+        (candidate) => candidate.toLowerCase() === l.toLowerCase()
+      );
+      if (pendingAdd !== undefined) {
+        addSet.delete(pendingAdd); // cancel pending addition; no need to remove what was never applied
       } else {
         removeSet.add(l);
       }

@@ -427,7 +427,16 @@ export function InboxView() {
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel defaultSize="58%" minSize="32%">
-          <IssueDetail issue={currentIssue} onClose={() => setSelectedIndex(-1)} />
+          <IssueDetail
+            issue={currentIssue}
+            onClose={() => {
+              // The pin outlives the selection, so closing has to clear it too.
+              // Without this, Escape closes a pinned follow-up and the pane
+              // reopens it on the next render.
+              setPinnedIssue(null);
+              setSelectedIndex(-1);
+            }}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
 

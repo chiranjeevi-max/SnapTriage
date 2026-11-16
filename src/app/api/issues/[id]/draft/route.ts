@@ -117,8 +117,14 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const { searchParams } = new URL(_req.url);
   const rawVersion = searchParams.get("version");
   const expectedVersion = rawVersion === null ? null : Number(rawVersion);
-  if (rawVersion !== null && (!Number.isInteger(expectedVersion) || expectedVersion! < 1)) {
-    return NextResponse.json({ error: "version must be a positive integer" }, { status: 400 });
+  // `0` is valid and means "this tab never observed a stored draft": it asserts
+  // absence rather than naming a version. Rejecting it made every discard from a
+  // fresh composer fail with a 400.
+  if (rawVersion !== null && (!Number.isInteger(expectedVersion) || expectedVersion! < 0)) {
+    return NextResponse.json(
+      { error: "version must be zero or a positive integer" },
+      { status: 400 }
+    );
   }
 
   const outcome = await clearDraft(session.user.id, id, expectedVersion);
