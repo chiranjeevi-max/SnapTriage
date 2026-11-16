@@ -221,11 +221,18 @@ export async function listFollowUps(userId: string): Promise<FollowUpEntry[]> {
  */
 type PassContext = Map<
   string,
-  { token: string | null; identity: Promise<Awaited<ReturnType<typeof resolveIdentity>>> | null }
+  {
+    token: string | null;
+    identity: Promise<Awaited<ReturnType<typeof resolveIdentity>>> | null;
+  }
 >;
 
 /**
  * Read the per-provider values for one pass, memoised on the provider name.
+ *
+ * Only settled values are kept. A rejected lookup is dropped so the next issue
+ * on that provider tries again; memoising the rejection would turn one transient
+ * failure into a whole-provider outage for the rest of the pass.
  *
  * @param userId - The authenticated user.
  * @param provider - The provider being checked.
@@ -238,10 +245,10 @@ async function passContextFor(userId: string, provider: ProviderName, cache: Pas
   }
 
   const token = await getProviderToken(userId, provider);
-  const identity = token ? resolveIdentity(userId, provider) : null;
-  cache.set(provider, { token, identity });
+  const identity = token ? await resolveIdentity(userId, provider) : null;
+  cache.set(provider, { token, identity: Promise.resolve(identity) });
 
-  return { token, identity: identity ? await identity : null };
+  return { token, identity };
 }
 
 /**
@@ -293,7 +300,21 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
       continue;
     }
 
-    const context = await passContextFor(userId, row.repo.provider as ProviderName, cache);
+    let context: Awaited<ReturnType<typeof passContextFor>>;
+    try {
+      context = await passContextFor(userId, row.repo.provider as ProviderName, cache);
+    } catch (error) {
+      // Reading the token or the login can fail on its own. That is one issue's
+      // problem, not the pass's: letting it escape would abandon every follow-up
+      // after it and report nothing examined.
+      providerLogger.warn(
+        { issueId: row.issue.id, error: String(error) },
+        "Follow-up context could not be read; issue skipped"
+      );
+      skipped++;
+      continue;
+    }
+
     const result = await checkOne(userId, row.followUp, row.issue, row.repo, context);
     if (!result) {
       skipped++;

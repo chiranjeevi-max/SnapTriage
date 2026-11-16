@@ -92,6 +92,27 @@ describe("runFollowUpCheck provider budget", () => {
 
   /**
    * @target runFollowUpCheck
+   * @dependencies resolveIdentity, passContextFor
+   * @scenario Reading the provider login fails on the first issue
+   * @expectedOutput That issue is skipped and the pass continues; the failure is
+   *                 not memoised for the rest of the pass either, so the second
+   *                 issue tries again. Letting it escape would abandon every
+   *                 follow-up after the first.
+   */
+  it("should keep checking after a failed identity lookup", async () => {
+    mockResolveIdentity
+      .mockRejectedValueOnce(new Error("provider is down"))
+      .mockResolvedValue({ login: "me", avatar: null });
+
+    const summary = await runFollowUpCheck("user-1");
+
+    expect(summary.skipped).toBe(1);
+    expect(summary.checked).toBe(1);
+    expect(mockResolveIdentity).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * @target runFollowUpCheck
    * @dependencies getProviderToken
    * @scenario No provider token for the account
    * @expectedOutput Nothing is checked and no comment read is attempted, rather
