@@ -329,6 +329,64 @@ describe("clearDraft", () => {
   });
 });
 
+describe("sendReply — a superseded attempt", () => {
+  /**
+   * @target sendReply
+   * @dependencies clearAttempt, endAttemptLease
+   * @scenario Attempt A is in flight past its lease, attempt B takes the claim,
+   *           and A's provider call then fails definitively
+   * @expectedOutput B's claim survives. A's completion write used to clear
+   *                 whatever marker existed, so a slow failure from the previous
+   *                 attempt freed the claim the current send was holding — and a
+   *                 third send could then overlap it.
+   */
+  it("should not clear a claim taken by a later attempt", async () => {
+    fakeDb.state.rows.reply_draft.push(replyDraftRow({ body: "Thanks for the report." }));
+
+    // A claims and calls the provider. While that call is outstanding, B replaces
+    // the claim — the state a lease expiry allows. A's completion write must then
+    // leave B's marker alone.
+    vi.mocked(provider.createComment!).mockImplementationOnce(async () => {
+      const row = fakeDb.state.rows.reply_draft[0];
+      row.sendClaimId = "claim-b";
+      row.sendInFlightUntil = new Date(Date.now() + 60_000);
+      throw new ProviderApiError(422, "validation failed", {
+        provider: "github",
+        operation: "createComment",
+      });
+    });
+
+    await sendReply("user-1", TARGET, "Thanks for the report.");
+
+    expect(fakeDb.state.rows.reply_draft[0].sendClaimId).toBe("claim-b");
+    expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).not.toBeNull();
+    expect(fakeDb.state.rows.reply_draft[0].sendInFlightUntil).not.toBeNull();
+  });
+
+  /**
+   * @target sendReply
+   * @dependencies endAttemptLease
+   * @scenario A's call fails ambiguously after B has taken the claim
+   * @expectedOutput B's lease is untouched. A's lease-ending write was keyed on
+   *                 the issue, so it cleared the lease B had just set — telling
+   *                 every reader that B's call had finished while it was running.
+   */
+  it("should not end a lease set by a later attempt", async () => {
+    fakeDb.state.rows.reply_draft.push(replyDraftRow({ body: "Thanks for the report." }));
+
+    vi.mocked(provider.createComment!).mockImplementationOnce(async () => {
+      const row = fakeDb.state.rows.reply_draft[0];
+      row.sendClaimId = "claim-b";
+      row.sendInFlightUntil = new Date(Date.now() + 60_000);
+      throw new Error("socket hang up");
+    });
+
+    await sendReply("user-1", TARGET, "Thanks for the report.");
+
+    expect(fakeDb.state.rows.reply_draft[0].sendInFlightUntil).not.toBeNull();
+  });
+});
+
 describe("sendReply — the published path", () => {
   /**
    * @target sendReply

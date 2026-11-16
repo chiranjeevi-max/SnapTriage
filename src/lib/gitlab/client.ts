@@ -50,14 +50,60 @@ function projectPath(owner: string, repo: string) {
   return encodeURIComponent(`${owner}/${repo}`);
 }
 
-/** Abort fetches that hang against a provider. */
+/**
+ * How long one provider request may take, headers and body together.
+ *
+ * Comfortably inside the send-claim lease, so a call can never outlive the window
+ * that protects against a second publish.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Abort fetches that hang against a provider.
+ *
+ * The signal stays live after the response headers arrive, so the body read that
+ * follows is covered by the same deadline. Clearing the timer on the response
+ * left `res.json()` unbounded: a provider that sent headers and then stalled held
+ * the call open indefinitely, which for a publish means outliving the send-claim
+ * lease that prevents a second one.
+ *
+ * The timer is therefore cleared by the caller once the body has been read. It is
+ * attached to the response as `releaseTimeout` rather than cleared here.
+ *
+ * @param input - Request URL.
+ * @param init - Optional request options.
+ * @returns The response, with its timeout still armed.
+ */
 async function timedFetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
-  } finally {
+    const res = await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
+    // `unref` keeps a pending timer from holding the process open on the server.
+    (timeout as unknown as { unref?: () => void }).unref?.();
+    return Object.assign(res, { releaseTimeout: () => clearTimeout(timeout) });
+  } catch (error) {
     clearTimeout(timeout);
+    throw error;
+  }
+}
+
+/**
+ * Read a response body, then release the timer that guarded it.
+ *
+ * Every `timedFetch` response must go through this. Reading the body directly
+ * leaves the timeout armed until it fires, which aborts a signal nobody is using
+ * and keeps a timer alive for the rest of the request.
+ *
+ * @param res - A response returned by {@link timedFetch}.
+ * @returns The parsed body.
+ */
+async function readJson<T>(res: Response): Promise<T> {
+  const release = (res as unknown as { releaseTimeout?: () => void }).releaseTimeout;
+  try {
+    return (await res.json()) as T;
+  } finally {
+    release?.();
   }
 }
 
@@ -137,7 +183,21 @@ export const gitlabProvider: IssueProvider = {
         });
       }
 
-      const data = await res.json();
+      const data = await readJson<
+        Array<{
+          id: number;
+          iid: number;
+          title: string;
+          description: string | null;
+          author?: { username: string; avatar_url: string | null } | null;
+          state: string;
+          labels?: string[];
+          assignees?: Array<{ username: string }> | null;
+          web_url: string;
+          created_at: string;
+          updated_at: string;
+        }>
+      >(res);
       if (data.length === 0) break;
 
       for (const item of data) {
@@ -203,7 +263,7 @@ export const gitlabProvider: IssueProvider = {
         const body = await issueRes.text().catch(() => "");
         throw new ProviderApiError(issueRes.status, body, context);
       }
-      const current = issueAssigneesSchema.safeParse(await issueRes.json());
+      const current = issueAssigneesSchema.safeParse(await readJson<unknown>(issueRes));
       if (!current.success) throw new Error("GitLab returned an issue in an unexpected shape");
 
       // Current assignees come with their ids; only added usernames are looked up.
@@ -220,7 +280,7 @@ export const gitlabProvider: IssueProvider = {
           const body = await userRes.text().catch(() => "");
           throw new ProviderApiError(userRes.status, body, context);
         }
-        const found = z.array(gitlabUserSchema).safeParse(await userRes.json());
+        const found = z.array(gitlabUserSchema).safeParse(await readJson<unknown>(userRes));
         if (!found.success) throw new Error("GitLab returned a user search in an unexpected shape");
         const [user] = found.data;
         if (!user) throw new Error(`GitLab has no user named ${username}`);
@@ -266,7 +326,12 @@ export const gitlabProvider: IssueProvider = {
     if (res.status === 404) return null;
     if (!res.ok) return null;
 
-    const data = await res.json();
+    const data = await readJson<{
+      permissions?: {
+        project_access?: { access_level?: number } | null;
+        group_access?: { access_level?: number } | null;
+      } | null;
+    }>(res);
     const accessLevel = data.permissions?.project_access?.access_level ?? 0;
     const groupLevel = data.permissions?.group_access?.access_level ?? 0;
     const maxLevel = Math.max(accessLevel, groupLevel);
@@ -297,7 +362,10 @@ export const gitlabProvider: IssueProvider = {
       });
       if (!res.ok) break;
 
-      const data = await res.json();
+      const data =
+        await readJson<Array<{ name: string; color?: string | null; description?: string | null }>>(
+          res
+        );
       if (data.length === 0) break;
 
       for (const item of data) {
@@ -336,11 +404,14 @@ export const gitlabProvider: IssueProvider = {
       });
       if (!res.ok) break;
 
-      const data = await res.json();
+      const data =
+        await readJson<
+          Array<{ access_level: number; username: string; avatar_url?: string | null }>
+        >(res);
       if (data.length === 0) break;
 
       for (const item of data) {
-        const accessLevel = item.access_level as number;
+        const accessLevel = item.access_level;
         let permission: "admin" | "write" | "read" = "read";
         if (accessLevel >= 40) permission = "admin";
         else if (accessLevel >= 30) permission = "write";
@@ -423,7 +494,7 @@ export const gitlabProvider: IssueProvider = {
       });
     }
 
-    const raw = (await res.json()) as Parameters<typeof toProviderComment>[0][];
+    const raw = await readJson<Parameters<typeof toProviderComment>[0][]>(res);
     // The header carries the page number GitLab wants next; use its value rather
     // than assuming contiguity, so a server that skips a page is followed.
     const nextPage = res.headers.get("x-next-page");
@@ -476,7 +547,7 @@ export const gitlabProvider: IssueProvider = {
       });
     }
 
-    return toProviderComment(await res.json());
+    return toProviderComment(await readJson<Parameters<typeof toProviderComment>[0]>(res));
   },
 
   /**
@@ -487,7 +558,7 @@ export const gitlabProvider: IssueProvider = {
   async getAuthenticatedUser(token: string) {
     const res = await timedFetch(`${getBaseUrl()}/api/v4/user`, { headers: headers(token) });
     if (!res.ok) return null;
-    const user = await res.json();
+    const user = await readJson<{ username?: string; avatar_url?: string | null }>(res);
     if (!user?.username) return null;
     return { login: user.username as string, avatar: (user.avatar_url as string) ?? null };
   },

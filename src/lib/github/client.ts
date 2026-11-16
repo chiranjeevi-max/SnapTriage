@@ -41,6 +41,27 @@ function sleep(ms: number) {
 }
 
 /**
+ * How long one provider request may take, headers and body together.
+ *
+ * Well inside the send-claim lease, so a call can never outlive the window that
+ * protects against a second publish.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Whether replaying a request cannot change state.
+ *
+ * Anything not named here is treated as unsafe. Guessing wrong in that direction
+ * costs a retry; guessing wrong the other way posts a comment twice.
+ *
+ * @param method - The HTTP method, or `undefined` for a GET.
+ */
+function isIdempotent(method: string | undefined): boolean {
+  const verb = (method ?? "GET").toUpperCase();
+  return verb === "GET" || verb === "HEAD" || verb === "OPTIONS";
+}
+
+/**
  * Fetch wrapper with GitHub rate-limit awareness.
  * On a 403 with `x-ratelimit-remaining: 0`, waits until the reset window
  * (capped at 60 seconds) and retries once.
@@ -50,33 +71,83 @@ function sleep(ms: number) {
  * @returns The fetch Response (original or retried).
  */
 async function ghFetch(url: string, token: string, init?: RequestInit): Promise<Response> {
+  // The controller is aborted by the timer *and* stays attached to the response,
+  // so the body read that follows is covered by the same deadline. Clearing the
+  // timer when the headers arrive left `res.json()` unbounded: a provider that
+  // sent headers and then stalled would hold this call open indefinitely.
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  let res: Response | null = null;
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const signal = init?.signal ?? controller.signal;
+
+  let res: Response;
   try {
-    res = await fetch(url, {
-      ...init,
-      signal: init?.signal ?? controller.signal,
-      headers: { ...headers(token), ...init?.headers },
-    });
-  } finally {
-    clearTimeout(timeout);
+    res = await fetch(url, { ...init, signal, headers: { ...headers(token), ...init?.headers } });
+  } catch (error) {
+    controller.abort();
+    throw error;
   }
 
-  if (!res) throw new Error("GitHub request failed before receiving a response");
-  if (res.status === 403) {
+  // `unref` keeps a pending timer from holding the process open afterwards.
+  (timeout as unknown as { unref?: () => void }).unref?.();
+  const release = () => clearTimeout(timeout);
+
+  // A retry re-sends the request, so it is only safe for a method that cannot
+  // change anything. A rate-limited POST replayed after the reset window posts
+  // the same reply a second time, and a comment has no idempotency key to stop
+  // it — the failure this whole claim mechanism exists to prevent.
+  const retryable = isIdempotent(init?.method);
+  if (retryable && res.status === 403) {
     const remaining = res.headers.get("x-ratelimit-remaining");
     const resetAt = res.headers.get("x-ratelimit-reset");
 
     if (remaining === "0" && resetAt) {
       const waitMs = Math.max(0, Number(resetAt) * 1000 - Date.now()) + 1000;
-      const cappedWait = Math.min(waitMs, 60_000); // cap at 60s
-      await sleep(cappedWait);
-      return fetch(url, { ...init, headers: { ...headers(token), ...init?.headers } });
+      await sleep(Math.min(waitMs, 60_000));
+      // The retry is a fresh request with its own deadline.
+      release();
+      return ghFetch(url, token, { ...init, signal });
     }
   }
 
-  return res;
+  // Released by `readBody` once the body has been consumed, so the deadline
+  // covers the read without leaving a timer armed for every request.
+  return Object.assign(res, { releaseTimeout: release });
+}
+
+/**
+ * Read a response body, then release the timer that guarded it.
+ *
+ * Every `ghFetch` response must go through this. Reading directly leaves the
+ * timer armed until it fires, aborting a signal nobody is using and keeping a
+ * timer alive for the rest of the request.
+ *
+ * @param res - A response returned by {@link ghFetch}.
+ * @returns The parsed body.
+ */
+async function readBody<T>(res: Response): Promise<T> {
+  const release = (res as unknown as { releaseTimeout?: () => void }).releaseTimeout;
+  try {
+    return (await res.json()) as T;
+  } finally {
+    release?.();
+  }
+}
+
+/**
+ * Read a response body as text, then release the timer that guarded it.
+ *
+ * @param res - A response returned by {@link ghFetch}.
+ * @returns The body, or an empty string when it cannot be read.
+ */
+async function readText(res: Response): Promise<string> {
+  const release = (res as unknown as { releaseTimeout?: () => void }).releaseTimeout;
+  try {
+    return await res.text();
+  } catch {
+    return "";
+  } finally {
+    release?.();
+  }
 }
 
 /**
@@ -145,7 +216,7 @@ export const githubProvider: IssueProvider = {
       const res = await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/issues?${params}`, token);
 
       if (!res.ok) {
-        const body = await res.text().catch(() => "");
+        const body = await readText(res);
         providerLogger.warn(
           { status: res.status, owner, repo, page },
           "GitHub fetchIssues page failed"
@@ -158,7 +229,22 @@ export const githubProvider: IssueProvider = {
         });
       }
 
-      const data = await res.json();
+      const data = await readBody<
+        Array<{
+          id: number;
+          number: number;
+          title: string;
+          body: string | null;
+          user: { login: string; avatar_url: string | null } | null;
+          state: string;
+          labels: Array<{ name: string }>;
+          assignees: Array<{ login: string }> | null;
+          html_url: string;
+          created_at: string;
+          updated_at: string;
+          pull_request?: unknown;
+        }>
+      >(res);
       if (data.length === 0) break;
 
       for (const item of data) {
@@ -277,8 +363,8 @@ export const githubProvider: IssueProvider = {
     if (res.status === 404) return null;
     if (!res.ok) return null;
 
-    const data = await res.json();
-    const perm = data.permission as string;
+    const data = await readBody<{ permission?: string }>(res);
+    const perm = data.permission;
 
     if (perm === "admin") return "admin";
     if (perm === "write" || perm === "maintain") return "write";
@@ -302,7 +388,10 @@ export const githubProvider: IssueProvider = {
       const res = await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/labels?${params}`, token);
       if (!res.ok) break;
 
-      const data = await res.json();
+      const data =
+        await readBody<Array<{ name: string; color?: string | null; description?: string | null }>>(
+          res
+        );
       if (data.length === 0) break;
 
       for (const item of data) {
@@ -340,11 +429,14 @@ export const githubProvider: IssueProvider = {
       );
       if (!res.ok) break;
 
-      const data = await res.json();
+      const data =
+        await readBody<Array<{ login: string; avatar_url: string | null; role_name?: string }>>(
+          res
+        );
       if (data.length === 0) break;
 
       for (const item of data) {
-        const perm = item.role_name as string;
+        const perm = item.role_name;
         let permission: "admin" | "write" | "read" = "read";
         if (perm === "admin") permission = "admin";
         else if (perm === "write" || perm === "maintain") permission = "write";
@@ -394,7 +486,7 @@ export const githubProvider: IssueProvider = {
 
       const res = await ghFetch(`${base}?${params}`, token);
       if (!res.ok) {
-        const body = await res.text().catch(() => "");
+        const body = await readText(res);
         throw new ProviderApiError(res.status, body, {
           provider: "github",
           operation: "fetchComments",
@@ -403,7 +495,7 @@ export const githubProvider: IssueProvider = {
         });
       }
 
-      const raw = (await res.json()) as Parameters<typeof toProviderComment>[0][];
+      const raw = await readBody<Parameters<typeof toProviderComment>[0][]>(res);
       const link = res.headers.get("link");
       return {
         comments: raw.map(toProviderComment),
@@ -478,7 +570,7 @@ export const githubProvider: IssueProvider = {
     );
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
+      const text = await readText(res);
       throw new ProviderApiError(res.status, text, {
         provider: "github",
         operation: "createComment",
@@ -487,7 +579,7 @@ export const githubProvider: IssueProvider = {
       });
     }
 
-    return toProviderComment(await res.json());
+    return toProviderComment(await readBody<Parameters<typeof toProviderComment>[0]>(res));
   },
 
   /**
@@ -499,7 +591,7 @@ export const githubProvider: IssueProvider = {
   async getAuthenticatedUser(token: string) {
     const res = await ghFetch(`${GITHUB_API}/user`, token);
     if (!res.ok) return null;
-    const user = await res.json();
+    const user = await readBody<{ login?: string; avatar_url?: string | null }>(res);
     if (!user?.login) return null;
     return { login: user.login as string, avatar: (user.avatar_url as string) ?? null };
   },

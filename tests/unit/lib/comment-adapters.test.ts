@@ -364,6 +364,31 @@ describe("githubProvider.createComment", () => {
     expect((serverError as ProviderApiError).isRetryable).toBe(true);
     expect((clientError as ProviderApiError).isRetryable).toBe(false);
   });
+
+  /**
+   * @target githubProvider.createComment
+   * @dependencies fetch
+   * @scenario The comment POST is answered by a rate-limited 403
+   * @expectedOutput Exactly one POST. The retry in `ghFetch` waits for the reset
+   *                 window and re-sends, which is right for a read and wrong for a
+   *                 publish: a comment has no idempotency key, so the replay posts
+   *                 the same reply twice. A publish must surface the refusal.
+   */
+  it("should not retry a rate-limited comment POST", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(
+        { message: "API rate limit exceeded" },
+        { status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "0" } }
+      )
+    );
+
+    await expect(
+      githubProvider.createComment?.("octo", "repo", 7, "token-abc", "Thanks!")
+    ).rejects.toBeInstanceOf(ProviderApiError);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
 });
 
 describe("gitlabProvider.fetchComments", () => {
@@ -514,6 +539,58 @@ describe("gitlabProvider.createComment", () => {
       gitlabProvider.createComment?.("octo", "repo", 7, "token-abc", "Thanks!")
     ).rejects.toMatchObject({ status: 400, operation: "createComment", provider: "gitlab" });
   });
+
+  /**
+   * @target gitlabProvider.createComment
+   * @dependencies fetch
+   * @scenario The provider sends headers promptly and then stalls the body
+   * @expectedOutput The call still settles. Clearing the timer when the headers
+   *                 arrived left the body read with no deadline, so a stalled
+   *                 response could outlast the send-claim lease and let a second
+   *                 publish overlap the first.
+   */
+  it("should keep the deadline while the body is being read", async () => {
+    vi.useFakeTimers();
+    try {
+      // Models the platform: a real fetch rejects a pending body read when its
+      // signal aborts. The mock does the same, so this measures whether the
+      // client still holds the signal open at the point the body is read.
+      mockFetch.mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const signal = init.signal as AbortSignal;
+        return {
+          ok: true,
+          status: 201,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              if (signal.aborted) return reject(new Error("aborted"));
+              signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+            }),
+        } as unknown as Response;
+      });
+
+      let settled: "resolved" | "rejected" | null = null;
+      void gitlabProvider
+        .createComment?.("octo", "repo", 7, "token-abc", "Thanks!")
+        .then(
+          () => {
+            settled = "resolved";
+          },
+          () => {
+            settled = "rejected";
+          }
+        );
+
+      // Let the request reach the body read, then run past the deadline.
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      // A cleared timer means nothing aborts the pending body read, so it never
+      // settles — and the publish outlives the lease meant to block a second one.
+      expect(settled).toBe("rejected");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
 });
 
 describe("gitlabProvider.getAuthenticatedUser", () => {

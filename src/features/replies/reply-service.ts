@@ -345,9 +345,16 @@ export async function sendReply(
     // The comment is published, so the draft and its claim are both spent.
     // Removed directly rather than through `clearDraft`, which deliberately
     // refuses a claimed row because every other caller is a user action.
-    await typedDb
-      .delete(replyDrafts)
-      .where(and(eq(replyDrafts.issueId, target.issueId), eq(replyDrafts.userId, userId)));
+    await typedDb.delete(replyDrafts).where(
+      and(
+        eq(replyDrafts.issueId, target.issueId),
+        eq(replyDrafts.userId, userId),
+        // This attempt's row, not whatever draft exists now. A success that
+        // arrives after the lease expired must not delete text another tab has
+        // since written.
+        eq(replyDrafts.sendClaimId, refused.claimId)
+      )
+    );
     apiLogger.info(
       { issueId: target.issueId, provider: target.provider, commentId: comment.id },
       "Reply published"
@@ -357,7 +364,7 @@ export async function sendReply(
     // A rejection that carries a provider status is definitive: the provider
     // answered, and it did not accept the comment.
     if (error instanceof ProviderApiError && !error.isRetryable) {
-      await clearAttempt(userId, target.issueId);
+      await clearAttempt(userId, target.issueId, refused.claimId);
       apiLogger.warn(
         { issueId: target.issueId, provider: target.provider, status: error.status },
         "Reply rejected by provider"
@@ -375,7 +382,7 @@ export async function sendReply(
     // The lease ends, though: this call is over, so there is no longer a second
     // publish in flight to protect against. Keeping it would make the claim
     // unreleasable for the whole lease window even though nothing is running.
-    await endAttemptLease(userId, target.issueId);
+    await endAttemptLease(userId, target.issueId, refused.claimId);
     apiLogger.warn(
       { issueId: target.issueId, provider: target.provider, error: String(error) },
       "Reply outcome unknown; draft left unconfirmed"
@@ -551,11 +558,20 @@ export async function releaseSendClaim(
  * @param userId - The authenticated user.
  * @param issueId - The issue being replied to.
  */
-async function endAttemptLease(userId: string, issueId: string): Promise<void> {
+async function endAttemptLease(userId: string, issueId: string, claimId: string): Promise<void> {
   await typedDb
     .update(replyDrafts)
     .set({ sendInFlightUntil: null })
-    .where(and(eq(replyDrafts.issueId, issueId), eq(replyDrafts.userId, userId)));
+    .where(
+      and(
+        eq(replyDrafts.issueId, issueId),
+        eq(replyDrafts.userId, userId),
+        // Scoped to the attempt that set it. A call that outlived its lease can
+        // finish after another send has claimed the row, and this write must not
+        // tell every reader that the newer call has ended.
+        eq(replyDrafts.sendClaimId, claimId)
+      )
+    );
 }
 
 /**
@@ -564,11 +580,25 @@ async function endAttemptLease(userId: string, issueId: string): Promise<void> {
  * @param userId - The authenticated user.
  * @param issueId - The issue being replied to.
  */
-async function clearAttempt(userId: string, issueId: string): Promise<void> {
+async function clearAttempt(userId: string, issueId: string, claimId: string): Promise<void> {
   await typedDb
     .update(replyDrafts)
-    .set({ sendAttemptedAt: null, updatedAt: new Date() })
-    .where(and(eq(replyDrafts.issueId, issueId), eq(replyDrafts.userId, userId)));
+    .set({
+      sendAttemptedAt: null,
+      sendClaimId: null,
+      sendInFlightUntil: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(replyDrafts.issueId, issueId),
+        eq(replyDrafts.userId, userId),
+        // Only this attempt's claim. Clearing whatever marker is present would
+        // free a claim a newer send is holding, and a third send could then
+        // overlap it — the duplicate this marker exists to prevent.
+        eq(replyDrafts.sendClaimId, claimId)
+      )
+    );
 }
 
 /** The user's own login on a provider, as recorded the last time it was fetched. */
