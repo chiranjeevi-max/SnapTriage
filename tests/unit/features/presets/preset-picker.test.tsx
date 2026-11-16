@@ -322,6 +322,36 @@ describe("PresetPicker", () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
+  /**
+   * @target PresetPicker
+   * @dependencies none
+   * @scenario The pane is opened from a control that has never held focus in this
+   *           document, which is what happens when `T` opens it: there is no
+   *           click, so nothing has fired before Radix moves focus into the dialog.
+   * @expectedOutput Closing returns focus to the last element that held it outside
+   *                 a dialog. Reading `document.activeElement` on open cannot do
+   *                 this — by then it is already the dialog's own control, which
+   *                 unmounts and leaves focus on the body.
+   */
+  it("returns focus to the element that last held it outside the dialog", async () => {
+    vi.mocked(usePresets).mockReturnValue({
+      data: [],
+      isLoading: false,
+    } as unknown as ReturnType<typeof usePresets>);
+
+    const trigger = renderPicker();
+    // Focus arrives the way it does for a keyboard user: the control is focused
+    // by the app, and the dialog is opened by a keystroke rather than a click.
+    fireEvent.focus(trigger);
+
+    fireEvent.click(trigger);
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
   it("survives the worst-case fixtures and skips the empty bundle", async () => {
     vi.mocked(usePresets).mockReturnValue({
       data: presetsForMode("worst"),

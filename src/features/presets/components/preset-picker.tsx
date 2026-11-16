@@ -459,17 +459,35 @@ export function PresetPicker({ open, onOpenChange, issue, batch }: PresetPickerP
 
   // The dialog has no `DialogTrigger` — it is opened by a keyboard flag or from
   // a button in the detail pane — so Radix has no trigger to return focus to.
-  // The element that had focus when the pane opened is remembered and focused
-  // again on close: the row the user was reading when they pressed `T`, or the
-  // button they clicked.
+  // The element to hand focus back to on close.
+  //
+  // Tracked while the pane is closed, not read when it opens: by then Radix has
+  // already moved focus into the dialog, so the elements being observed are the
+  // dialog's own, which unmount on close. The pane has no trigger element to fall
+  // back on — `T` opens it from anywhere — so this is the only record of where
+  // the user was.
   const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (open) {
-      openerRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      return;
+    if (open) return;
+
+    function remember(event: FocusEvent) {
+      const target = event.target;
+      // Anything inside a dialog is the pane's own autofocus, not the place the
+      // user came from.
+      if (!(target instanceof HTMLElement) || target.closest('[role="dialog"]')) return;
+      openerRef.current = target;
     }
-    openerRef.current?.focus();
+
+    document.addEventListener("focusin", remember);
+    return () => document.removeEventListener("focusin", remember);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) return;
+    // Deferred a frame so Radix has finished its own close handling first;
+    // otherwise it moves focus after this and the restore is overwritten.
+    const frame = requestAnimationFrame(() => openerRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
   }, [open]);
 
   if (!issue) return null;
