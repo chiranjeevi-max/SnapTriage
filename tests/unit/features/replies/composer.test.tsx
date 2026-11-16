@@ -334,6 +334,74 @@ describe("Composer", () => {
     expect(textarea().value).toBe("Could you add the exact command?");
   });
 
+  /**
+   * @target Composer
+   * @dependencies useDraft
+   * @scenario The draft request has not answered yet and the user presses
+   *           Ctrl+Enter
+   * @expectedOutput Nothing is sent, and the text stays. A send before the draft
+   *                 is known would carry no base version, so the server could not
+   *                 refuse it on staleness — the exact check that stops this tab
+   *                 publishing text another tab replaced.
+   */
+  it("should not send while the draft is still loading", async () => {
+    let releaseDraft = () => {};
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/draft")) {
+        await new Promise<void>((resolve) => {
+          releaseDraft = resolve;
+        });
+        return json(null);
+      }
+      if (url.endsWith("/saved-replies")) return json([]);
+      return json({});
+    }) as unknown as typeof fetch;
+
+    renderComposer();
+    await waitFor(() => expect(textarea()).toBeDefined());
+
+    fireEvent.change(textarea(), { target: { value: "Ready to go" } });
+    fireEvent.keyDown(textarea(), { key: "Enter", ctrlKey: true });
+
+    const sends = vi.mocked(global.fetch).mock.calls.filter(([input]) =>
+      String(input).endsWith("/replies")
+    );
+    expect(sends).toHaveLength(0);
+    expect(textarea().value).toBe("Ready to go");
+
+    releaseDraft();
+  });
+
+  /**
+   * @target Composer
+   * @dependencies useDraft, useSendReply
+   * @scenario A send fails with a 502 whose body omits the `unconfirmed` flag
+   * @expectedOutput Send is withheld. A gateway can drop that flag, and treating
+   *                 its absence as a refusal removes the guard on a comment the
+   *                 provider may already have published.
+   */
+  it("should treat a 502 without the unconfirmed flag as unresolved", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/draft")) return json(null);
+      if (url.endsWith("/saved-replies")) return json([]);
+      if (url.endsWith("/replies") && init?.method === "POST") {
+        return json({ error: "Bad gateway" }, 502);
+      }
+      return json({});
+    }) as unknown as typeof fetch;
+
+    renderComposer();
+    await waitFor(() => expect(textarea()).toBeDefined());
+
+    fireEvent.change(textarea(), { target: { value: "Thanks!" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(await screen.findByText(/may already be posted/i)).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^send/i })).toBeNull();
+  });
+
   it("shows the character counter only near the limit and never blocks typing below it", async () => {
     const limit = providerLimits.github.comment;
     renderComposer();

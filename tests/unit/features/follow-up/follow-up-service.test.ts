@@ -519,6 +519,50 @@ describe("runFollowUpCheck", () => {
 
   /**
    * @target runFollowUpCheck
+   * @dependencies MAX_CHECKS_PER_PASS, RECHECK_COOLDOWN_MS
+   * @scenario A provider that cannot read comments fills an entire pass
+   * @expectedOutput The second pass examines different rows. A skipped row that
+   *                 leaves `attemptedAt` alone is still due next time, so twenty
+   *                 such rows hold every batch and the healthy rows behind them
+   *                 are never reached.
+   */
+  it("should rotate past rows it could not read on a previous pass", async () => {
+    fakeDb.state.rows.repo.push(repoRow());
+
+    // A provider without `fetchComments` is the skip path under test.
+    const blind = {
+      fetchIssues: vi.fn().mockResolvedValue([]),
+      updateIssue: vi.fn().mockResolvedValue(undefined),
+      getRepoPermission: vi.fn().mockResolvedValue("write"),
+    } as unknown as IssueProvider;
+
+    for (let index = 0; index < 25; index++) {
+      const issueId = `blind-${index}`;
+      fakeDb.state.rows.issue.push(
+        issueRow({ id: issueId, number: index + 100, providerIssueId: `gh-blind-${index}` })
+      );
+      fakeDb.state.rows.follow_up.push(followUpRow({ id: `follow-up-blind-${index}`, issueId }));
+    }
+
+    mockGetProvider.mockReturnValue(blind);
+    const first = await runFollowUpCheck("user-1");
+    expect(first.checked).toBe(0);
+    expect(first.skipped).toBe(20);
+
+    // Worth rotation, the second pass must see a different twenty. Every row that
+    // was passed over recorded an attempt, so the batch moves on.
+    const attempted = fakeDb.state.rows.follow_up.filter((row) => row.attemptedAt !== null);
+    expect(attempted).toHaveLength(20);
+
+    // The remaining five now come up. Before the fix this stayed at 20 forever,
+    // because the rows it could not read were re-selected ahead of everything.
+    const second = await runFollowUpCheck("user-1");
+    expect(second.skipped).toBe(5);
+    expect(fakeDb.state.rows.follow_up.filter((row) => row.attemptedAt !== null)).toHaveLength(25);
+  });
+
+  /**
+   * @target runFollowUpCheck
    * @dependencies MAX_CHECKS_PER_PASS
    * @scenario The user waits on 25 issues
    * @expectedOutput Only 20 are examined: the pass is bounded so opening the

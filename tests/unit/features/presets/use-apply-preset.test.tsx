@@ -204,6 +204,42 @@ describe("useApplyPreset", () => {
     });
   });
 
+  /**
+   * @target useApplyPreset
+   * @dependencies invertToPayload
+   * @scenario Batch: the apply added a label that was already staged for removal
+   * @expectedOutput The staged undo puts the removal back. The apply cancels the
+   *                 staged removal by adding the label, so undoing it only through
+   *                 `previous` — which still carries the label in the cached set —
+   *                 would merge an empty diff and leave the label in place at push.
+   */
+  it("restores a staged removal the apply cancelled when building batch undo", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        mode: "batch",
+        noChange: false,
+        applied: { labels: { add: ["bug"], remove: [] } },
+        changes: [{ kind: "label", value: "bug", operation: "+" }],
+        // The label is still in the cached set: the removal was staged, not applied.
+        previous: { priority: null, labels: ["bug", "triage"], assignees: [] },
+        staged: { labels: { add: ["bug"], remove: ["bug"] } },
+      }),
+    } as Response);
+
+    const { result } = renderHook(() => useApplyPreset(), { wrapper });
+    result.current.mutate(input({ presetId: "preset-1", batch: true }));
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(pushUndo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousPayload: { labels: { add: [], remove: ["bug"] } },
+      })
+    );
+  });
+
   it("surfaces the server's rejection verbatim and restores the cache", async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: false,

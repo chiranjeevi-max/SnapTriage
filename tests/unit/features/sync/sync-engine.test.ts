@@ -260,6 +260,10 @@ describe("sync engine", () => {
       .from(triageState)
       .where(eq(triageState.id, "staged-triage"));
     expect(triage).toMatchObject({ batchPending: false, pendingChanges: {} });
+    // The clear moves the revision with it. A staging write that read the old
+    // value can otherwise pass its compare-and-set straight after this push and
+    // restore changes that have already been sent to the provider.
+    expect(triage.revision).toBeGreaterThan(0);
     const [issue] = await typedDb.select().from(issues).where(eq(issues.id, "staged-issue"));
     expect(issue.labels).toEqual(["bug", "triaged"]);
   }, 30000);

@@ -797,4 +797,50 @@ describe("releaseSendClaim", () => {
 
     await expect(releaseSendClaim("user-1", ISSUE_ID, "claim-1")).resolves.toBe("missing");
   });
+
+  /**
+   * @target releaseSendClaim
+   * @dependencies reply_drafts.sendClaimId
+   * @scenario The caller cannot name the claim it is looking at
+   * @expectedOutput `mismatch`, and the claim is kept. Passing `undefined` used
+   *                 to drop the identity predicate entirely, so a tab whose view
+   *                 had gone stale released whatever claim was set — including a
+   *                 newer send's.
+   */
+  it("should refuse a release that names no claim", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({
+        sendAttemptedAt: new Date("2026-01-05T00:00:00.000Z"),
+        sendClaimId: "claim-new",
+      })
+    );
+
+    const outcome = await releaseSendClaim("user-1", ISSUE_ID);
+
+    expect(outcome).toBe("mismatch");
+    expect(fakeDb.state.rows.reply_draft[0].sendClaimId).toBe("claim-new");
+    expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).not.toBeNull();
+  });
+
+  /**
+   * @target releaseSendClaim
+   * @dependencies reply_drafts.sendClaimId
+   * @scenario A legacy row holds a claim with no id recorded
+   * @expectedOutput `released`. The absence of an id is matched as a value, so
+   *                 rows from before the column existed can still be reconciled
+   *                 rather than becoming permanently stuck.
+   */
+  it("should release a legacy claim that has no id", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({
+        sendAttemptedAt: new Date("2026-01-05T00:00:00.000Z"),
+        sendClaimId: null,
+      })
+    );
+
+    const outcome = await releaseSendClaim("user-1", ISSUE_ID);
+
+    expect(outcome).toBe("released");
+    expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).toBeNull();
+  });
 });

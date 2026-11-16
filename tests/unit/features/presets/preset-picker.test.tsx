@@ -99,6 +99,23 @@ const ISSUE: IssueWithTriage = {
   triage: { id: "triage-1", priority: 2, snoozedUntil: null, dismissed: false },
 };
 
+/**
+ * An issue with a staged addition of `confirmed` that the cached labels lack.
+ *
+ * The state a live repository can reach when a batch request was made against
+ * it: the staged diff is real, but the next push is not a batch one.
+ */
+const STAGED_ISSUE: IssueWithTriage = {
+  ...ISSUE,
+  triage: {
+    id: "triage-1",
+    priority: 2,
+    snoozedUntil: null,
+    dismissed: false,
+    pendingChanges: { labels: { add: ["confirmed"], remove: [] } },
+  },
+};
+
 /** A stored preset, with the fields the picker does not render defaulted. */
 function preset(overrides: Partial<Preset> & { id: string; name: string }): Preset {
   return {
@@ -130,6 +147,29 @@ function renderPicker(initialOpen = false) {
 
   render(<Harness />);
   return screen.getByRole("button", { name: "Open presets" });
+}
+
+/**
+ * Opens the dialog against {@link STAGED_ISSUE}.
+ *
+ * @returns The dialog element.
+ */
+async function openStagedDialog(): Promise<HTMLElement> {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+
+  function Harness() {
+    const [open, setOpen] = React.useState(true);
+    return (
+      <QueryClientProvider client={queryClient}>
+        <PresetPicker open={open} onOpenChange={setOpen} issue={STAGED_ISSUE} />
+      </QueryClientProvider>
+    );
+  }
+
+  render(<Harness />);
+  return screen.findByRole("dialog");
 }
 
 /**
@@ -279,6 +319,36 @@ describe("PresetPicker", () => {
       priority: 1,
       labels: { add: ["confirmed"] },
     });
+  });
+
+  /**
+   * @target PresetPicker
+   * @dependencies resolvePreset, effectiveTriageState
+   * @scenario A live repository carries a staged addition of a label the cached
+   *           issue does not have, and a preset would add that same label
+   * @expectedOutput The preview reports the addition, and Apply is offered. The
+   *                 staged diff belongs to a batch push that this repository does
+   *                 not make, so resolving against it said "already applied" for a
+   *                 change the server was about to make.
+   */
+  it("should ignore a staged diff when the repository applies live", async () => {
+    vi.mocked(useRepoBatchMode).mockReturnValue(false);
+    vi.mocked(usePresets).mockReturnValue({
+      data: [
+        preset({
+          id: "preset-1",
+          name: "Confirmed bug",
+          actions: { labels: { add: ["confirmed"] } },
+        }),
+      ],
+      isLoading: false,
+    } as unknown as ReturnType<typeof usePresets>);
+
+    const dialog = await openStagedDialog();
+    fireEvent.click(await within(dialog).findByText("Confirmed bug"));
+
+    expect(within(dialog).getByRole("button", { name: "Apply preset" })).toBeDefined();
+    expect(within(dialog).queryByText("Already applied")).toBeNull();
   });
 
   it("reads Stage preset when the repository syncs in batch", async () => {

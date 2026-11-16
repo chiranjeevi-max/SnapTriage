@@ -61,6 +61,34 @@ const SURFACES: Array<{ value: InboxSurface; label: string; icon: React.ReactNod
 const NO_ISSUES: IssueWithTriage[] = [];
 
 /**
+ * What the detail pane shows: a selected queue row, or the pinned follow-up.
+ *
+ * A selected queue row wins. The pin exists for an issue that is *not* in the
+ * queue, which is why `handleOpenFollowUp` sets the index to -1 when it pins. If
+ * a stale pin outranked the selection, moving down from the follow-up list would
+ * display one issue while every shortcut acted on another — the dismiss would
+ * land on a row the user cannot see.
+ *
+ * @param pinned - The follow-up pinned into the pane, if any.
+ * @param queueIssue - The row the queue selection points at, if any.
+ * @returns The issue the pane should render.
+ */
+export function resolveDetailTarget(
+  pinned: FollowUpEntry | null,
+  queueIssue: IssueDetailTarget | null
+): IssueDetailTarget | null {
+  if (queueIssue) return queueIssue;
+  if (pinned === null) return null;
+  return {
+    id: pinned.issueId,
+    provider: pinned.provider,
+    url: pinned.url,
+    number: pinned.number,
+    title: pinned.title,
+  };
+}
+
+/**
  * Top-level inbox view with resizable issue list + detail split pane.
  * Wires keyboard shortcuts, picker dialogs, and sync status together.
  */
@@ -160,22 +188,10 @@ export function InboxView() {
    * here rather than carried as two unions through every prop: `FollowUpEntry`
    * names the issue `issueId`, and the pane only needs an id to fetch by.
    */
-  const currentIssue: IssueDetailTarget | null = useMemo(() => {
-    // A selected queue row wins. The pin exists to show an issue that is *not*
-    // in the queue, and `handleOpenFollowUp` sets the index to -1 for exactly
-    // that reason. If a stale pin outranked the selection, moving down from the
-    // follow-up list would display one issue while every shortcut acted on
-    // another — the dismiss would land on a row the user cannot see.
-    if (queueIssue) return queueIssue;
-    if (pinnedIssue === null) return null;
-    return {
-      id: pinnedIssue.issueId,
-      provider: pinnedIssue.provider,
-      url: pinnedIssue.url,
-      number: pinnedIssue.number,
-      title: pinnedIssue.title,
-    };
-  }, [pinnedIssue, queueIssue]);
+  const currentIssue = useMemo(
+    () => resolveDetailTarget(pinnedIssue, queueIssue),
+    [pinnedIssue, queueIssue]
+  );
 
   // Stabilize selection after data refresh
   const selectedIdRef = useRef<string | null>(null);

@@ -59,8 +59,9 @@ async function putDraft(body: unknown, issueId = ISSUE_ID) {
   return { status: lastStatus, body: lastBody };
 }
 
-async function deleteDraft(issueId = ISSUE_ID) {
-  const req = new Request(URL_FOR_ISSUE, { method: "DELETE" });
+async function deleteDraft(issueId = ISSUE_ID, version?: number) {
+  const suffix = version === undefined ? "" : `?version=${version}`;
+  const req = new Request(`${URL_FOR_ISSUE}${suffix}`, { method: "DELETE" });
   await DELETE(req, { params: Promise.resolve({ id: issueId }) });
   return { status: lastStatus, body: lastBody };
 }
@@ -317,5 +318,50 @@ describe("DELETE /api/issues/:id/draft", () => {
 
     expect(res.status).toBe(404);
     expect(fakeDb.state.rows.reply_draft).toHaveLength(1);
+  });
+
+  /**
+   * @target DELETE /api/issues/:id/draft
+   * @dependencies clearDraft
+   * @scenario The composer never loaded a draft and sends `version=0`
+   * @expectedOutput 200, because there is nothing stored to protect. Rejecting 0
+   *                 as "not a positive integer" broke every discard from a fresh
+   *                 composer: the button became unusable.
+   */
+  it("should accept version=0 when no draft is stored", async () => {
+    const res = await deleteDraft(ISSUE_ID, 0);
+
+    expect(res.status).toBe(200);
+  });
+
+  /**
+   * @target DELETE /api/issues/:id/draft
+   * @dependencies clearDraft
+   * @scenario Another tab created a draft this one never saw, and this one sends
+   *           `version=0` to clear only its own local text
+   * @expectedOutput 409 and the stored draft untouched. `0` asserts absence, so
+   *                 finding a row means the tabs disagree and the delete must not
+   *                 proceed.
+   */
+  it("should refuse version=0 once another tab has stored a draft", async () => {
+    fakeDb.state.rows.reply_draft.push(replyDraftRow({ version: 2 }));
+
+    const res = await deleteDraft(ISSUE_ID, 0);
+
+    expect(res.status).toBe(409);
+    expect(fakeDb.state.rows.reply_draft).toHaveLength(1);
+  });
+
+  /**
+   * @target DELETE /api/issues/:id/draft
+   * @dependencies clearDraft
+   * @scenario The version is negative, which is not a version at all
+   * @expectedOutput 400. The bound still rejects values that could only come from
+   *                 a malformed client.
+   */
+  it("should reject a negative version", async () => {
+    const res = await deleteDraft(ISSUE_ID, -1);
+
+    expect(res.status).toBe(400);
   });
 });
