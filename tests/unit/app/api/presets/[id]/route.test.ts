@@ -137,8 +137,11 @@ describe("PATCH /api/presets/:id", () => {
 
     expect(res.status).toBe(400);
     expect((res.body as { error: string }).error).toContain("50");
-    expect((fakeDb.state.rows.triage_preset[0].actions as { labels?: unknown }).labels).toEqual({
-      add: ["bug"],
+    // The whole bundle, not just the field the edit touched: a rejected write
+    // must leave priority and assignees exactly as they were too.
+    expect(fakeDb.state.rows.triage_preset[0].actions).toEqual({
+      priority: 1,
+      labels: { add: ["bug"] },
     });
   });
 });

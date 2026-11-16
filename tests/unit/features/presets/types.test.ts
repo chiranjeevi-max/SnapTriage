@@ -20,7 +20,7 @@ import {
   type ResolvableIssue,
 } from "@/features/presets/types";
 
-/** An issue with no labels, no assignees and no triage row yet. */
+/** An issue with no labels and no assignees, whose priority has never been set. */
 function issue(overrides: Partial<ResolvableIssue> = {}): ResolvableIssue {
   return {
     labels: [],

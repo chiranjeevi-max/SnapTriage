@@ -180,7 +180,11 @@ describe("POST /api/saved-replies", () => {
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ name: "Need more info", body: "Please share a repro." });
     expect((res.body as { id: string }).id).toEqual(expect.any(String));
-    expect((res.body as { createdAt: string }).createdAt).toEqual(expect.any(String));
+    // Both instants are part of the documented contract, and `expect.any(String)`
+    // would accept a Date object's string form or an empty value just as happily.
+    const created = res.body as { createdAt: string; updatedAt: string };
+    expect(created.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+    expect(created.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
     expect(fakeDb.state.rows.saved_reply).toHaveLength(1);
     expect(fakeDb.state.rows.saved_reply[0].userId).toBe("user-1");
   });
