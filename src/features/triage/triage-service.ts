@@ -290,7 +290,8 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
           // What the issue carries upstream. A removal of a label that is staged
           // as an addition is only real when the issue already has it, and the
           // diff alone cannot tell those apart.
-          issue.labels ?? []
+          issue.labels ?? [],
+          issue.assignees ?? []
         );
         const written = await typedDb
           .update(triageState)

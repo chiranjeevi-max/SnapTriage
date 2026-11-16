@@ -76,12 +76,14 @@ export interface PendingChanges {
  * @param existing - The current accumulated pending changes.
  * @param incoming - The new payload to merge in.
  * @param appliedLabels - Labels the issue carries upstream, for the case above.
+ * @param appliedAssignees - Assignees the issue carries upstream, same rule.
  * @returns A new {@link PendingChanges} object with the incoming changes folded in.
  */
 export function mergePendingChanges(
   existing: PendingChanges,
   incoming: TriagePayload,
-  appliedLabels: readonly string[] = []
+  appliedLabels: readonly string[] = [],
+  appliedAssignees: readonly string[] = []
 ): PendingChanges {
   const merged = { ...existing };
 
@@ -146,6 +148,10 @@ export function mergePendingChanges(
     for (const a of incoming.assignees.remove ?? []) {
       if (addSet.has(a)) {
         addSet.delete(a);
+        // Same rule as labels: a removal of something staged as an addition is
+        // still a real removal when the issue already has it, which is the undo of
+        // an apply that cancelled a staged removal.
+        if (appliedAssignees.includes(a)) removeSet.add(a);
       } else {
         removeSet.add(a);
       }

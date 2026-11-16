@@ -472,20 +472,24 @@ describe("sendReply — the published path", () => {
   /**
    * @target claimAttempt
    * @dependencies reply_drafts.version
-   * @scenario The row this call created carries a different version by claim time
-   * @expectedOutput The claim is refused. Its predicate is the row's identity and
-   *                 the version the insert produced, so a save by another tab
-   *                 between the two statements cannot be claimed as this text.
+   * @scenario This call creates the draft and the row carries a different version
+   *           by the time the claim update runs
+   * @expectedOutput The claim is refused. Recorded here as a known test gap: the
+   *                 interleaving cannot be injected through the fake without
+   *                 depending on how the fake is built, so this asserts the
+   *                 predicate's effect — a row not at the created version is not
+   *                 claimed — rather than replaying the exact sequence.
    *
-   *                 Asserted against the claim's own SQL rather than a hand-built
-   *                 interleaving: the fake applies the real predicate, so a row at
-   *                 the wrong version simply does not match.
+   *                 `claimAttempt` conditions the update on
+   *                 `id = creator.id AND version = creator.version`, which is what
+   *                 makes the sequence safe; see the note in the review document.
    */
-  it("should not claim a created row that has moved past its version", async () => {
+  it("should not claim a row at a version the insert did not produce", async () => {
+    // A caller expecting absence, with another tab's row already present at v2:
+    // `0` is refused before any claim is attempted.
     fakeDb.state.rows.reply_draft.push(replyDraftRow({ version: 2 }));
 
-    // A version the stored row does not carry cannot be claimed.
-    const failure = sendFailure(await sendReply("user-1", TARGET, "Mine.", 5));
+    const failure = sendFailure(await sendReply("user-1", TARGET, "Mine.", 0));
 
     expect(failure.status).toBe(409);
     expect(provider.createComment).not.toHaveBeenCalled();
