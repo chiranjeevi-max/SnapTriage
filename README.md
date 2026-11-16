@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chiranjeevi-max/snaptriage/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 **Keyboard-driven inbox for triaging GitHub and GitLab issues fast.** Think "Superhuman for issue triage."
 
