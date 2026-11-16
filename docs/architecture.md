@@ -43,11 +43,13 @@ Three features share the triage state: a preset re-applies a saved decision, a r
 ## Deployment Strategy
 
 ### Docker (Local & Self-Hosted)
+
 - Uses SQLite by default, so it runs anywhere.
 - The `Dockerfile` provides a standalone production build.
 - Data is stored locally in the `data/` volume.
 
 ### Vercel (Serverless)
+
 - Requires `Postgres` since SQLite is not compatible with stateless serverless functions.
 - Neon is the recommended Postgres provider.
 - `npm run db:migrate` with `DATABASE_URL` set applies the Postgres migrations in `drizzle-pg/`, generated from `src/lib/db/schema.pg.ts`. The app itself still queries through the SQLite schema, so that copy stores what the SQLite columns write.
@@ -104,15 +106,15 @@ wrap on management screens.
 
 **Shared pieces.**
 
-| Piece | Purpose |
-|---|---|
-| `src/components/brand.tsx` | The wordmark, used on every public surface and in the app shell |
-| `src/components/page-header.tsx` | Page title, description, and actions |
-| `src/components/empty-state.tsx` | The one empty/error pattern, with a next step |
-| `src/components/segmented-control.tsx` | Mutually exclusive choices (provider, theme, sync mode) |
-| `src/components/select-field.tsx` | The styled native select the project has no primitive for |
-| `src/features/keyboard/components/shortcut-list.tsx` | The shortcut registry rendered as a list |
-| `src/features/triage/priority.ts` | Priority colours, names, and key hints |
+| Piece                                                | Purpose                                                         |
+| ---------------------------------------------------- | --------------------------------------------------------------- |
+| `src/components/brand.tsx`                           | The wordmark, used on every public surface and in the app shell |
+| `src/components/page-header.tsx`                     | Page title, description, and actions                            |
+| `src/components/empty-state.tsx`                     | The one empty/error pattern, with a next step                   |
+| `src/components/segmented-control.tsx`               | Mutually exclusive choices (provider, theme, sync mode)         |
+| `src/components/select-field.tsx`                    | The styled native select the project has no primitive for       |
+| `src/features/keyboard/components/shortcut-list.tsx` | The shortcut registry rendered as a list                        |
+| `src/features/triage/priority.ts`                    | Priority colours, names, and key hints                          |
 
 **Motion.** Movement that the user can interrupt uses a spring
 (`src/features/landing/spring.ts`) and writes transforms straight to the DOM.

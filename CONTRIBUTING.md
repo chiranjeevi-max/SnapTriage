@@ -84,6 +84,7 @@ src/
 SnapTriage uses a feature-based folder structure. Each feature (`auth`, `inbox`, `triage`, `keyboard`, `sync`, `repos`) is self-contained with its own components, hooks, and logic.
 
 Key patterns:
+
 - **TanStack Query** for all server state (caching, polling, optimistic updates)
 - **Zustand** for client-only UI state (keyboard selection, modal states)
 - **Provider abstraction** (`IssueProvider` interface) for GitHub/GitLab interchangeability

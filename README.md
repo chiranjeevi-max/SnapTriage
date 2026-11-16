@@ -43,21 +43,21 @@ Issue triage is slow. GitHub and GitLab give you browsing UIs, not processing UI
 
 ## Keyboard Shortcuts
 
-| Key | Action |
-|-----|--------|
-| `J` / `K` | Navigate down / up |
+| Key                | Action              |
+| ------------------ | ------------------- |
+| `J` / `K`          | Navigate down / up  |
 | `Enter` / `Escape` | Open / close detail |
-| `1` - `4` | Set priority P0-P3 |
-| `D` | Dismiss / undismiss |
-| `L` | Edit labels |
-| `A` | Edit assignees |
-| `S` | Snooze issue |
-| `T` | Apply a preset |
-| `W` | Wait for a reply |
-| `Z` | Undo last action |
-| `R` | Sync issues |
-| `Shift+P` | Push batch changes |
-| `?` | Show all shortcuts |
+| `1` - `4`          | Set priority P0-P3  |
+| `D`                | Dismiss / undismiss |
+| `L`                | Edit labels         |
+| `A`                | Edit assignees      |
+| `S`                | Snooze issue        |
+| `T`                | Apply a preset      |
+| `W`                | Wait for a reply    |
+| `Z`                | Undo last action    |
+| `R`                | Sync issues         |
+| `Shift+P`          | Push batch changes  |
+| `?`                | Show all shortcuts  |
 
 Reply to an issue with `Ctrl+Enter` (or `Cmd+Enter`) from the composer.
 
@@ -103,15 +103,15 @@ Set `WEBHOOK_SECRET` and point the provider at `/api/webhooks/github` (or `/api/
 
 ## Tech Stack
 
-| Layer | Choice |
-|-------|--------|
-| Framework | Next.js 16 (App Router) + TypeScript |
-| Styling | Tailwind CSS 4 + shadcn/ui |
-| Database | SQLite (default) + Postgres via Drizzle ORM |
-| Auth | Auth.js, GitHub/GitLab OAuth + PAT fallback (encrypted) |
-| State | TanStack Query + Zustand |
-| Logging | Pino (structured JSON logger) |
-| Testing | Vitest + Playwright |
+| Layer     | Choice                                                  |
+| --------- | ------------------------------------------------------- |
+| Framework | Next.js 16 (App Router) + TypeScript                    |
+| Styling   | Tailwind CSS 4 + shadcn/ui                              |
+| Database  | SQLite (default) + Postgres via Drizzle ORM             |
+| Auth      | Auth.js, GitHub/GitLab OAuth + PAT fallback (encrypted) |
+| State     | TanStack Query + Zustand                                |
+| Logging   | Pino (structured JSON logger)                           |
+| Testing   | Vitest + Playwright                                     |
 
 ## Roadmap
 
@@ -132,21 +132,21 @@ SnapTriage is production-ready today. What's next:
 <details>
 <summary><strong>Scripts</strong></summary>
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start dev server |
-| `npm run build` | Production build |
-| `npm run start` | Serve the production build |
-| `npm run lint` | Run ESLint |
-| `npm run typecheck` | TypeScript type check |
-| `npm test` | Run unit tests once |
-| `npm run test:watch` | Run unit tests in watch mode |
-| `npm run test:e2e` | Run E2E tests |
-| `npm run format` | Format with Prettier |
-| `npm run format:check` | Check formatting without writing |
-| `npm run db:generate` | Generate Drizzle migrations for SQLite and Postgres |
-| `npm run db:migrate` | Run migrations (on Postgres when `DATABASE_URL` is set) |
-| `npm run db:studio` | Open Drizzle Studio |
+| Command                | Description                                             |
+| ---------------------- | ------------------------------------------------------- |
+| `npm run dev`          | Start dev server                                        |
+| `npm run build`        | Production build                                        |
+| `npm run start`        | Serve the production build                              |
+| `npm run lint`         | Run ESLint                                              |
+| `npm run typecheck`    | TypeScript type check                                   |
+| `npm test`             | Run unit tests once                                     |
+| `npm run test:watch`   | Run unit tests in watch mode                            |
+| `npm run test:e2e`     | Run E2E tests                                           |
+| `npm run format`       | Format with Prettier                                    |
+| `npm run format:check` | Check formatting without writing                        |
+| `npm run db:generate`  | Generate Drizzle migrations for SQLite and Postgres     |
+| `npm run db:migrate`   | Run migrations (on Postgres when `DATABASE_URL` is set) |
+| `npm run db:studio`    | Open Drizzle Studio                                     |
 
 </details>
 
@@ -155,25 +155,25 @@ SnapTriage is production-ready today. What's next:
 
 See [`.env.example`](.env.example) for the full list. Required:
 
-| Variable | Description |
-|----------|-------------|
+| Variable      | Description                                       |
+| ------------- | ------------------------------------------------- |
 | `AUTH_SECRET` | Secret for Auth.js session and AES key derivation |
 
 For GitHub OAuth sign-in, also set `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET`. GitLab-only or PAT-only deployments can leave them unset.
 
 Optional:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AUTH_URL` | Base URL for Auth.js callbacks | `http://localhost:3000` |
-| `AUTH_SALT` | Cryptographic salt for AES encryption (an empty value is an error) | (built-in default) |
-| `DATABASE_URL` | Postgres connection string | (uses SQLite) |
-| `SQLITE_PATH` | SQLite database file path | `./data/snaptriage.db` |
-| `AUTH_GITLAB_ID` | GitLab OAuth App ID | |
-| `AUTH_GITLAB_SECRET` | GitLab OAuth App secret | |
-| `AUTH_GITLAB_URL` | Self-hosted GitLab URL | `https://gitlab.com` |
-| `WEBHOOK_SECRET` | Shared secret for GitHub/GitLab webhook sync, sent in the provider's signature header (never in the URL) | (webhook sync disabled) |
-| `TRUSTED_PROXY_HOPS` | How many proxies append the client address to `X-Forwarded-For`; the rate limiter trusts only those entries | `0` |
+| Variable             | Description                                                                                                 | Default                 |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `AUTH_URL`           | Base URL for Auth.js callbacks                                                                              | `http://localhost:3000` |
+| `AUTH_SALT`          | Cryptographic salt for AES encryption (an empty value is an error)                                          | (built-in default)      |
+| `DATABASE_URL`       | Postgres connection string                                                                                  | (uses SQLite)           |
+| `SQLITE_PATH`        | SQLite database file path                                                                                   | `./data/snaptriage.db`  |
+| `AUTH_GITLAB_ID`     | GitLab OAuth App ID                                                                                         |                         |
+| `AUTH_GITLAB_SECRET` | GitLab OAuth App secret                                                                                     |                         |
+| `AUTH_GITLAB_URL`    | Self-hosted GitLab URL                                                                                      | `https://gitlab.com`    |
+| `WEBHOOK_SECRET`     | Shared secret for GitHub/GitLab webhook sync, sent in the provider's signature header (never in the URL)    | (webhook sync disabled) |
+| `TRUSTED_PROXY_HOPS` | How many proxies append the client address to `X-Forwarded-For`; the rate limiter trusts only those entries | `0`                     |
 
 </details>
 
@@ -182,6 +182,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 ## Documentation
 
 For more detail on how SnapTriage works:
+
 - [Architecture & Tech Stack](docs/architecture.md)
 - [Security Overview](docs/security.md)
 

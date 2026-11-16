@@ -65,16 +65,16 @@ These override statistical defaults. Follow them exactly.
 
 ## Read on demand
 
-| Mention | Read |
-|---|---|
-| sync modes, deployment, providers | `docs/architecture.md` |
-| presets, replies, follow-ups | `docs/architecture.md` ("Presets, replies, and follow-ups") |
-| design language, shared UI pieces, `?data=` fixtures | `docs/architecture.md` ("Design Language") |
-| tokens, PAT sign-in identity, CSP, rate limit | `docs/security.md` |
-| setup, PR checks | `CONTRIBUTING.md` |
-| env vars | `.env.example` |
-| human overview | `README.md` |
-| known deferred defects | `docs/open-issues.md` (local, untracked) |
+| Mention                                              | Read                                                        |
+| ---------------------------------------------------- | ----------------------------------------------------------- |
+| sync modes, deployment, providers                    | `docs/architecture.md`                                      |
+| presets, replies, follow-ups                         | `docs/architecture.md` ("Presets, replies, and follow-ups") |
+| design language, shared UI pieces, `?data=` fixtures | `docs/architecture.md` ("Design Language")                  |
+| tokens, PAT sign-in identity, CSP, rate limit        | `docs/security.md`                                          |
+| setup, PR checks                                     | `CONTRIBUTING.md`                                           |
+| env vars                                             | `.env.example`                                              |
+| human overview                                       | `README.md`                                                 |
+| known deferred defects                               | `docs/open-issues.md` (local, untracked)                    |
 
 ## Validation
 
