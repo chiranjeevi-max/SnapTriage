@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * - **Auth:** Required (session-based)
  */
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { typedDb } from "@/lib/db/query";
 import { savedReplies } from "@/lib/db/schema";
@@ -22,6 +22,20 @@ import { createSavedReplySchema, parseBody } from "@/lib/validations";
 
 /** Maximum number of templates a user may keep. */
 const SAVED_REPLY_LIMIT = 100;
+
+/**
+ * Count a user's templates.
+ *
+ * @param userId - The owning user.
+ * @returns How many templates they have stored.
+ */
+async function countSavedReplies(userId: string): Promise<number> {
+  const rows = await typedDb
+    .select({ total: count() })
+    .from(savedReplies)
+    .where(eq(savedReplies.userId, userId));
+  return rows[0]?.total ?? 0;
+}
 
 /**
  * Lists the user's templates, most recently updated first.
@@ -66,20 +80,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const existing = await typedDb
-    .select({ id: savedReplies.id })
-    .from(savedReplies)
-    .where(eq(savedReplies.userId, session.user.id));
-
-  if (existing.length >= SAVED_REPLY_LIMIT) {
-    return NextResponse.json(
-      {
-        error: `You already have ${SAVED_REPLY_LIMIT} saved replies, the maximum allowed. Delete one to save another.`,
-      },
-      { status: 409 }
-    );
-  }
-
+  // Insert, then count, then undo if that made one too many. A count before the
+  // insert is what races: two requests can both read 99 and both insert. Counting
+  // after this row exists means the loser sees its own write included, and the
+  // delete keeps the stored set within the limit either way.
   const inserted = await typedDb
     .insert(savedReplies)
     .values({
@@ -90,6 +94,16 @@ export async function POST(req: Request) {
     .returning();
 
   const row = inserted[0];
+
+  if ((await countSavedReplies(session.user.id)) > SAVED_REPLY_LIMIT) {
+    await typedDb.delete(savedReplies).where(eq(savedReplies.id, row.id));
+    return NextResponse.json(
+      {
+        error: `You already have ${SAVED_REPLY_LIMIT} saved replies, the maximum allowed. Delete one to save another.`,
+      },
+      { status: 409 }
+    );
+  }
   return NextResponse.json(
     {
       id: row.id,

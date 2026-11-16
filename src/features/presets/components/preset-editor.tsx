@@ -109,23 +109,48 @@ export function PresetEditor({
   // The provider decides how long a value may be; the client only explains it.
   const limits = providerLimits[issue.provider === "gitlab" ? "gitlab" : "github"];
 
-  const labelOptions = useMemo(
-    () =>
-      [...(repoLabels ?? [])]
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .filter((label) => label.name.toLowerCase().includes(labelFilter.trim().toLowerCase())),
-    [repoLabels, labelFilter]
-  );
+  // A stored selection the repository no longer returns is kept in the list.
+  // Dropping it would leave the value in the preset with no toggle to remove it,
+  // so a label renamed upstream could be seen only by reading the saved bundle.
+  const labelOptions = useMemo<
+    Array<{ name: string; color: string | null; description: string | null; missing?: boolean }>
+  >(() => {
+    const known = new Set((repoLabels ?? []).map((label) => label.name));
+    return [
+      ...(repoLabels ?? []).map((label) => ({ ...label })),
+      ...labels
+        .filter((name) => !known.has(name))
+        .map((name) => ({ name, color: null, description: null, missing: true })),
+    ]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter((label) => label.name.toLowerCase().includes(labelFilter.trim().toLowerCase()));
+  }, [repoLabels, labels, labelFilter]);
 
-  const assigneeOptions = useMemo(
-    () =>
-      [...(collaborators ?? [])]
-        .sort((a, b) => a.username.localeCompare(b.username))
-        .filter((person) =>
-          person.username.toLowerCase().includes(assigneeFilter.trim().toLowerCase())
-        ),
-    [collaborators, assigneeFilter]
-  );
+  const assigneeOptions = useMemo<
+    Array<{
+      username: string;
+      avatar: string | null;
+      permission: "admin" | "write" | "read";
+      missing?: boolean;
+    }>
+  >(() => {
+    const known = new Set((collaborators ?? []).map((person) => person.username));
+    return [
+      ...(collaborators ?? []).map((person) => ({ ...person })),
+      ...assignees
+        .filter((login) => !known.has(login))
+        .map((login) => ({
+          username: login,
+          avatar: null,
+          permission: "read" as const,
+          missing: true,
+        })),
+    ]
+      .sort((a, b) => a.username.localeCompare(b.username))
+      .filter((person) =>
+        person.username.toLowerCase().includes(assigneeFilter.trim().toLowerCase())
+      );
+  }, [collaborators, assignees, assigneeFilter]);
 
   const actions = buildActions(priority, labels, assignees);
   const hasActions = Object.keys(actions).length > 0;
@@ -249,7 +274,15 @@ export function PresetEditor({
                     onClick={() => toggleLabel(label.name)}
                     className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-accent aria-pressed:text-foreground"
                   >
-                    {label.color ? (
+                    {label.missing ? (
+                      // Explained rather than hidden: the value is no longer on
+                      // the repository, but it is still in this preset and the
+                      // user needs a way to take it out.
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 shrink-0 rounded-full bg-destructive/40"
+                      />
+                    ) : label.color ? (
                       <span
                         aria-hidden="true"
                         className="h-2.5 w-2.5 shrink-0 rounded-full"
