@@ -36,8 +36,9 @@ These override statistical defaults. Follow them exactly.
 11. Keep PAT rate limiting on the shared `rate_limit_bucket` table and purge expired rows; do not reintroduce per-instance-only limits. Keys carry their scope (`pat:validate:<ip>`), and the purge horizon must be the longest window in use so one scope cannot reset another.
 12. Webhook auth is header-borne only: `X-Hub-Signature-256` (HMAC over the raw body) for GitHub, `X-Gitlab-Token` for GitLab. Never accept a secret in a query string.
 13. PAT sign-in identifies the user by the token's provider account, stored as `<instance>/<id>` in `access_token.providerAccountId` since GitLab ids repeat across instances. Provider-reported emails can be unverified, so an email only nominates a legacy row with a null `providerAccountId`, claimed when its stored token resolves to the same account.
-14. Publishing a comment is irreversible and has no idempotency key. Never auto-retry a send: claim it with the conditional update in `sendReply` (`src/features/replies/reply-service.ts`), and on an ambiguous failure keep the draft unconfirmed (`sendAttemptedAt` set) so Send is withheld. A definitive provider rejection may clear the claim; a timeout, abort, or 5xx must not.
+14. Publishing a comment is irreversible and has no idempotency key. Never auto-retry a send: claim it with the conditional update in `claimAttempt` (`src/features/replies/reply-service.ts`), which records `sendClaimId` and a `sendInFlightUntil` lease, and on an ambiguous failure keep the draft unconfirmed (`sendAttemptedAt` set, lease cleared) so Send is withheld. A definitive provider rejection may clear the claim; a timeout, abort, or 5xx must not. Every completion write — success delete, rejection clear, lease end — must match on `sendClaimId`, or a call that outlives its lease touches a newer attempt. A release must name the claim it saw; a release that cannot is refused rather than freeing whatever claim exists. Provider calls stay inside `REQUEST_TIMEOUT_MS` so a call cannot outlive the lease that protects it.
 15. A follow-up is an event, not a timer. Never advance `follow_up.lastSeenCommentId` from a detection pass. `armFollowUp` sets it once, and `reviewFollowUp` moves it forward. A reopen is a transition (`stateAtBaseline` closed → open), never merely "is open". Never let follow-up and snooze clear each other.
+
 ## Style
 
 - TypeScript `strict:true`, `target:ES2017`, `jsx:react-jsx`.
@@ -67,11 +68,13 @@ These override statistical defaults. Follow them exactly.
 | Mention | Read |
 |---|---|
 | sync modes, deployment, providers | `docs/architecture.md` |
+| presets, replies, follow-ups | `docs/architecture.md` ("Presets, replies, and follow-ups") |
 | design language, shared UI pieces, `?data=` fixtures | `docs/architecture.md` ("Design Language") |
 | tokens, PAT sign-in identity, CSP, rate limit | `docs/security.md` |
 | setup, PR checks | `CONTRIBUTING.md` |
 | env vars | `.env.example` |
 | human overview | `README.md` |
+| known deferred defects | `docs/open-issues.md` (local, untracked) |
 
 ## Validation
 

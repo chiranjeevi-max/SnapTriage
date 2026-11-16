@@ -38,6 +38,8 @@ To protect the PAT login endpoint from brute-force attacks, SnapTriage rate-limi
 - Counters live in the shared `rate_limit_bucket` table, so the limit holds across app instances. Expired rows are purged on each check, using the longest window in use, so a short-window scope can never reset a long-window one.
 - If the database is unreachable, it falls back to an in-memory limiter with a capped map size, so protection stays on.
 
+**What is not rate limited.** Publishing a reply (`POST /api/issues/[id]/replies`) has no limit. It is an irreversible write that posts to the provider under the user's token, and the send-claim only stops two concurrent attempts on the same draft: it does not stop a loop over many issues. Fetching comments and arming a follow-up are likewise unlimited, so a user can spend their own provider quota.
+
 ## Security Headers (Content Security Policy)
 
 SnapTriage enforces strict HTTP response headers via `next.config.ts` and `src/proxy.ts`:
