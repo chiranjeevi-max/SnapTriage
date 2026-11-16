@@ -197,7 +197,10 @@ export type ApplyPresetInput = z.infer<typeof applyPresetSchema>;
  */
 export const saveDraftSchema = z.object({
   body: z.string().max(1_000_000),
-  expectedVersion: z.number().int().min(0),
+  // Bounded to the Postgres `integer` range. `.int()` alone accepts values a
+  // `bigint` column would take but an `integer` column rejects, so the check
+  // would pass here and fail at the driver.
+  expectedVersion: z.number().int().min(0).max(2_147_483_647),
 });
 
 export type SaveDraftInput = z.infer<typeof saveDraftSchema>;
@@ -216,7 +219,7 @@ export const sendReplySchema = z.object({
     .string()
     .refine((value) => value.trim().length > 0, "A reply needs some text")
     .max(1_000_000),
-  expectedVersion: z.number().int().min(1).optional(),
+  expectedVersion: z.number().int().min(1).max(2_147_483_647).optional(),
 });
 
 export type SendReplyInput = z.infer<typeof sendReplySchema>;

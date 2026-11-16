@@ -224,7 +224,17 @@ describe("POST /api/issues/:id/replies — outcomes", () => {
         url: "https://github.com/octo/repo/issues/7#issuecomment-1001",
       },
     });
+    // What was actually sent, not just that a send happened. The stub would
+    // happily echo a different body, so this is the assertion that catches a
+    // route forwarding the wrong text.
     expect(provider.createComment).toHaveBeenCalledTimes(1);
+    expect(provider.createComment).toHaveBeenCalledWith(
+      "octo",
+      "repo",
+      7,
+      "token-abc",
+      "Thanks for the report."
+    );
   });
 
   /**

@@ -92,6 +92,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       supported: true,
     });
   } catch (error) {
+    if (error instanceof ProviderApiError && error.status === 400) {
+      // The adapters reject a cursor they cannot parse with a 400 of their own
+      // construction. That is the request's mistake, not the provider's, so it
+      // must not be reported as an upstream failure.
+      return NextResponse.json({ error: "Invalid comment cursor" }, { status: 400 });
+    }
+
     if (error instanceof ProviderApiError) {
       apiLogger.warn(
         { issueId: id, provider: target.provider, status: error.status },

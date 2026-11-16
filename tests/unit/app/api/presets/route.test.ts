@@ -170,6 +170,10 @@ describe("POST /api/presets", () => {
     const res = await createPreset({ repoId: REPO_ID, name: "x", actions: { priority: 1 } });
 
     expect(res.status).toBe(401);
+    // Nothing touched the database. A 401 that still ran an insert would leak a
+    // row for a caller who is not signed in.
+    expect(fakeDb.state.log).toHaveLength(0);
+    expect(fakeDb.state.rows.triage_preset).toHaveLength(0);
   });
 
   /**

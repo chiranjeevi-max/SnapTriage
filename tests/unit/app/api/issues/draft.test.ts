@@ -92,6 +92,27 @@ describe("GET /api/issues/:id/draft", () => {
   });
 
   /**
+   * @target PUT /api/issues/:id/draft
+   * @dependencies auth
+   * @scenario No session, with a body that would otherwise be accepted
+   * @expectedOutput 401 and nothing written. The write handlers keep their own
+   *                 guard, so each has to be exercised: a shared helper would
+   *                 hide one of them losing it.
+   */
+  it("should return 401 on write when not authenticated", async () => {
+    mockAuth.mockResolvedValue(null as never);
+
+    const created = await putDraft({ body: "Draft text", expectedVersion: 0 });
+
+    expect(created.status).toBe(401);
+    expect(fakeDb.state.rows.reply_draft).toHaveLength(0);
+
+    const removed = await deleteDraft();
+
+    expect(removed.status).toBe(401);
+  });
+
+  /**
    * @target GET /api/issues/:id/draft
    * @dependencies findDraft
    * @scenario Nothing has been written yet

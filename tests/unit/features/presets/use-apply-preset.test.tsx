@@ -190,6 +190,11 @@ describe("useApplyPreset", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
+    // The request must actually ask for staging. Without this the test passes
+    // even if the flag were dropped, because the stub answers batch regardless.
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({ presetId: "preset-1", batch: true });
+
     expect(showUndoToast).not.toHaveBeenCalled();
     expect(pushUndo).toHaveBeenCalledWith({
       issueId: "issue-1",
