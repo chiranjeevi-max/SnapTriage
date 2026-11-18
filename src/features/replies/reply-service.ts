@@ -23,7 +23,7 @@
  * A send starts only when the claim's lease covers the provider call. A lease
  * that arrives too short refuses the send before any provider request.
  */
-import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { dbNowPlus } from "@/lib/db/db-clock";
 import { issues, providerIdentities, replyDrafts, repos } from "@/lib/db/schema";
@@ -345,21 +345,30 @@ export async function sendReply(
     };
   }
 
-  // The lease was stamped by the database when the claim was written.
-  // Delivering the response and scheduling this code use it up. Start the call
-  // only when the lease covers its full duration plus settlement, comparing the
-  // database-stamped deadline against this instance's clock. The release
-  // compares against the database's, so the frame error here is one-sided. A
-  // database clock behind this instance's only shortens the measured remainder
-  // and refuses more, never less. A refusal is definitive. No provider call was
-  // made, the claim is cleared, and the draft returns to editable, so the user
-  // can retry.
-  const remainingMs = refused.leaseEndsAt.getTime() - Date.now();
-  if (remainingMs < REPLY_SEND_MIN_LEASE_MS) {
-    // Log before the cleanup write. If that write fails, the remainingMs that
+  // The lease was stamped by the database, so check it there. A JS comparison
+  // would mix the database clock with this instance's; when the database clock
+  // runs ahead, that would pass a call with less than one deadline left. The
+  // select is a read of the claim row and starts no provider work.
+  const covered = await typedDb
+    .select({ id: replyDrafts.id })
+    .from(replyDrafts)
+    .where(
+      and(
+        eq(replyDrafts.issueId, target.issueId),
+        eq(replyDrafts.userId, userId),
+        eq(replyDrafts.sendClaimId, refused.claimId),
+        gte(replyDrafts.sendInFlightUntil, dbNowPlus(REPLY_SEND_MIN_LEASE_MS))
+      )
+    );
+  if (covered.length === 0) {
+    // Log before the cleanup write. If that write fails, the lease end that
     // triggered the refusal is still on record.
     apiLogger.warn(
-      { issueId: target.issueId, remainingMs },
+      {
+        issueId: target.issueId,
+        leaseEndsAt: refused.leaseEndsAt.toISOString(),
+        minLeaseMs: REPLY_SEND_MIN_LEASE_MS,
+      },
       "Reply claim lease too short; send refused before any provider call"
     );
     await clearAttempt(userId, target.issueId, refused.claimId);
@@ -465,9 +474,9 @@ export async function sendReply(
  * @param body - The text being sent.
  * @param expectedVersion - The version the composer displayed, or `null`.
  * @returns Why the claim failed, or the identity it took when this caller owns
- *          the attempt, plus the lease's end so the caller can refuse a call
- *          the lease cannot cover. The identity is what a later release must
- *          match.
+ *          the attempt, plus the lease's end for the refusal's diagnostic log.
+ *          The refusal itself is `sendReply`'s database-side check. The identity
+ *          is what a later release must match.
  */
 async function claimAttempt(
   userId: string,

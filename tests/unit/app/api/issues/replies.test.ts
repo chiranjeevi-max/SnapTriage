@@ -381,12 +381,13 @@ describe("POST /api/issues/:id/replies — outcomes", () => {
   /**
    * @target POST /api/issues/:id/replies
    * @dependencies sendReply, REPLY_SEND_MIN_LEASE_MS
-   * @scenario The claim's lease arrives too short to cover the provider call
+   * @scenario The database clock at check time runs 100s ahead, so the claim's
+   *           lease is too short to cover the provider call
    * @expectedOutput 409 without `unconfirmed`: nothing was posted, so the
    *                 composer keeps Send available.
    */
   it("should return a definitive 409 when the claim's lease is too short", async () => {
-    fakeDb.state.dbNowOffsetMs = -100_000;
+    fakeDb.state.dbNowOffsetMs = 100_000;
 
     try {
       const res = await postReply({ body: "Thanks" });

@@ -604,15 +604,15 @@ describe("sendReply — the published path", () => {
   /**
    * @target sendReply, claimAttempt
    * @dependencies REPLY_SEND_MIN_LEASE_MS, dbNowPlus
-   * @scenario The fake's database clock runs 100s behind, so the claim's lease
-   *           arrives with about 20s left — less than a call plus settlement
+   * @scenario The database clock at check time runs 100s ahead of the sender's,
+   *           so the claim's lease has about 20s left when the database checks it
    * @expectedOutput A definitive 409: the send is refused before any provider
    *                 call, no `unconfirmed` flag is set because nothing was
    *                 posted, and the claim fields are cleared so the draft is
    *                 editable again.
    */
   it("should refuse the send when the claim's lease cannot cover the call", async () => {
-    fakeDb.state.dbNowOffsetMs = -100_000;
+    fakeDb.state.dbNowOffsetMs = 100_000;
     try {
       const failure = sendFailure(await sendReply("user-1", TARGET, "Thanks for the report."));
 
@@ -633,13 +633,13 @@ describe("sendReply — the published path", () => {
   /**
    * @target sendReply
    * @dependencies REPLY_SEND_MIN_LEASE_MS
-   * @scenario The database clock runs 80s behind, leaving about 40s of lease —
-   *           above the floor
-   * @expectedOutput The send proceeds: the guard refuses only what it cannot
-   *                 cover, not everything the delay touched.
+   * @scenario The database clock at check time runs 10s behind the sender's,
+   *           leaving about 130s of lease, above the floor
+   * @expectedOutput The send proceeds. The database check refuses only leases
+   *                 that cannot cover the call.
    */
   it("should still send when the lease covers the call", async () => {
-    fakeDb.state.dbNowOffsetMs = -80_000;
+    fakeDb.state.dbNowOffsetMs = -10_000;
     try {
       const result = await sendReply("user-1", TARGET, "Thanks for the report.");
       expect(result.ok).toBe(true);

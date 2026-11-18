@@ -338,9 +338,9 @@ function sortRows<RowType extends Row>(rows: RowType[], terms: unknown[]): RowTy
  * a deadline stamped after the delay. Any other SQL fragment is unsupported and
  * throws rather than landing in a row as an object.
  */
-function applyValue(value: unknown, offsetMs = 0): unknown {
+function applyValue(value: unknown): unknown {
   if (typeof value === "object" && value !== null) {
-    if (isDbNowPlus(value)) return new Date(Date.now() + value[DB_NOW_PLUS] + offsetMs);
+    if (isDbNowPlus(value)) return new Date(Date.now() + value[DB_NOW_PLUS]);
     if ("queryChunks" in (value as object)) {
       throw new Error("fake-db: unsupported SQL expression in a write value");
     }
@@ -349,10 +349,10 @@ function applyValue(value: unknown, offsetMs = 0): unknown {
 }
 
 /** Resolve every value in a `set` object at apply time. */
-function resolveSet(values: Row, offsetMs = 0): Row {
+function resolveSet(values: Row): Row {
   const resolved: Row = {};
   for (const [key, value] of Object.entries(values)) {
-    resolved[key] = applyValue(value, offsetMs);
+    resolved[key] = applyValue(value);
   }
   return resolved;
 }
@@ -412,11 +412,12 @@ export interface FakeDbState {
    */
   updateResponseDelayMs?: number;
   /**
-   * How far the fake's database clock runs from the app clock, in milliseconds.
+   * How far the fake's database clock runs from the app clock when a condition
+   * is evaluated, in milliseconds.
    *
-   * Negative means the database is behind, so a `dbNowPlus` deadline arrives
-   * partly spent. This is the seam for testing the pre-call lease guard without
-   * waiting out a real response delay. Reset by {@link FakeDb.reset}.
+   * Positive means the database is ahead at check time, so a deadline stamped
+   * earlier looks shorter; negative means behind. It shifts comparisons, not
+   * writes. Reset by {@link FakeDb.reset}.
    */
   dbNowOffsetMs?: number;
 }
@@ -586,7 +587,10 @@ export function createFakeDb(): FakeDb {
               scopes = widened;
             }
 
-            return scopes.filter((scope) => condition === undefined || matches(condition, scope));
+            return scopes.filter(
+              (scope) =>
+                condition === undefined || matches(condition, scope, state.dbNowOffsetMs ?? 0)
+            );
           };
 
           const materialize = (scopes: Array<Map<object, Row>>): Row[] => {
@@ -629,7 +633,7 @@ export function createFakeDb(): FakeDb {
             const created: Row[] = [];
 
             for (const values of incoming) {
-              const row = defaultsFor(key, resolveSet(values, state.dbNowOffsetMs ?? 0));
+              const row = defaultsFor(key, resolveSet(values));
               const existing = keyFields
                 ? tableRows(key).find((candidate) =>
                     keyFields.every((field) => candidate[field] === row[field])
@@ -649,7 +653,7 @@ export function createFakeDb(): FakeDb {
               }
               if (conflict.kind === "skip") continue;
 
-              Object.assign(existing, resolveSet(conflict.set, state.dbNowOffsetMs ?? 0));
+              Object.assign(existing, resolveSet(conflict.set));
               created.push(existing);
             }
 
@@ -691,7 +695,7 @@ export function createFakeDb(): FakeDb {
           return {
             where(condition?: unknown) {
               const apply = () => {
-                const resolved = resolveSet(values, state.dbNowOffsetMs ?? 0);
+                const resolved = resolveSet(values);
                 const updated: Row[] = [];
                 for (const row of tableRows(key)) {
                   const scope = new Map<object, Row>([[table as object, row]]);
