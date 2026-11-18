@@ -27,6 +27,7 @@ import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { providerLimits, type ProviderName } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
+import { REPLY_SEND_LEASE_MS } from "@/lib/provider-timing";
 import { apiLogger } from "@/lib/logger";
 import type { ProviderComment } from "@/lib/provider-interface";
 
@@ -409,16 +410,6 @@ export async function sendReply(
 }
 
 /**
- * How long a provider call is assumed to take before the claim stops counting as
- * "in flight".
- *
- * The client aborts at 30 seconds, so this is comfortably beyond any call that
- * could still be running. It exists so a crashed process cannot make a draft
- * permanently unreleasable; it is not a timeout on the call itself.
- */
-const SEND_LEASE_MS = 120_000;
-
-/**
  * Claim the right to send, atomically, storing the text being sent.
  *
  * Two statements, in this order, and both are needed:
@@ -484,8 +475,10 @@ async function claimAttempt(
       sendClaimId: claimId,
       // A lease, not a flag: if this process dies mid-call the row must not stay
       // unreleasable forever. Past this instant the call is taken to have ended
-      // however it ended, and the claim becomes an ordinary unresolved one.
-      sendInFlightUntil: new Date(now.getTime() + SEND_LEASE_MS),
+      // however it ended, and the claim becomes an ordinary unresolved one. The
+      // value is derived from the request deadline, so it cannot end up shorter
+      // than a call that is still running.
+      sendInFlightUntil: new Date(now.getTime() + REPLY_SEND_LEASE_MS),
       body,
       updatedAt: now,
     })
