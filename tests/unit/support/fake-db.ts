@@ -38,7 +38,7 @@ import {
   triagePresets,
   triageState,
 } from "@/lib/db/schema";
-import { DB_NOW_PLUS } from "@/lib/db/db-clock";
+import { DB_NOW_PLUS, isDbNowPlus } from "@/lib/db/db-clock";
 
 export type IssueRow = typeof issues.$inferSelect;
 export type RepoRow = typeof repos.$inferSelect;
@@ -88,8 +88,9 @@ const NATURAL_KEYS: Partial<Record<TableKey, readonly string[]>> = {
 
 type Row = Record<string, unknown>;
 
-/** Columns and parameters as they appear inside a flattened condition. */
-type Token = { column: { name: string; table: object } } | { param: unknown } | string;
+/** Columns, parameters, and database-clock values inside a flattened condition. */
+type Token =
+  { column: { name: string; table: object } } | { param: unknown } | { dbNowPlus: number } | string;
 
 function isColumn(value: object): value is { name: string; table: object } {
   return typeof (value as { name?: unknown }).name === "string" && "table" in value;
@@ -110,6 +111,10 @@ function flatten(node: unknown, out: Token[] = []): Token[] {
 
   const obj = node as Record<string, unknown>;
 
+  if (isDbNowPlus(obj)) {
+    out.push({ dbNowPlus: obj[DB_NOW_PLUS] });
+    return out;
+  }
   if (Array.isArray(obj.queryChunks)) {
     flatten(obj.queryChunks, out);
     return out;
@@ -163,9 +168,10 @@ function topLevelIndex(tokens: Token[], needle: string): number {
   return -1;
 }
 
-function resolve(token: Token, scope: ReadonlyMap<object, Row>): unknown {
+function resolve(token: Token, scope: ReadonlyMap<object, Row>, dbNowOffsetMs = 0): unknown {
   if (typeof token === "string") return token;
   if ("param" in token) return token.param;
+  if ("dbNowPlus" in token) return new Date(Date.now() + token.dbNowPlus + dbNowOffsetMs);
   const row = scope.get(token.column.table);
   return row ? row[token.column.name] : undefined;
 }
@@ -195,31 +201,37 @@ const COMPARISONS: Record<string, (left: unknown, right: unknown) => boolean> = 
  * model the difference. Anything else throws, so a test cannot silently pass
  * because an unhandled condition was treated as true.
  */
-function matches(condition: unknown, scope: ReadonlyMap<object, Row>): boolean {
+function matches(condition: unknown, scope: ReadonlyMap<object, Row>, dbNowOffsetMs = 0): boolean {
   const tokens = stripParens(flatten(condition));
 
   const andAt = topLevelIndex(tokens, " and ");
   if (andAt !== -1) {
     const left = tokens.slice(0, andAt);
     const right = tokens.slice(andAt + 1);
-    return matches(tokensToCondition(left), scope) && matches(tokensToCondition(right), scope);
+    return (
+      matches(tokensToCondition(left), scope, dbNowOffsetMs) &&
+      matches(tokensToCondition(right), scope, dbNowOffsetMs)
+    );
   }
 
   const orAt = topLevelIndex(tokens, " or ");
   if (orAt !== -1) {
     const left = tokens.slice(0, orAt);
     const right = tokens.slice(orAt + 1);
-    return matches(tokensToCondition(left), scope) || matches(tokensToCondition(right), scope);
+    return (
+      matches(tokensToCondition(left), scope, dbNowOffsetMs) ||
+      matches(tokensToCondition(right), scope, dbNowOffsetMs)
+    );
   }
 
   if (tokens.length === 2 && (tokens[1] === " is null" || tokens[1] === " is not null")) {
-    const value = resolve(tokens[0], scope);
+    const value = resolve(tokens[0], scope, dbNowOffsetMs);
     return tokens[1] === " is null" ? value === null : value !== null;
   }
 
   if (tokens.length === 3 && typeof tokens[1] === "string" && tokens[1] in COMPARISONS) {
-    const left = scalar(resolve(tokens[0], scope));
-    const right = scalar(resolve(tokens[2], scope));
+    const left = scalar(resolve(tokens[0], scope, dbNowOffsetMs));
+    const right = scalar(resolve(tokens[2], scope, dbNowOffsetMs));
     if (left === null || left === undefined || right === null || right === undefined) return false;
     return COMPARISONS[tokens[1]](left, right);
   }
@@ -228,10 +240,10 @@ function matches(condition: unknown, scope: ReadonlyMap<object, Row>): boolean {
   const inAt = tokens.findIndex((token) => token === " in ");
   if (inAt === 1 && tokens.length >= 3) {
     const values = tokens.slice(2).flatMap((token) => {
-      const value = resolve(token, scope);
+      const value = resolve(token, scope, dbNowOffsetMs);
       return Array.isArray(value) ? value.map(scalar) : [scalar(value)];
     });
-    return values.includes(scalar(resolve(tokens[0], scope)));
+    return values.includes(scalar(resolve(tokens[0], scope, dbNowOffsetMs)));
   }
 
   throw new Error(`fake-db: unsupported condition shape: ${describeTokens(tokens)}`);
@@ -243,6 +255,7 @@ function describeTokens(tokens: Token[]): string {
     .map((token) => {
       if (typeof token === "string") return JSON.stringify(token);
       if ("param" in token) return JSON.stringify(token.param);
+      if ("dbNowPlus" in token) return `<dbNow+${token.dbNowPlus}>`;
       return `<${token.column.name}>`;
     })
     .join(" ");
@@ -258,6 +271,7 @@ function tokensToCondition(tokens: Token[]): object {
   const queryChunks = tokens.map((token) => {
     if (typeof token === "string") return { value: [token] };
     if ("param" in token) return { value: token.param };
+    if ("dbNowPlus" in token) return { [DB_NOW_PLUS]: token.dbNowPlus };
     return token.column;
   });
   return { queryChunks };
@@ -326,8 +340,7 @@ function sortRows<RowType extends Row>(rows: RowType[], terms: unknown[]): RowTy
  */
 function applyValue(value: unknown, offsetMs = 0): unknown {
   if (typeof value === "object" && value !== null) {
-    const marker = (value as Record<symbol, unknown>)[DB_NOW_PLUS];
-    if (typeof marker === "number") return new Date(Date.now() + marker + offsetMs);
+    if (isDbNowPlus(value)) return new Date(Date.now() + value[DB_NOW_PLUS] + offsetMs);
     if ("queryChunks" in (value as object)) {
       throw new Error("fake-db: unsupported SQL expression in a write value");
     }
@@ -682,9 +695,14 @@ export function createFakeDb(): FakeDb {
                 const updated: Row[] = [];
                 for (const row of tableRows(key)) {
                   const scope = new Map<object, Row>([[table as object, row]]);
-                  if (condition !== undefined && !matches(condition, scope)) continue;
+                  if (
+                    condition !== undefined &&
+                    !matches(condition, scope, state.dbNowOffsetMs ?? 0)
+                  ) {
+                    continue;
+                  }
                   Object.assign(row, resolved);
-                  updated.push(row);
+                  updated.push({ ...row });
                 }
                 state.log.push(`db:update:${key}`);
                 return updated;

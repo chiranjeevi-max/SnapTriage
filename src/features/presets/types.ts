@@ -226,12 +226,11 @@ export function describeResolution(resolution: PresetResolution): string {
  * Collapse case variants so a removal list carries one entry per provider name.
  *
  * `Bug` and `bug` are one label, and `Jo` and `jo` are one login. Removing both
- * asks the provider to delete the same thing twice. For labels that is a second
- * delete of a name the provider has already removed, and the failure takes the
- * whole undo with it; for logins the removal is one list call and the duplicate
- * is merely redundant. The rule is the same for both: the first casing wins, and
- * callers pass the staged variant first because that is the casing the earlier
- * action used.
+ * asks the provider to delete the same thing twice. For labels, the second
+ * delete targets a name the provider has already removed, and the failure takes
+ * the whole undo with it. For logins, the removal is one list call and the
+ * duplicate is redundant. The first casing wins, and callers pass the staged
+ * variant first because the earlier action used it.
  *
  * @param values - Names to deduplicate.
  * @returns One name per case-insensitive key, in first-seen order.
@@ -290,7 +289,7 @@ export function invertToPayload(
     // A label the apply read already carried was not added by the preset, so it
     // is filtered out of the removal set. Compared case-insensitively because
     // the providers treat `Bug` and `bug` as one label, and the resolution may
-    // have been computed from a cache older than this snapshot: `Bug` can be in
+    // have been computed from a cache older than this snapshot. `Bug` can be in
     // `addedLabels` while `previous.labels` already holds `bug`.
     const applied = new Set(previous.labels.map((label) => label.toLowerCase()));
     const added = addedLabels.filter((label) => !applied.has(label.toLowerCase()));

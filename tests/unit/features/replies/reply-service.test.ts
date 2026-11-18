@@ -1070,6 +1070,36 @@ describe("releaseSendClaim", () => {
 
   /**
    * @target releaseSendClaim
+   * @dependencies dbNowPlus
+   * @scenario The releasing instance's clock is 10s ahead of the database's, and
+   *           the lease is 5s past the app clock but still 5s ahead of the
+   *           database clock
+   * @expectedOutput `in_flight`. The release compares the database-stamped lease
+   *                 with the database clock, so app-clock skew cannot free a
+   *                 claim while the provider call is still running.
+   */
+  it("should use the database clock, not the releasing instance's", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({
+        sendAttemptedAt: new Date("2026-01-05T00:00:00.000Z"),
+        sendClaimId: "claim-1",
+        sendInFlightUntil: new Date(Date.now() - 5_000),
+      })
+    );
+    fakeDb.state.dbNowOffsetMs = -10_000;
+
+    try {
+      const outcome = await releaseSendClaim("user-1", ISSUE_ID, "claim-1");
+
+      expect(outcome).toBe("in_flight");
+      expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).not.toBeNull();
+    } finally {
+      fakeDb.state.dbNowOffsetMs = undefined;
+    }
+  });
+
+  /**
+   * @target releaseSendClaim
    * @dependencies none
    * @scenario The claim is already gone
    * @expectedOutput `missing`. "This attempt is settled" is already true, so the

@@ -29,10 +29,10 @@ import { checkPersistentRateLimit } from "@/lib/rate-limit";
 /**
  * Sends allowed per user per window.
  *
- * The limit is about a runaway client, not ordinary use: ten replies a minute
- * is well above a person triaging a queue and well below a loop. The bucket is
- * keyed by user rather than IP because the session authorises the write and the
- * consequence is the account's public output, wherever it is sent from.
+ * Ten replies a minute bounds a runaway client without constraining a person
+ * triaging a queue. The bucket is keyed by user rather than IP because the
+ * session authorises the write and the consequence is the account's public
+ * output, wherever it is sent from.
  */
 const SEND_LIMIT = 10;
 const SEND_WINDOW_MS = 60_000;
@@ -50,11 +50,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Checked before the body is parsed or the issue is loaded: this is the only
-  // path that creates something a third party can see, so the bound has to apply
-  // to every request that could reach the provider. A 429 is a definitive
-  // refusal, so the client re-enables Send instead of latching the draft
-  // unconfirmed over a comment that was never posted.
+  // Checked before the body is parsed or the issue is loaded. This is the only
+  // path that creates something a third party can see, so the bound applies to
+  // every request that could reach the provider. A 429 is a definitive refusal,
+  // so the client re-enables Send instead of latching the draft unconfirmed
+  // over a comment that was never posted.
   if (await checkPersistentRateLimit(`reply:send:${session.user.id}`, SEND_LIMIT, SEND_WINDOW_MS)) {
     return NextResponse.json(
       { error: "Too many replies in a short time. Wait a moment before sending another." },

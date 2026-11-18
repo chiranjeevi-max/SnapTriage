@@ -99,7 +99,7 @@ export function unconfirmedNotice(providerUrl: string | null): string {
  * `readApiError` returns only the sentence, and this response carries the
  * `unconfirmed` flag in the same body, so one parse has to produce both.
  *
- * A 5xx is never a definitive rejection, whatever the body says: a gateway can
+ * A 5xx is never a definitive rejection, whatever the body says. A gateway can
  * swallow the flag, and treating that as a refusal drops the guard on a comment
  * the provider may already have published. An unreadable body is treated the
  * same way for the same reason.

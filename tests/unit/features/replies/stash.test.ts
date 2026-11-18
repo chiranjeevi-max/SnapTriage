@@ -235,7 +235,30 @@ describe("stash", () => {
   });
 
   /**
-   * @target setStashed, readIndex
+   * @target setStashed, stashSnapshot
+   * @dependencies sessionStorage
+   * @scenario The index is removed while two entries are live, then a third is
+   *           written
+   * @expectedOutput The rebuild keeps A and B, so all three survive a reload. A
+   *                 missing index must not silently hide entries the tab still
+   *                 holds and the cap never evicted.
+   */
+  it("should rebuild a lost index from the live entries", async () => {
+    setStashed("issue-rebuild-a", "A");
+    setStashed("issue-rebuild-b", "B");
+    window.sessionStorage.removeItem(INDEX_KEY);
+    setStashed("issue-rebuild-c", "C");
+
+    vi.resetModules();
+    const reloaded = await import("@/features/replies/stash");
+
+    expect(reloaded.stashSnapshot("issue-rebuild-a")).toBe("A");
+    expect(reloaded.stashSnapshot("issue-rebuild-b")).toBe("B");
+    expect(reloaded.stashSnapshot("issue-rebuild-c")).toBe("C");
+  });
+
+  /**
+   * @target setStashed, readIndexOrNull
    * @dependencies sessionStorage
    * @scenario The index is not valid JSON
    * @expectedOutput The write succeeds and rewrites a usable index. A corrupted
@@ -246,11 +269,11 @@ describe("stash", () => {
 
     expect(() => setStashed("issue-corrupt", "text")).not.toThrow();
     expect(stashSnapshot("issue-corrupt")).toBe("text");
-    expect(JSON.parse(window.sessionStorage.getItem(INDEX_KEY) ?? "[]")).toEqual(["issue-corrupt"]);
+    expect(JSON.parse(window.sessionStorage.getItem(INDEX_KEY) ?? "[]")).toContain("issue-corrupt");
   });
 
   /**
-   * @target setStashed, readIndex
+   * @target setStashed, readIndexOrNull
    * @dependencies sessionStorage
    * @scenario The index repeats an id and contains a non-string entry
    * @expectedOutput The duplicate is collapsed and the non-string is ignored,

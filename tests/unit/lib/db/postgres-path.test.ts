@@ -35,9 +35,14 @@ describe.skipIf(!databaseUrl)("Postgres path", () => {
     const { typedDb } = await import("@/lib/db/query");
     const before = Date.now();
     const result = (await (
-      typedDb as unknown as { execute: (query: unknown) => Promise<{ rows?: unknown[][] }> }
-    ).execute(sql`SELECT ${dbNowPlus(1000)} AS value`)) as { rows?: unknown[][] };
-    const value = Number(result.rows?.[0]?.[0]);
+      typedDb as unknown as {
+        execute: (query: unknown) => Promise<{ rows?: Array<{ value: number }> }>;
+      }
+    ).execute(sql`SELECT ${dbNowPlus(1000)} AS value`)) as {
+      rows?: Array<{ value: number }>;
+    };
+    // Drizzle's raw execute uses arrayMode: false, so rows are objects.
+    const value = Number(result.rows?.[0]?.value);
 
     expect(value).toBeGreaterThanOrEqual(before);
     expect(value).toBeLessThanOrEqual(Date.now() + 1000);

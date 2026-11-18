@@ -185,10 +185,11 @@ export function Composer({ issue, className }: ComposerProps) {
   const notice = conflict ?? (lateArrival ? STORED_DRAFT_ARRIVED_LATE : null);
 
   // Text an unmount flush could not save, recovered when the composer is opened
-  // again. Subscribed rather than read once: the store outlives the component, so
-  // a flush that fails *after* this mount has no other way to reach a composer
-  // that is already on screen. It is also mirrored into sessionStorage, so the
-  // offer survives a refresh rather than only a navigation within one document.
+  // again. Subscribed rather than read once, because the store outlives the
+  // component. A flush that fails *after* this mount has no other way to reach a
+  // composer that is already on screen. It is also mirrored into sessionStorage,
+  // so the offer survives a refresh rather than only a navigation within one
+  // document.
   //
   // The entry is deliberately not removed on read — the user may leave without
   // answering, and it is only retired when they choose.

@@ -5,10 +5,10 @@
  *
  * The composer that owned the text is gone by the time the request settles, so
  * the copy has to live outside it. A failed flush happens during a soft
- * navigation: React runs the unmount cleanup, the save is refused or dropped,
+ * navigation. React runs the unmount cleanup, the save is refused or dropped,
  * and the component that could show it is already gone. Module memory carries
  * the copy across that navigation, but a later reload or hard navigation
- * destroys it. Mirroring the value into `sessionStorage` is what keeps the offer
+ * destroys it. Mirroring the value into `sessionStorage` keeps the offer
  * reachable after that reload. Storage is per tab and cleared when the tab
  * closes, which matches the lifetime of the recovery offer and keeps one issue's
  * unsent prose out of another tab's composer.
@@ -29,7 +29,7 @@ const INDEX_KEY = "snaptriage:reply-stash:index";
  * An entry is normally removed when the user answers its banner. One for an
  * issue they never revisit would otherwise live until the tab closes, so the
  * oldest is dropped. The cap is enforced on the in-memory map, not only on
- * storage: when storage is unavailable the map is the only copy, and an
+ * storage. When storage is unavailable the map is the only copy, and an
  * abandoned draft must not grow it without bound.
  */
 const MAX_ENTRIES = 10;
@@ -40,13 +40,13 @@ const listeners = new Set<() => void>();
 /**
  * The ids the stored index says are live, or `null` before the index is read.
  *
- * This is what makes a successful retirement authoritative even when
- * `removeItem` fails: the key may still be readable, but the index no longer
- * names it, so it is not offered again. `null` means the index is missing or
- * unreadable, which is different from an empty one: the order is unknown, so a
- * stored key is still recoverable. That fallback lasts only until the next write
- * or retirement rebuilds the index from this tab's knowledge; after that, a key
- * the new index does not name is no longer offered.
+ * A successful retirement stays authoritative even when `removeItem` fails. The
+ * key may still be readable, but the index no longer names it, so it is not
+ * offered again. `null` means the index is missing or unreadable, which is
+ * different from an empty one. The order is unknown, so a stored key is still
+ * recoverable. That fallback lasts only until the next write or retirement
+ * rebuilds the index from this tab's knowledge. After that, a key the new index
+ * does not name is no longer offered.
  */
 let liveIds: Set<string> | null = null;
 
@@ -62,9 +62,9 @@ function storage(): Storage | null {
 /**
  * Reads the eviction order, or `null` when the index is missing or unreadable.
  *
- * `null` and `[]` are not interchangeable here. An empty index is a valid,
- * authoritative statement that nothing is live; a missing one means the order
- * is unknown and a stored key may still be recoverable.
+ * `null` and `[]` are not interchangeable here. An empty index means nothing is
+ * live. A missing one means the order is unknown, so a stored key may still be
+ * recoverable.
  */
 function readIndexOrNull(store: Storage): string[] | null {
   try {
@@ -77,11 +77,6 @@ function readIndexOrNull(store: Storage): string[] | null {
   } catch {
     return null;
   }
-}
-
-/** Reads the eviction order, treating a missing index as empty. */
-function readIndex(store: Storage): string[] {
-  return readIndexOrNull(store) ?? [];
 }
 
 /**
@@ -118,6 +113,18 @@ function writeIndex(store: Storage, ids: string[]): void {
   } catch {
     // A full or unavailable store is not a reason to lose the in-memory copy.
   }
+}
+
+/**
+ * The ids to persist, rebuilding a missing index from the live memory ledger.
+ *
+ * A missing index must not drop entries the tab still holds. After a reload,
+ * those entries would be hidden even though their keys survived and the cap was
+ * never reached. The memory map is the live set, and its insertion order is the
+ * write order.
+ */
+function indexForWrite(store: Storage): string[] {
+  return readIndexOrNull(store) ?? [...memory.keys()];
 }
 
 /**
@@ -164,7 +171,7 @@ export function setStashed(issueId: string, body: string | null): void {
       }
       writeIndex(
         store,
-        readIndex(store).filter((id) => id !== issueId)
+        indexForWrite(store).filter((id) => id !== issueId)
       );
     }
   } else {
@@ -178,7 +185,7 @@ export function setStashed(issueId: string, body: string | null): void {
       try {
         store.setItem(KEY_PREFIX + issueId, body);
       } catch {
-        // Quota or disabled storage: the in-memory copy still serves this tab.
+        // Quota or disabled storage. The in-memory copy still serves this tab.
       }
     }
 
@@ -194,9 +201,9 @@ export function setStashed(issueId: string, body: string | null): void {
         }
       }
 
-      const ids = readIndex(store).filter((id) => id !== issueId && !evictedIds.has(id));
+      const ids = indexForWrite(store).filter((id) => id !== issueId && !evictedIds.has(id));
       ids.push(issueId);
-      // The storage index is capped independently: after a reload the map holds
+      // The storage index is capped independently. After a reload the map holds
       // only what this tab has read, while the index can still carry the full
       // previous session's list.
       while (ids.length > MAX_ENTRIES) {
@@ -250,7 +257,7 @@ export function stashSnapshot(issueId: string): string | null {
 
   // A live index that does not name this issue says the entry was retired, even
   // when `removeItem` failed and the key is still readable. A missing index is
-  // different: the order is unknown, so a stored key is still offered rather
+  // different. The order is unknown, so a stored key is still offered rather
   // than discarding text that may be the user's only copy. That fallback ends at
   // the next write or retirement, which rebuilds the index from this tab's
   // knowledge.

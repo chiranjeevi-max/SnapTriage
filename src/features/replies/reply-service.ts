@@ -20,8 +20,8 @@
  * That is weaker than a distributed transaction. Recovering an unconfirmed send
  * is a manual act: the user checks the issue before trying again.
  *
- * A send starts only when the claim's lease provably covers the provider call; a
- * lease that arrives too short refuses the send before any provider request.
+ * A send starts only when the claim's lease covers the provider call. A lease
+ * that arrives too short refuses the send before any provider request.
  */
 import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
@@ -345,17 +345,19 @@ export async function sendReply(
     };
   }
 
-  // The lease was stamped by the database when the claim was written;
-  // everything since — delivering the response, scheduling this code — has
-  // spent it invisibly. Start the call only when the lease provably covers its
-  // full duration plus settlement, comparing the database-stamped deadline
-  // against the same app clock a release would use. A refusal here is
-  // definitive: no provider call was made, the claim is cleared, and the draft
-  // returns to editable — nothing was posted, so the user may simply retry.
+  // The lease was stamped by the database when the claim was written.
+  // Delivering the response and scheduling this code use it up. Start the call
+  // only when the lease covers its full duration plus settlement, comparing the
+  // database-stamped deadline against this instance's clock. The release
+  // compares against the database's, so the frame error here is one-sided. A
+  // database clock behind this instance's only shortens the measured remainder
+  // and refuses more, never less. A refusal is definitive. No provider call was
+  // made, the claim is cleared, and the draft returns to editable, so the user
+  // can retry.
   const remainingMs = refused.leaseEndsAt.getTime() - Date.now();
   if (remainingMs < REPLY_SEND_MIN_LEASE_MS) {
-    // Log before the cleanup write: if that write fails, the evidence that
-    // triggered the refusal is the thing worth keeping.
+    // Log before the cleanup write. If that write fails, the remainingMs that
+    // triggered the refusal is still on record.
     apiLogger.warn(
       { issueId: target.issueId, remainingMs },
       "Reply claim lease too short; send refused before any provider call"
@@ -502,14 +504,13 @@ async function claimAttempt(
     .set({
       sendAttemptedAt: claimedAt,
       sendClaimId: claimId,
-      // A lease, not a flag: if this process dies mid-call the row must not stay
-      // unreleasable forever. Stamped by the database's own clock inside this
-      // write, so however long the write takes, the lease starts when the claim
-      // lands — a stalled claim cannot eat the provider call's budget. Four
-      // request deadlines: the first covers the scheduling gap between this
-      // write returning and the call starting (no database work sits in that
-      // gap), the second is the call itself, and two remain for settlement and
-      // for skew between the database's clock and the app.
+      // The lease keeps a crashed process from leaving the row unreleasable
+      // forever. It is stamped by the database's own clock inside this write, so
+      // however long the write takes, the lease starts when the claim lands. A
+      // stalled claim cannot eat the provider call's budget. The four deadlines
+      // cover the scheduling gap between this write returning and the call
+      // starting (no database work sits in that gap), the call itself,
+      // settlement, and clock skew.
       sendInFlightUntil: dbNowPlus(REPLY_SEND_LEASE_MS),
       body,
       updatedAt: claimedAt,
@@ -537,8 +538,8 @@ async function claimAttempt(
 
   if (claimed.length > 0) {
     const leaseEndsAt = claimed[0].sendInFlightUntil;
-    // Unreachable in practice — the same update just wrote it — but the column
-    // is nullable, and a missing lease must refuse the send, never run one.
+    // Unreachable in practice, since the same update just wrote it, but the
+    // column is nullable. A missing lease must refuse the send, never run one.
     return { claimId, leaseEndsAt: leaseEndsAt ?? new Date(0) };
   }
 
@@ -596,7 +597,10 @@ export async function releaseSendClaim(
         // Refuse while the provider call may still be running. Releasing then
         // lets a second call start while the first can still publish, which is
         // the duplicate this whole marker exists to prevent.
-        or(isNull(replyDrafts.sendInFlightUntil), lte(replyDrafts.sendInFlightUntil, now))
+        // The lease was stamped by the database, so compare it with the
+        // database clock. An app clock ahead of it would release a call that is
+        // still running.
+        or(isNull(replyDrafts.sendInFlightUntil), lte(replyDrafts.sendInFlightUntil, dbNowPlus(0)))
       )
     )
     .returning({ id: replyDrafts.id });

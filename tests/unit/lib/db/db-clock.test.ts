@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
-import { dbNowPlus } from "@/lib/db/db-clock";
+import { dbNowPlus, isDbNowPlus } from "@/lib/db/db-clock";
 
 vi.hoisted(() => {
   process.env.SQLITE_PATH = ":memory:";
@@ -36,5 +36,20 @@ describe("dbNowPlus", () => {
     // early, never late.
     expect(row.value).toBeGreaterThanOrEqual(before);
     expect(row.value).toBeLessThanOrEqual(after + 1000);
+  });
+});
+
+describe("isDbNowPlus", () => {
+  /**
+   * @target isDbNowPlus
+   * @dependencies none
+   * @scenario A marked database-clock fragment, a plain SQL fragment, and a Date
+   * @expectedOutput Only the marked fragment is a `DbNowPlus`; the guard is what
+   *                 lets the fake read the marker without a symbol cast.
+   */
+  it("should distinguish a database-clock fragment from plain SQL", () => {
+    expect(isDbNowPlus(dbNowPlus(1000))).toBe(true);
+    expect(isDbNowPlus(sql`select 1`)).toBe(false);
+    expect(isDbNowPlus(new Date())).toBe(false);
   });
 });
