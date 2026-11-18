@@ -92,3 +92,42 @@ export function unconfirmedNotice(providerUrl: string | null): string {
     "This reply may already be posted. Check the issue before sending again, so the reporter does not get it twice.";
   return providerUrl ? `${base} ${providerUrl}` : base;
 }
+
+/**
+ * Read a failed send response and decide whether the comment may exist.
+ *
+ * `readApiError` returns only the sentence, and this response carries the
+ * `unconfirmed` flag in the same body, so one parse has to produce both.
+ *
+ * A 5xx is never a definitive rejection, whatever the body says. A gateway can
+ * swallow the flag, and treating that as a refusal drops the guard on a comment
+ * the provider may already have published. An unreadable body is treated the
+ * same way for the same reason.
+ *
+ * @param res - The failed send response.
+ * @returns The server's sentence and whether the outcome is unknown.
+ */
+export async function readSendFailure(
+  res: Response
+): Promise<{ message: string; unconfirmed: boolean }> {
+  try {
+    const body = (await res.json()) as { error?: unknown; unconfirmed?: unknown };
+    return {
+      message:
+        typeof body.error === "string" && body.error.trim().length > 0
+          ? body.error
+          : "Failed to post the reply",
+      unconfirmed: body.unconfirmed === true || res.status >= 500,
+    };
+  } catch {
+    // An unreadable body is not evidence the send failed. A proxy can return an
+    // HTML 502 after the server published the comment and deleted the draft, so
+    // treating this as an ordinary failure re-enables Send on a reply that is
+    // already public. Only a parsed response can report a definite rejection.
+    return {
+      message:
+        "The reply may already be posted. Check the issue before sending again; your draft has been kept.",
+      unconfirmed: true,
+    };
+  }
+}

@@ -38,6 +38,7 @@ import {
   triagePresets,
   triageState,
 } from "@/lib/db/schema";
+import { DB_NOW_PLUS, isDbNowPlus } from "@/lib/db/db-clock";
 
 export type IssueRow = typeof issues.$inferSelect;
 export type RepoRow = typeof repos.$inferSelect;
@@ -87,8 +88,9 @@ const NATURAL_KEYS: Partial<Record<TableKey, readonly string[]>> = {
 
 type Row = Record<string, unknown>;
 
-/** Columns and parameters as they appear inside a flattened condition. */
-type Token = { column: { name: string; table: object } } | { param: unknown } | string;
+/** Columns, parameters, and database-clock values inside a flattened condition. */
+type Token =
+  { column: { name: string; table: object } } | { param: unknown } | { dbNowPlus: number } | string;
 
 function isColumn(value: object): value is { name: string; table: object } {
   return typeof (value as { name?: unknown }).name === "string" && "table" in value;
@@ -109,6 +111,10 @@ function flatten(node: unknown, out: Token[] = []): Token[] {
 
   const obj = node as Record<string, unknown>;
 
+  if (isDbNowPlus(obj)) {
+    out.push({ dbNowPlus: obj[DB_NOW_PLUS] });
+    return out;
+  }
   if (Array.isArray(obj.queryChunks)) {
     flatten(obj.queryChunks, out);
     return out;
@@ -162,9 +168,10 @@ function topLevelIndex(tokens: Token[], needle: string): number {
   return -1;
 }
 
-function resolve(token: Token, scope: ReadonlyMap<object, Row>): unknown {
+function resolve(token: Token, scope: ReadonlyMap<object, Row>, dbNowOffsetMs = 0): unknown {
   if (typeof token === "string") return token;
   if ("param" in token) return token.param;
+  if ("dbNowPlus" in token) return new Date(Date.now() + token.dbNowPlus + dbNowOffsetMs);
   const row = scope.get(token.column.table);
   return row ? row[token.column.name] : undefined;
 }
@@ -194,31 +201,37 @@ const COMPARISONS: Record<string, (left: unknown, right: unknown) => boolean> = 
  * model the difference. Anything else throws, so a test cannot silently pass
  * because an unhandled condition was treated as true.
  */
-function matches(condition: unknown, scope: ReadonlyMap<object, Row>): boolean {
+function matches(condition: unknown, scope: ReadonlyMap<object, Row>, dbNowOffsetMs = 0): boolean {
   const tokens = stripParens(flatten(condition));
 
   const andAt = topLevelIndex(tokens, " and ");
   if (andAt !== -1) {
     const left = tokens.slice(0, andAt);
     const right = tokens.slice(andAt + 1);
-    return matches(tokensToCondition(left), scope) && matches(tokensToCondition(right), scope);
+    return (
+      matches(tokensToCondition(left), scope, dbNowOffsetMs) &&
+      matches(tokensToCondition(right), scope, dbNowOffsetMs)
+    );
   }
 
   const orAt = topLevelIndex(tokens, " or ");
   if (orAt !== -1) {
     const left = tokens.slice(0, orAt);
     const right = tokens.slice(orAt + 1);
-    return matches(tokensToCondition(left), scope) || matches(tokensToCondition(right), scope);
+    return (
+      matches(tokensToCondition(left), scope, dbNowOffsetMs) ||
+      matches(tokensToCondition(right), scope, dbNowOffsetMs)
+    );
   }
 
   if (tokens.length === 2 && (tokens[1] === " is null" || tokens[1] === " is not null")) {
-    const value = resolve(tokens[0], scope);
+    const value = resolve(tokens[0], scope, dbNowOffsetMs);
     return tokens[1] === " is null" ? value === null : value !== null;
   }
 
   if (tokens.length === 3 && typeof tokens[1] === "string" && tokens[1] in COMPARISONS) {
-    const left = scalar(resolve(tokens[0], scope));
-    const right = scalar(resolve(tokens[2], scope));
+    const left = scalar(resolve(tokens[0], scope, dbNowOffsetMs));
+    const right = scalar(resolve(tokens[2], scope, dbNowOffsetMs));
     if (left === null || left === undefined || right === null || right === undefined) return false;
     return COMPARISONS[tokens[1]](left, right);
   }
@@ -227,10 +240,10 @@ function matches(condition: unknown, scope: ReadonlyMap<object, Row>): boolean {
   const inAt = tokens.findIndex((token) => token === " in ");
   if (inAt === 1 && tokens.length >= 3) {
     const values = tokens.slice(2).flatMap((token) => {
-      const value = resolve(token, scope);
+      const value = resolve(token, scope, dbNowOffsetMs);
       return Array.isArray(value) ? value.map(scalar) : [scalar(value)];
     });
-    return values.includes(scalar(resolve(tokens[0], scope)));
+    return values.includes(scalar(resolve(tokens[0], scope, dbNowOffsetMs)));
   }
 
   throw new Error(`fake-db: unsupported condition shape: ${describeTokens(tokens)}`);
@@ -242,6 +255,7 @@ function describeTokens(tokens: Token[]): string {
     .map((token) => {
       if (typeof token === "string") return JSON.stringify(token);
       if ("param" in token) return JSON.stringify(token.param);
+      if ("dbNowPlus" in token) return `<dbNow+${token.dbNowPlus}>`;
       return `<${token.column.name}>`;
     })
     .join(" ");
@@ -257,6 +271,7 @@ function tokensToCondition(tokens: Token[]): object {
   const queryChunks = tokens.map((token) => {
     if (typeof token === "string") return { value: [token] };
     if ("param" in token) return { value: token.param };
+    if ("dbNowPlus" in token) return { [DB_NOW_PLUS]: token.dbNowPlus };
     return token.column;
   });
   return { queryChunks };
@@ -315,6 +330,33 @@ function sortRows<RowType extends Row>(rows: RowType[], terms: unknown[]): RowTy
   });
 }
 
+/**
+ * Resolve a write value the way the database would, at apply time.
+ *
+ * A `dbNowPlus` fragment carries the number of milliseconds to add; evaluating
+ * it here, when the fake applies the row, is what lets a delayed-write test see
+ * a deadline stamped after the delay. Any other SQL fragment is unsupported and
+ * throws rather than landing in a row as an object.
+ */
+function applyValue(value: unknown): unknown {
+  if (typeof value === "object" && value !== null) {
+    if (isDbNowPlus(value)) return new Date(Date.now() + value[DB_NOW_PLUS]);
+    if ("queryChunks" in (value as object)) {
+      throw new Error("fake-db: unsupported SQL expression in a write value");
+    }
+  }
+  return value;
+}
+
+/** Resolve every value in a `set` object at apply time. */
+function resolveSet(values: Row): Row {
+  const resolved: Row = {};
+  for (const [key, value] of Object.entries(values)) {
+    resolved[key] = applyValue(value);
+  }
+  return resolved;
+}
+
 /** A resolved query result that also answers the builder methods callers chain. */
 interface QueryResult<RowType> extends Promise<RowType[]> {
   orderBy(...terms: unknown[]): QueryResult<RowType>;
@@ -324,12 +366,16 @@ interface QueryResult<RowType> extends Promise<RowType[]> {
   onConflictDoUpdate(config: unknown): Promise<RowType[]>;
 }
 
-function queryResult<RowType extends Row>(rows: RowType[]): QueryResult<RowType> {
-  const promise = Promise.resolve(rows) as unknown as QueryResult<RowType>;
+function queryResult<RowType extends Row>(rows: RowType[], delayMs = 0): QueryResult<RowType> {
+  const settle = () =>
+    delayMs > 0
+      ? new Promise<RowType[]>((resolve) => setTimeout(() => resolve(rows), delayMs))
+      : Promise.resolve(rows);
+  const promise = settle() as unknown as QueryResult<RowType>;
   return Object.assign(promise, {
-    orderBy: (...terms: unknown[]) => queryResult(sortRows(rows, terms)),
-    limit: (count: number) => queryResult(rows.slice(0, Math.max(count, 0))),
-    returning: () => Promise.resolve(rows),
+    orderBy: (...terms: unknown[]) => queryResult(sortRows(rows, terms), delayMs),
+    limit: (count: number) => queryResult(rows.slice(0, Math.max(count, 0)), delayMs),
+    returning: () => promise,
     onConflictDoNothing: () => promise,
     onConflictDoUpdate: () => promise,
   });
@@ -353,6 +399,39 @@ export interface FakeDbState {
   };
   /** Ordered operation log, e.g. `db:update:triage_state`. */
   log: string[];
+  /**
+   * When set, every update waits this long before applying.
+   *
+   * A stalled database stalls all writes, not just the first one, so a test that
+   * needs to prove a deadline is stamped inside its write must delay the whole
+   * sequence. Reset by {@link FakeDb.reset}.
+   */
+  updateDelayMs?: number;
+  /**
+   * When set, every update applies immediately but resolves this long after.
+   *
+   * This is the other half of a slow write: the row is durable, but the app
+   * waits for the response before it starts the provider call. Reset by
+   * {@link FakeDb.reset}.
+   */
+  updateResponseDelayMs?: number;
+  /**
+   * When set, every select resolves this long after its rows are read.
+   *
+   * Models a slow lease check: the database reads the row, but the app waits for
+   * the response before it can start the provider call. Reset by
+   * {@link FakeDb.reset}.
+   */
+  selectResponseDelayMs?: number;
+  /**
+   * How far the fake's database clock runs from the app clock when a condition
+   * is evaluated, in milliseconds.
+   *
+   * Positive means the database is ahead at check time, so a deadline stamped
+   * earlier looks shorter; negative means behind. It shifts comparisons, not
+   * writes. Reset by {@link FakeDb.reset}.
+   */
+  dbNowOffsetMs?: number;
 }
 
 /** A fake database and its `typedDb` replacement. */
@@ -377,7 +456,7 @@ function defaultsFor(key: TableKey, values: Row): Row {
       id: `triage-${crypto.randomUUID()}`,
       dismissed: false,
       batchPending: false,
-    revision: 0,
+      revision: 0,
       pendingChanges: {},
       updatedAt: now,
       ...values,
@@ -422,11 +501,19 @@ function defaultsFor(key: TableKey, values: Row): Row {
 }
 
 /** Resolve a projection entry for one row scope. */
-function project(projection: Record<string, unknown>, scope: ReadonlyMap<object, Row>): Row {
+function project(
+  projection: Record<string, unknown>,
+  scope: ReadonlyMap<object, Row>,
+  dbNowOffsetMs = 0
+): Row {
   const projected: Row = {};
   for (const [alias, source] of Object.entries(projection)) {
     if (isTable(source)) {
       projected[alias] = scope.get(source as object);
+      continue;
+    }
+    if (isDbNowPlus(source)) {
+      projected[alias] = new Date(Date.now() + source[DB_NOW_PLUS] + dbNowOffsetMs);
       continue;
     }
     if (typeof source === "object" && source !== null && isColumn(source)) {
@@ -461,7 +548,8 @@ function wrappedColumn(node: unknown): { table: object; name: string } | null {
   const found: Token[] = [];
   flatten(chunks, found);
   const columns = found.filter(
-    (token): token is { column: { table: object; name: string } } => typeof token === "object" && "column" in token
+    (token): token is { column: { table: object; name: string } } =>
+      typeof token === "object" && "column" in token
   );
   return columns.length === 1 ? columns[0].column : null;
 }
@@ -519,13 +607,16 @@ export function createFakeDb(): FakeDb {
               scopes = widened;
             }
 
-            return scopes.filter((scope) => condition === undefined || matches(condition, scope));
+            return scopes.filter(
+              (scope) =>
+                condition === undefined || matches(condition, scope, state.dbNowOffsetMs ?? 0)
+            );
           };
 
           const materialize = (scopes: Array<Map<object, Row>>): Row[] => {
             if (counting) return [{ total: scopes.length }];
             if (!projection) return scopes.map((scope) => scope.get(root.table) as Row);
-            return scopes.map((scope) => project(projection, scope));
+            return scopes.map((scope) => project(projection, scope, state.dbNowOffsetMs ?? 0));
           };
 
           const builder = {
@@ -538,7 +629,7 @@ export function createFakeDb(): FakeDb {
               // The filtered rows, then chained through `queryResult` so
               // `.orderBy()` and `.limit()` apply to this result rather than
               // starting from the unfiltered table again.
-              return queryResult(materialize(run(condition)));
+              return queryResult(materialize(run(condition)), state.selectResponseDelayMs ?? 0);
             },
           };
 
@@ -562,7 +653,7 @@ export function createFakeDb(): FakeDb {
             const created: Row[] = [];
 
             for (const values of incoming) {
-              const row = defaultsFor(key, values);
+              const row = defaultsFor(key, resolveSet(values));
               const existing = keyFields
                 ? tableRows(key).find((candidate) =>
                     keyFields.every((field) => candidate[field] === row[field])
@@ -582,7 +673,7 @@ export function createFakeDb(): FakeDb {
               }
               if (conflict.kind === "skip") continue;
 
-              Object.assign(existing, conflict.set);
+              Object.assign(existing, resolveSet(conflict.set));
               created.push(existing);
             }
 
@@ -623,15 +714,62 @@ export function createFakeDb(): FakeDb {
         set(values: Row) {
           return {
             where(condition?: unknown) {
-              const updated: Row[] = [];
-              for (const row of tableRows(key)) {
-                const scope = new Map<object, Row>([[table as object, row]]);
-                if (condition !== undefined && !matches(condition, scope)) continue;
-                Object.assign(row, values);
-                updated.push(row);
+              const apply = () => {
+                const resolved = resolveSet(values);
+                const updated: Row[] = [];
+                for (const row of tableRows(key)) {
+                  const scope = new Map<object, Row>([[table as object, row]]);
+                  if (
+                    condition !== undefined &&
+                    !matches(condition, scope, state.dbNowOffsetMs ?? 0)
+                  ) {
+                    continue;
+                  }
+                  Object.assign(row, resolved);
+                  updated.push({ ...row });
+                }
+                state.log.push(`db:update:${key}`);
+                return updated;
+              };
+
+              const writeDelay = state.updateDelayMs ?? 0;
+              const responseDelay = state.updateResponseDelayMs ?? 0;
+              if (writeDelay > 0 || responseDelay > 0) {
+                // A write delay postpones the row change, so a `dbNowPlus` value
+                // is evaluated when the row actually changes. A response delay
+                // applies the row immediately and holds the promise, modelling a
+                // slow reply after the row is durable.
+                let settled: Promise<Row[]> | null = null;
+                const settle = () => {
+                  if (settled) return settled;
+                  const applied =
+                    writeDelay > 0
+                      ? new Promise<Row[]>((resolve) =>
+                          setTimeout(() => resolve(apply()), writeDelay)
+                        )
+                      : Promise.resolve(apply());
+                  settled =
+                    responseDelay > 0
+                      ? applied.then(
+                          (rows) =>
+                            new Promise<Row[]>((resolve) =>
+                              setTimeout(() => resolve(rows), responseDelay)
+                            )
+                        )
+                      : applied;
+                  return settled;
+                };
+
+                return {
+                  then: <TResult1 = Row[], TResult2 = never>(
+                    onfulfilled?: ((value: Row[]) => TResult1 | PromiseLike<TResult1>) | null,
+                    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+                  ) => settle().then(onfulfilled, onrejected),
+                  returning: () => settle(),
+                };
               }
-              state.log.push(`db:update:${key}`);
-              return queryResult(updated);
+
+              return queryResult(apply());
             },
           };
         },
@@ -673,6 +811,10 @@ export function createFakeDb(): FakeDb {
         provider_identity: [],
       };
       state.log = [];
+      state.updateDelayMs = undefined;
+      state.updateResponseDelayMs = undefined;
+      state.selectResponseDelayMs = undefined;
+      state.dbNowOffsetMs = undefined;
     },
   };
 }

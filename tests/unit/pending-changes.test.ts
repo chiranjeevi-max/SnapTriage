@@ -96,6 +96,54 @@ describe("mergePendingChanges", () => {
     expect(result.assignees?.remove).toEqual([]);
   });
 
+  /**
+   * @target mergePendingChanges
+   * @dependencies none
+   * @scenario A pending addition and a removal name the same login in different
+   *           cases, as GitHub and GitLab do
+   * @expectedOutput The addition is cancelled and nothing is staged: the login
+   *                 was never applied upstream, so there is nothing to remove.
+   *                 A case-sensitive comparison would leave both, and the push
+   *                 would add and remove the same account.
+   */
+  it("cancels a pending assignee add across case variants", () => {
+    const existing: PendingChanges = { assignees: { add: ["Jo"], remove: [] } };
+    const result = mergePendingChanges(existing, { assignees: { remove: ["jo"] } });
+    expect(result.assignees?.add).toEqual([]);
+    expect(result.assignees?.remove).toEqual([]);
+  });
+
+  /**
+   * @target mergePendingChanges
+   * @dependencies none
+   * @scenario A staged removal is cancelled by an addition in another case, and
+   *           the issue already carries the login
+   * @expectedOutput The removal comes back, because it is still a real removal
+   *                 upstream. This is the undo of a preset that added the login
+   *                 back over a staged removal.
+   */
+  it("restores a case-variant staged removal the apply cancelled", () => {
+    const existing: PendingChanges = { assignees: { add: [], remove: ["jo"] } };
+    const applied = mergePendingChanges(existing, { assignees: { add: ["Jo"] } }, [], ["jo"]);
+    expect(applied.assignees).toEqual({ add: ["Jo"], remove: [] });
+
+    const undo = mergePendingChanges(applied, { assignees: { remove: ["jo"] } }, [], ["jo"]);
+    expect(undo.assignees).toEqual({ add: [], remove: ["jo"] });
+  });
+
+  /**
+   * @target mergePendingChanges
+   * @dependencies none
+   * @scenario Two casings of the same login are staged as additions
+   * @expectedOutput One entry, so a later removal cancels the whole addition
+   *                 rather than leaving a variant to reach the provider.
+   */
+  it("keeps one pending assignee addition across case variants", () => {
+    const first = mergePendingChanges({}, { assignees: { add: ["Jo"] } });
+    const second = mergePendingChanges(first, { assignees: { add: ["jo"] } });
+    expect(second.assignees?.add).toEqual(["jo"]);
+  });
+
   it("merges dismissed flag", () => {
     const result = mergePendingChanges({}, { dismissed: true });
     expect(result.dismissed).toBe(true);

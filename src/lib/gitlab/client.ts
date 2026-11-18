@@ -23,6 +23,7 @@ import type {
 } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
 import { providerLogger } from "@/lib/logger";
+import { REQUEST_TIMEOUT_MS } from "@/lib/provider-timing";
 
 /**
  * Returns the GitLab instance base URL.
@@ -49,14 +50,6 @@ function headers(token: string) {
 function projectPath(owner: string, repo: string) {
   return encodeURIComponent(`${owner}/${repo}`);
 }
-
-/**
- * How long one provider request may take, headers and body together.
- *
- * Comfortably inside the send-claim lease, so a call can never outlive the window
- * that protects against a second publish.
- */
-const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Abort fetches that hang against a provider.

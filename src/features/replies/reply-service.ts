@@ -19,14 +19,19 @@
  *
  * That is weaker than a distributed transaction. Recovering an unconfirmed send
  * is a manual act: the user checks the issue before trying again.
+ *
+ * A send starts only when the claim's lease covers the provider call. A lease
+ * that arrives too short refuses the send before any provider request.
  */
-import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
+import { dbNowPlus } from "@/lib/db/db-clock";
 import { issues, providerIdentities, replyDrafts, repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { providerLimits, type ProviderName } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
+import { REPLY_SEND_LEASE_MS, REPLY_SEND_MIN_LEASE_MS } from "@/lib/provider-timing";
 import { apiLogger } from "@/lib/logger";
 import type { ProviderComment } from "@/lib/provider-interface";
 
@@ -340,6 +345,56 @@ export async function sendReply(
     };
   }
 
+  // The lease was stamped by the database, so check it there. The select returns
+  // the lease and the database clock at the same instant; its own round trip is
+  // subtracted below, so a slow response cannot leave less than one deadline at
+  // call start. The round trip is measured on a monotonic clock, so a wall-clock
+  // adjustment cannot make a slow check look instant. It is measured from before
+  // the query is sent, so it also absorbs the request's own latency. That
+  // undercounts the remaining lease, which is the safe direction. The 5s margin
+  // covers the dispatch to the fetch.
+  const checkedAt = performance.now();
+  const covered = await typedDb
+    .select({
+      id: replyDrafts.id,
+      leaseEndsAt: replyDrafts.sendInFlightUntil,
+      dbNow: dbNowPlus(0),
+    })
+    .from(replyDrafts)
+    .where(
+      and(
+        eq(replyDrafts.issueId, target.issueId),
+        eq(replyDrafts.userId, userId),
+        eq(replyDrafts.sendClaimId, refused.claimId),
+        gte(replyDrafts.sendInFlightUntil, dbNowPlus(REPLY_SEND_MIN_LEASE_MS))
+      )
+    );
+  // Clamped defensively; performance.now() cannot move backward.
+  const checkMs = Math.max(0, performance.now() - checkedAt);
+  const remainingMs = covered[0]
+    ? (covered[0].leaseEndsAt?.getTime() ?? 0) - Number(covered[0].dbNow) - checkMs
+    : 0;
+  if (covered.length === 0 || remainingMs < REPLY_SEND_MIN_LEASE_MS) {
+    // Log before the cleanup write. If that write fails, the lease end that
+    // triggered the refusal is still on record.
+    apiLogger.warn(
+      {
+        issueId: target.issueId,
+        leaseEndsAt: refused.leaseEndsAt.toISOString(),
+        remainingMs,
+        checkMs,
+        minLeaseMs: REPLY_SEND_MIN_LEASE_MS,
+      },
+      "Reply claim lease too short; send refused before any provider call"
+    );
+    await clearAttempt(userId, target.issueId, refused.claimId);
+    return {
+      ok: false,
+      status: 409,
+      error: "The send did not start in time. Nothing was posted; try again.",
+    };
+  }
+
   try {
     const comment = await provider.createComment(
       target.owner,
@@ -409,16 +464,6 @@ export async function sendReply(
 }
 
 /**
- * How long a provider call is assumed to take before the claim stops counting as
- * "in flight".
- *
- * The client aborts at 30 seconds, so this is comfortably beyond any call that
- * could still be running. It exists so a crashed process cannot make a draft
- * permanently unreleasable; it is not a timeout on the call itself.
- */
-const SEND_LEASE_MS = 120_000;
-
-/**
  * Claim the right to send, atomically, storing the text being sent.
  *
  * Two statements, in this order, and both are needed:
@@ -445,16 +490,16 @@ const SEND_LEASE_MS = 120_000;
  * @param body - The text being sent.
  * @param expectedVersion - The version the composer displayed, or `null`.
  * @returns Why the claim failed, or the identity it took when this caller owns
- *          the attempt. The identity is what a later release must match.
+ *          the attempt, plus the lease's end for the refusal's diagnostic log.
+ *          The refusal itself is `sendReply`'s database-side check. The identity
+ *          is what a later release must match.
  */
 async function claimAttempt(
   userId: string,
   issueId: string,
   body: string,
   expectedVersion: number | null
-): Promise<"unresolved" | "stale" | { claimId: string }> {
-  const now = new Date();
-
+): Promise<"unresolved" | "stale" | { claimId: string; leaseEndsAt: Date }> {
   // A row is created only when the caller expects no stored draft: `null` (no
   // opinion) or `0` (asserts absence). A caller holding a real version expects
   // its row to exist, so inserting one here would be replacing a draft another tab
@@ -464,7 +509,7 @@ async function claimAttempt(
   const created = mayCreate
     ? await typedDb
         .insert(replyDrafts)
-        .values({ issueId, userId, body, sendAttemptedAt: null, updatedAt: now })
+        .values({ issueId, userId, body, sendAttemptedAt: null, updatedAt: new Date() })
         .onConflictDoNothing({ target: [replyDrafts.issueId, replyDrafts.userId] })
         .returning({ id: replyDrafts.id, version: replyDrafts.version })
     : [];
@@ -477,17 +522,23 @@ async function claimAttempt(
   if (expectedVersion === 0 && creator === null) return "stale";
 
   const claimId = crypto.randomUUID();
+  // Informational markers. The lease below is stamped by the database clock.
+  const claimedAt = new Date();
   const claimed = await typedDb
     .update(replyDrafts)
     .set({
-      sendAttemptedAt: now,
+      sendAttemptedAt: claimedAt,
       sendClaimId: claimId,
-      // A lease, not a flag: if this process dies mid-call the row must not stay
-      // unreleasable forever. Past this instant the call is taken to have ended
-      // however it ended, and the claim becomes an ordinary unresolved one.
-      sendInFlightUntil: new Date(now.getTime() + SEND_LEASE_MS),
+      // The lease keeps a crashed process from leaving the row unreleasable
+      // forever. It is stamped by the database's own clock inside this write, so
+      // however long the write takes, the lease starts when the claim lands. A
+      // stalled claim cannot eat the provider call's budget. The four deadlines
+      // cover the scheduling gap between this write returning and the call
+      // starting (no database work sits in that gap), the call itself,
+      // settlement, and clock skew.
+      sendInFlightUntil: dbNowPlus(REPLY_SEND_LEASE_MS),
       body,
-      updatedAt: now,
+      updatedAt: claimedAt,
     })
     .where(
       and(
@@ -508,9 +559,14 @@ async function claimAttempt(
             : eq(replyDrafts.version, expectedVersion)
       )
     )
-    .returning({ id: replyDrafts.id });
+    .returning({ id: replyDrafts.id, sendInFlightUntil: replyDrafts.sendInFlightUntil });
 
-  if (claimed.length > 0) return { claimId };
+  if (claimed.length > 0) {
+    const leaseEndsAt = claimed[0].sendInFlightUntil;
+    // Unreachable in practice, since the same update just wrote it, but the
+    // column is nullable. A missing lease must refuse the send, never run one.
+    return { claimId, leaseEndsAt: leaseEndsAt ?? new Date(0) };
+  }
 
   // Two different reasons reach this point, and the user's next action differs:
   // an unresolved attempt means check the provider, a stale draft means reload.
@@ -566,7 +622,10 @@ export async function releaseSendClaim(
         // Refuse while the provider call may still be running. Releasing then
         // lets a second call start while the first can still publish, which is
         // the duplicate this whole marker exists to prevent.
-        or(isNull(replyDrafts.sendInFlightUntil), lte(replyDrafts.sendInFlightUntil, now))
+        // The lease was stamped by the database, so compare it with the
+        // database clock. An app clock ahead of it would release a call that is
+        // still running.
+        or(isNull(replyDrafts.sendInFlightUntil), lte(replyDrafts.sendInFlightUntil, dbNowPlus(0)))
       )
     )
     .returning({ id: replyDrafts.id });

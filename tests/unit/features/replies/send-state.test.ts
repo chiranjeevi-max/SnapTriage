@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import {
   canSend,
+  readSendFailure,
   replySendState,
   unconfirmedNotice,
   type ReplyDraftShape,
@@ -215,5 +216,76 @@ describe("unconfirmedNotice", () => {
 
     expect(notice).toContain("https://github.com/octo/repo/issues/7");
     expect(notice).toContain(unconfirmedNotice(null));
+  });
+});
+
+describe("readSendFailure", () => {
+  /**
+   * @target readSendFailure
+   * @dependencies Response
+   * @scenario The server refuses with 429 because the send bucket is exhausted
+   * @expectedOutput A plain failure, not `unconfirmed`: nothing was sent, so the
+   *                 composer must keep Send available after the window passes.
+   */
+  it("should treat a 429 as a definitive refusal", async () => {
+    const res = new Response(JSON.stringify({ error: "Too many replies" }), {
+      status: 429,
+      headers: { "content-type": "application/json" },
+    });
+
+    await expect(readSendFailure(res)).resolves.toEqual({
+      message: "Too many replies",
+      unconfirmed: false,
+    });
+  });
+
+  /**
+   * @target readSendFailure
+   * @dependencies Response
+   * @scenario A 5xx response omits the flag, as a gateway can
+   * @expectedOutput `unconfirmed: true`. A 5xx is never proof the comment was
+   *                 refused, so dropping the guard could publish a duplicate.
+   */
+  it("should treat a 5xx as unconfirmed even without the flag", async () => {
+    const res = new Response(JSON.stringify({ error: "Bad gateway" }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
+
+    await expect(readSendFailure(res)).resolves.toMatchObject({ unconfirmed: true });
+  });
+
+  /**
+   * @target readSendFailure
+   * @dependencies Response
+   * @scenario The body is not JSON, so the response cannot be classified
+   * @expectedOutput `unconfirmed: true` with the check-the-issue sentence. A
+   *                 proxy can return HTML after the comment was published.
+   */
+  it("should treat an unreadable body as unconfirmed", async () => {
+    const res = new Response("<html>bad gateway</html>", { status: 502 });
+
+    const failure = await readSendFailure(res);
+
+    expect(failure.unconfirmed).toBe(true);
+    expect(failure.message).toContain("may already be posted");
+  });
+
+  /**
+   * @target readSendFailure
+   * @dependencies Response
+   * @scenario A definitive failure carries no usable sentence
+   * @expectedOutput The fallback sentence, still definitive
+   */
+  it("should fall back to a generic sentence on a definitive failure", async () => {
+    const res = new Response(JSON.stringify({}), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+
+    await expect(readSendFailure(res)).resolves.toEqual({
+      message: "Failed to post the reply",
+      unconfirmed: false,
+    });
   });
 });

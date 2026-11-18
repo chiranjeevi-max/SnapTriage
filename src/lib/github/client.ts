@@ -18,6 +18,7 @@ import type {
 } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
 import { providerLogger } from "@/lib/logger";
+import { REQUEST_TIMEOUT_MS } from "@/lib/provider-timing";
 
 /** GitHub REST API base URL. */
 const GITHUB_API = "https://api.github.com";
@@ -39,14 +40,6 @@ function headers(token: string) {
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-/**
- * How long one provider request may take, headers and body together.
- *
- * Well inside the send-claim lease, so a call can never outlive the window that
- * protects against a second publish.
- */
-const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Whether replaying a request cannot change state.

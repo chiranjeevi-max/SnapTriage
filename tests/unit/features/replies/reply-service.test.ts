@@ -31,6 +31,7 @@ import {
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
 import { ProviderApiError } from "@/lib/provider-error";
+import { REPLY_SEND_LEASE_MS, REQUEST_TIMEOUT_MS } from "@/lib/provider-timing";
 import { providerLimits, type IssueProvider, type ProviderComment } from "@/lib/provider-interface";
 import {
   DRAFT_ID,
@@ -513,6 +514,209 @@ describe("sendReply — the published path", () => {
   });
 
   /**
+   * @target claimAttempt, sendReply
+   * @dependencies reply_drafts.sendInFlightUntil, dbNowPlus
+   * @scenario Every update is stalled, as a wedged database stalls them, and the
+   *           claim row is read inside the provider call it guards
+   * @expectedOutput The lease is stamped by the database's clock when the claim
+   *                 lands: the stalled write cannot shorten it, so it still
+   *                 carries nearly its full length when the call begins.
+   */
+  it("should stamp the lease inside the stalled claim write", async () => {
+    fakeDb.state.updateDelayMs = 200;
+    const observed: Array<{ callStart: number; leaseEnd: number; attempted: number }> = [];
+
+    vi.mocked(provider.createComment!).mockImplementationOnce(async () => {
+      const row = fakeDb.state.rows.reply_draft[0];
+      observed.push({
+        callStart: Date.now(),
+        leaseEnd: (row.sendInFlightUntil as Date).getTime(),
+        attempted: (row.sendAttemptedAt as Date).getTime(),
+      });
+      fakeDb.state.log.push("provider:createComment");
+      return comment();
+    });
+
+    try {
+      const result = await sendReply("user-1", TARGET, "Thanks for the report.");
+      expect(result.ok).toBe(true);
+    } finally {
+      fakeDb.state.updateDelayMs = undefined;
+    }
+
+    expect(observed).toHaveLength(1);
+    const { callStart, leaseEnd, attempted } = observed[0];
+
+    // The stall applied: the call begins well after the attempt marker, so the
+    // test cannot pass because the hook silently did nothing.
+    expect(callStart - attempted).toBeGreaterThanOrEqual(150);
+    // The property that matters: when the provider call begins, the lease still
+    // carries nearly its full length. A JS stamp taken before the stalled write
+    // would have lost the delay.
+    expect(leaseEnd - callStart).toBeGreaterThanOrEqual(REPLY_SEND_LEASE_MS - 50);
+    // The lease moved with the write: measured from the attempt marker, the
+    // delay grew the lease instead of being eaten by it.
+    expect(leaseEnd - attempted).toBeGreaterThanOrEqual(REPLY_SEND_LEASE_MS + 150);
+  });
+
+  /**
+   * @target claimAttempt, sendReply
+   * @dependencies reply_drafts.sendInFlightUntil
+   * @scenario The claim row is written, but its response reaches the app 200ms
+   *           later, before the provider call starts
+   * @expectedOutput The lease loses exactly that delay and still dwarfs one
+   *                 request deadline at call start. This gap is covered by the
+   *                 4× budget, not by the stamp; the test pins the budget, not
+   *                 the clock choice.
+   */
+  it("should keep the lease whole across a slow claim response", async () => {
+    fakeDb.state.updateResponseDelayMs = 200;
+    const observed: Array<{ callStart: number; leaseEnd: number; attempted: number }> = [];
+
+    vi.mocked(provider.createComment!).mockImplementationOnce(async () => {
+      const row = fakeDb.state.rows.reply_draft[0];
+      observed.push({
+        callStart: Date.now(),
+        leaseEnd: (row.sendInFlightUntil as Date).getTime(),
+        attempted: (row.sendAttemptedAt as Date).getTime(),
+      });
+      fakeDb.state.log.push("provider:createComment");
+      return comment();
+    });
+
+    try {
+      const result = await sendReply("user-1", TARGET, "Thanks for the report.");
+      expect(result.ok).toBe(true);
+    } finally {
+      fakeDb.state.updateResponseDelayMs = undefined;
+    }
+
+    expect(observed).toHaveLength(1);
+    const { callStart, leaseEnd, attempted } = observed[0];
+
+    expect(callStart - attempted).toBeGreaterThanOrEqual(150);
+    expect(leaseEnd - callStart).toBeGreaterThanOrEqual(REPLY_SEND_LEASE_MS - 250);
+    expect(leaseEnd - callStart).toBeLessThanOrEqual(REPLY_SEND_LEASE_MS);
+    // The call still has more than its own deadline available.
+    expect(leaseEnd - callStart).toBeGreaterThan(REQUEST_TIMEOUT_MS);
+  });
+
+  /**
+   * @target sendReply, claimAttempt
+   * @dependencies REPLY_SEND_MIN_LEASE_MS, dbNowPlus
+   * @scenario The database clock at check time runs 100s ahead of the sender's,
+   *           so the claim's lease has about 20s left when the database checks it
+   * @expectedOutput A definitive 409: the send is refused before any provider
+   *                 call, no `unconfirmed` flag is set because nothing was
+   *                 posted, and the claim fields are cleared so the draft is
+   *                 editable again.
+   */
+  it("should refuse the send when the claim's lease cannot cover the call", async () => {
+    fakeDb.state.dbNowOffsetMs = 100_000;
+    try {
+      const failure = sendFailure(await sendReply("user-1", TARGET, "Thanks for the report."));
+
+      expect(failure.status).toBe(409);
+      expect(failure.unconfirmed).toBeUndefined();
+      expect(failure.error).toContain("Nothing was posted");
+    } finally {
+      fakeDb.state.dbNowOffsetMs = undefined;
+    }
+
+    expect(provider.createComment).not.toHaveBeenCalled();
+    const row = fakeDb.state.rows.reply_draft[0];
+    expect(row.sendAttemptedAt).toBeNull();
+    expect(row.sendClaimId).toBeNull();
+    expect(row.sendInFlightUntil).toBeNull();
+  });
+
+  /**
+   * @target sendReply
+   * @dependencies REPLY_SEND_MIN_LEASE_MS
+   * @scenario The database clock at check time runs 10s behind the sender's,
+   *           leaving about 130s of lease, above the floor
+   * @expectedOutput The send proceeds. The database check refuses only leases
+   *                 that cannot cover the call.
+   */
+  it("should still send when the lease covers the call", async () => {
+    fakeDb.state.dbNowOffsetMs = -10_000;
+    try {
+      const result = await sendReply("user-1", TARGET, "Thanks for the report.");
+      expect(result.ok).toBe(true);
+    } finally {
+      fakeDb.state.dbNowOffsetMs = undefined;
+    }
+
+    expect(provider.createComment).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * @target sendReply
+   * @dependencies REPLY_SEND_MIN_LEASE_MS
+   * @scenario The lease check's select returns after 90s
+   * @expectedOutput 409 before the provider call: the check subtracts its own
+   *                 round trip, so a slow response cannot leave less than one
+   *                 deadline at call start.
+   */
+  it("should subtract the lease check's response time", async () => {
+    vi.useFakeTimers();
+    fakeDb.state.selectResponseDelayMs = 90_000;
+    try {
+      const pending = sendReply("user-1", TARGET, "Thanks for the report.");
+      await vi.advanceTimersByTimeAsync(90_000);
+      const failure = sendFailure(await pending);
+
+      expect(failure.status).toBe(409);
+      expect(failure.unconfirmed).toBeUndefined();
+      expect(provider.createComment).not.toHaveBeenCalled();
+      const row = fakeDb.state.rows.reply_draft[0];
+      expect(row.sendAttemptedAt).toBeNull();
+      expect(row.sendClaimId).toBeNull();
+      expect(row.sendInFlightUntil).toBeNull();
+    } finally {
+      fakeDb.state.selectResponseDelayMs = undefined;
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * @target sendReply
+   * @dependencies REPLY_SEND_MIN_LEASE_MS
+   * @scenario The wall clock moves backward while the lease check is in flight
+   * @expectedOutput 409. The round trip is measured on a monotonic clock, so a
+   *                 backward adjustment cannot make a 90s check look instant.
+   */
+  it("should measure the lease check on a monotonic clock", async () => {
+    vi.useFakeTimers();
+    const start = new Date("2026-01-01T00:00:00.000Z").getTime();
+    vi.setSystemTime(start);
+    let monotonic = 0;
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => monotonic);
+    fakeDb.state.selectResponseDelayMs = 90_000;
+    try {
+      const pending = sendReply("user-1", TARGET, "Thanks for the report.");
+      // Let the claim and the select start before moving the wall clock.
+      await vi.advanceTimersByTimeAsync(0);
+      vi.setSystemTime(start - 100_000);
+      monotonic = 90_000;
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      const failure = sendFailure(await pending);
+      expect(failure.status).toBe(409);
+      expect(failure.unconfirmed).toBeUndefined();
+      expect(provider.createComment).not.toHaveBeenCalled();
+      const row = fakeDb.state.rows.reply_draft[0];
+      expect(row.sendAttemptedAt).toBeNull();
+      expect(row.sendClaimId).toBeNull();
+      expect(row.sendInFlightUntil).toBeNull();
+    } finally {
+      fakeDb.state.selectResponseDelayMs = undefined;
+      nowSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  /**
    * @target sendReply
    * @dependencies providerLimits
    * @scenario The body is one character over GitHub's 65,536-character comment limit
@@ -815,7 +1019,9 @@ describe("resolveIdentity", () => {
         fetchedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
       })
     );
-    provider.getAuthenticatedUser = vi.fn().mockResolvedValue({ login: "new-account", avatar: null });
+    provider.getAuthenticatedUser = vi
+      .fn()
+      .mockResolvedValue({ login: "new-account", avatar: null });
 
     const identity = await resolveIdentity("user-1", "github");
 
@@ -926,6 +1132,36 @@ describe("releaseSendClaim", () => {
     expect(outcome).toBe("released");
     expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).toBeNull();
     expect(fakeDb.state.rows.reply_draft[0].sendClaimId).toBeNull();
+  });
+
+  /**
+   * @target releaseSendClaim
+   * @dependencies dbNowPlus
+   * @scenario The releasing instance's clock is 10s ahead of the database's, and
+   *           the lease is 5s past the app clock but still 5s ahead of the
+   *           database clock
+   * @expectedOutput `in_flight`. The release compares the database-stamped lease
+   *                 with the database clock, so app-clock skew cannot free a
+   *                 claim while the provider call is still running.
+   */
+  it("should use the database clock, not the releasing instance's", async () => {
+    fakeDb.state.rows.reply_draft.push(
+      replyDraftRow({
+        sendAttemptedAt: new Date("2026-01-05T00:00:00.000Z"),
+        sendClaimId: "claim-1",
+        sendInFlightUntil: new Date(Date.now() - 5_000),
+      })
+    );
+    fakeDb.state.dbNowOffsetMs = -10_000;
+
+    try {
+      const outcome = await releaseSendClaim("user-1", ISSUE_ID, "claim-1");
+
+      expect(outcome).toBe("in_flight");
+      expect(fakeDb.state.rows.reply_draft[0].sendAttemptedAt).not.toBeNull();
+    } finally {
+      fakeDb.state.dbNowOffsetMs = undefined;
+    }
   });
 
   /**

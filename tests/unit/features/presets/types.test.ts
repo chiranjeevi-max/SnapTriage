@@ -323,11 +323,7 @@ describe("invertToPayload", () => {
    */
   it("should round-trip an undo back to the staged removal", () => {
     const before = { labels: { add: [] as string[], remove: ["bug"] } };
-    const afterApply = mergePendingChanges(
-      before,
-      { labels: { add: ["bug"], remove: [] } },
-      []
-    );
+    const afterApply = mergePendingChanges(before, { labels: { add: ["bug"], remove: [] } }, []);
     const inverse = invertToPayload(
       { payload: { labels: { add: ["bug"], remove: [] } }, changes: [], noChange: false },
       { priority: null, labels: ["bug", "triage"], assignees: [] },
@@ -353,5 +349,116 @@ describe("invertToPayload", () => {
     );
 
     expect(inverse.labels).toEqual({ add: [], remove: ["bug"] });
+  });
+
+  /**
+   * @target invertToPayload
+   * @dependencies none
+   * @scenario The resolution adds `Bug` but the server-read snapshot carries
+   *           `bug` — possible because the resolution came from a cache older
+   *           than the apply's own read
+   * @expectedOutput Nothing is removed. Both providers treat the names as one
+   *                 label, so a case-sensitive filter would make undo remove a
+   *                 label the preset never added.
+   */
+  it("should not remove a case variant the issue already carries", () => {
+    const inverse = invertToPayload(
+      {
+        payload: { labels: { add: ["Bug"] }, assignees: { add: ["Jo"] } },
+        changes: [],
+        noChange: false,
+      },
+      { priority: null, labels: ["bug", "triage"], assignees: ["jo"] },
+      null
+    );
+
+    expect(inverse.labels).toEqual({ add: [], remove: [] });
+    expect(inverse.assignees).toEqual({ add: [], remove: [] });
+  });
+
+  /**
+   * @target invertToPayload
+   * @dependencies none
+   * @scenario The apply adds `Bug` while a staged removal names `bug`, and the
+   *           issue carries `bug` — the cancelled-removal case with a case
+   *           variant on each side
+   * @expectedOutput One removal, in the staged casing. Emitting both variants
+   *                 would ask the provider to delete the same label twice, and
+   *                 the second call fails the whole undo.
+   */
+  it("should collapse a case-variant cancelled removal to one entry", () => {
+    const inverse = invertToPayload(
+      {
+        payload: { labels: { add: ["Bug"] }, assignees: { add: ["Jo"] } },
+        changes: [],
+        noChange: false,
+      },
+      { priority: null, labels: ["bug", "triage"], assignees: ["jo"] },
+      { labels: { add: [], remove: ["bug"] }, assignees: { add: [], remove: ["jo"] } }
+    );
+
+    expect(inverse.labels).toEqual({ add: [], remove: ["bug"] });
+    expect(inverse.assignees).toEqual({ add: [], remove: ["jo"] });
+  });
+
+  /**
+   * @target invertToPayload, mergePendingChanges
+   * @dependencies mergePendingChanges
+   * @scenario Apply a case-variant preset over a staged removal, then undo it
+   * @expectedOutput The pending state returns exactly to the staged removal,
+   *                 with one casing and no leftover addition. This is the
+   *                 round-trip the defect ledger asked for: it proves the
+   *                 inverse composes with the merge instead of relying on the
+   *                 merge to clean up a malformed removal list.
+   */
+  it("should round-trip a case-variant cancelled removal exactly once", () => {
+    const before = {
+      labels: { add: [] as string[], remove: ["bug"] },
+      assignees: { add: [] as string[], remove: ["jo"] },
+    };
+    const applied = {
+      labels: { add: ["Bug"], remove: [] as string[] },
+      assignees: { add: ["Jo"], remove: [] as string[] },
+    };
+    const appliedLabels = ["bug", "triage"];
+    const appliedAssignees = ["jo"];
+
+    const afterApply = mergePendingChanges(before, applied, appliedLabels, appliedAssignees);
+    const inverse = invertToPayload(
+      { payload: applied, changes: [], noChange: false },
+      { priority: null, labels: appliedLabels, assignees: appliedAssignees },
+      before
+    );
+    const afterUndo = mergePendingChanges(afterApply, inverse, appliedLabels, appliedAssignees);
+
+    expect(afterUndo).toEqual(before);
+  });
+
+  /**
+   * @target invertToPayload, mergePendingChanges
+   * @dependencies mergePendingChanges
+   * @scenario A real addition and a cancelled staged removal share a case
+   *           variant, and the issue carries neither label
+   * @expectedOutput The inverse removes the cancelled label once, in the staged
+   *                 casing, plus the genuinely added label. The undo then
+   *                 cancels both additions without staging a removal, because
+   *                 neither label was applied upstream.
+   */
+  it("should keep a real addition beside a case-variant cancelled removal", () => {
+    const before = { labels: { add: [] as string[], remove: ["bug"] } };
+    const applied = { labels: { add: ["Bug", "urgent"], remove: [] as string[] } };
+    const previous = { priority: null, labels: ["triage"], assignees: [] as string[] };
+
+    const afterApply = mergePendingChanges(before, applied, previous.labels);
+    const inverse = invertToPayload(
+      { payload: applied, changes: [], noChange: false },
+      previous,
+      before
+    );
+
+    expect(inverse.labels).toEqual({ add: [], remove: ["bug", "urgent"] });
+    expect(mergePendingChanges(afterApply, inverse, previous.labels)).toEqual({
+      labels: { add: [], remove: [] },
+    });
   });
 });

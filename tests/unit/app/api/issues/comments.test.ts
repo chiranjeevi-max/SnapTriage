@@ -19,6 +19,7 @@ import { GET } from "@/app/api/issues/[id]/comments/route";
 import { auth } from "@/auth";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
+import { checkPersistentRateLimit } from "@/lib/rate-limit";
 import { ProviderApiError } from "@/lib/provider-error";
 import type { IssueProvider, ProviderComment } from "@/lib/provider-interface";
 import { ISSUE_ID, fakeDb, issueRow, repoRow } from "../../../support/fake-db";
@@ -26,6 +27,7 @@ import { ISSUE_ID, fakeDb, issueRow, repoRow } from "../../../support/fake-db";
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/features/auth/get-provider-token", () => ({ getProviderToken: vi.fn() }));
 vi.mock("@/lib/providers", () => ({ getProvider: vi.fn() }));
+vi.mock("@/lib/rate-limit", () => ({ checkPersistentRateLimit: vi.fn() }));
 vi.mock("@/lib/db/query", async () => {
   const { fakeDb } = await import("../../../support/fake-db");
   return { typedDb: fakeDb.typedDb };
@@ -37,6 +39,7 @@ vi.mock("@/lib/logger", () => ({
 const mockAuth = vi.mocked(auth);
 const mockGetProviderToken = vi.mocked(getProviderToken);
 const mockGetProvider = vi.mocked(getProvider);
+const mockRateLimit = vi.mocked(checkPersistentRateLimit);
 
 let lastStatus = 0;
 let lastBody: unknown = null;
@@ -93,6 +96,7 @@ beforeEach(() => {
   mockAuth.mockResolvedValue({ user: { id: "user-1" } } as never);
   mockGetProviderToken.mockResolvedValue("token-abc");
   mockGetProvider.mockReturnValue(provider);
+  mockRateLimit.mockResolvedValue(false);
   fakeDb.state.rows.repo.push(repoRow());
   fakeDb.state.rows.issue.push(issueRow());
 });
@@ -141,6 +145,23 @@ describe("GET /api/issues/:id/comments — authorization", () => {
 
     expect(res.status).toBe(403);
     expect(provider.fetchComments).not.toHaveBeenCalled();
+  });
+
+  /**
+   * @target GET /api/issues/:id/comments
+   * @dependencies checkPersistentRateLimit
+   * @scenario The user has exceeded the discussion-read allowance
+   * @expectedOutput 429 and no provider call, so a client cannot use the route
+   *                 as an amplifier against the provider
+   */
+  it("should return 429 when the read bucket is exhausted", async () => {
+    mockRateLimit.mockResolvedValue(true);
+
+    const res = await getComments();
+
+    expect(res.status).toBe(429);
+    expect(provider.fetchComments).not.toHaveBeenCalled();
+    expect(mockRateLimit).toHaveBeenCalledWith("provider:comments:user-1", 60, 60_000);
   });
 });
 

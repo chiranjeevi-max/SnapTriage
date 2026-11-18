@@ -41,7 +41,13 @@ To protect the PAT login endpoint from brute-force attacks, SnapTriage rate-limi
 - Counters live in the shared `rate_limit_bucket` table, so the limit holds across app instances. Expired rows are purged on each check, using the longest window in use, so a short-window scope can never reset a long-window one.
 - If the database is unreachable, it falls back to an in-memory limiter with a capped map size, so protection stays on.
 
-**What is not rate limited.** Publishing a reply (`POST /api/issues/[id]/replies`) has no limit. It is an irreversible write that posts to the provider under the user's token, and the send-claim only stops two concurrent attempts on the same draft: it does not stop a loop over many issues. Fetching comments and arming a follow-up are likewise unlimited, so a user can spend their own provider quota.
+**Other limits.** Three user-keyed scopes bound the routes that touch a provider:
+
+- `reply:send:<userId>` — 10 publishes per minute. Publishing is public and irreversible, so this bounds a runaway client without constraining ordinary triage. A 429 is a definitive refusal, not an unconfirmed send, so the composer keeps Send available.
+- `provider:comments:<userId>` — 60 discussion page reads per minute, so one client cannot use the route as an amplifier against the provider.
+- `provider:follow-up:<userId>` — 30 follow-up arms per 15 minutes. Only arming reads the provider to take a baseline; review and stop are local writes and are deliberately not limited.
+
+All three use the shared `rate_limit_bucket` table, so the limits hold across app instances. `runFollowUpCheck` is bounded by its own pass caps (`MAX_CHECKS_PER_PASS` and `MAX_COMMENT_PAGES_PER_CHECK`) rather than by a bucket.
 
 ## Security Headers (Content Security Policy)
 

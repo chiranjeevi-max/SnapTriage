@@ -22,6 +22,17 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { armFollowUp, reviewFollowUp, stopFollowUp } from "@/features/follow-up/follow-up-service";
 import { followUpActionSchema, parseBody } from "@/lib/validations";
+import { checkPersistentRateLimit } from "@/lib/rate-limit";
+
+/**
+ * Arms allowed per user per window.
+ *
+ * Only arming reads the provider (one comment page for the baseline); review
+ * and stop are local writes and are deliberately not limited. Thirty in fifteen
+ * minutes is well above a triage session and still bounds a loop.
+ */
+const ARM_LIMIT = 30;
+const ARM_WINDOW_MS = 15 * 60 * 1000;
 
 /**
  * Applies one follow-up transition.
@@ -48,6 +59,21 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   }
 
   if (parsed.data.action === "wait") {
+    // Arming reads the provider to take a baseline, so it is the only transition
+    // here that spends the user's quota or can be amplified against the provider.
+    if (
+      await checkPersistentRateLimit(
+        `provider:follow-up:${session.user.id}`,
+        ARM_LIMIT,
+        ARM_WINDOW_MS
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Too many follow-ups started. Try again shortly." },
+        { status: 429 }
+      );
+    }
+
     const entry = await armFollowUp(session.user.id, id);
     if (!entry) {
       return NextResponse.json({ error: "Issue not found" }, { status: 404 });
