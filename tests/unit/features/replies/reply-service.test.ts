@@ -31,7 +31,7 @@ import {
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
 import { ProviderApiError } from "@/lib/provider-error";
-import { REPLY_SEND_LEASE_MS } from "@/lib/provider-timing";
+import { REPLY_SEND_LEASE_MS, REQUEST_TIMEOUT_MS } from "@/lib/provider-timing";
 import { providerLimits, type IssueProvider, type ProviderComment } from "@/lib/provider-interface";
 import {
   DRAFT_ID,
@@ -557,6 +557,48 @@ describe("sendReply — the published path", () => {
     // The lease moved with the write: measured from the attempt marker, the
     // delay grew the lease instead of being eaten by it.
     expect(leaseEnd - attempted).toBeGreaterThanOrEqual(REPLY_SEND_LEASE_MS + 150);
+  });
+
+  /**
+   * @target claimAttempt, sendReply
+   * @dependencies reply_drafts.sendInFlightUntil
+   * @scenario The claim row is written, but its response reaches the app 200ms
+   *           later, before the provider call starts
+   * @expectedOutput The lease loses exactly that delay and still dwarfs one
+   *                 request deadline at call start. This gap is covered by the
+   *                 4× budget, not by the stamp; the test pins the budget, not
+   *                 the clock choice.
+   */
+  it("should keep the lease whole across a slow claim response", async () => {
+    fakeDb.state.updateResponseDelayMs = 200;
+    const observed: Array<{ callStart: number; leaseEnd: number; attempted: number }> = [];
+
+    vi.mocked(provider.createComment!).mockImplementationOnce(async () => {
+      const row = fakeDb.state.rows.reply_draft[0];
+      observed.push({
+        callStart: Date.now(),
+        leaseEnd: (row.sendInFlightUntil as Date).getTime(),
+        attempted: (row.sendAttemptedAt as Date).getTime(),
+      });
+      fakeDb.state.log.push("provider:createComment");
+      return comment();
+    });
+
+    try {
+      const result = await sendReply("user-1", TARGET, "Thanks for the report.");
+      expect(result.ok).toBe(true);
+    } finally {
+      fakeDb.state.updateResponseDelayMs = undefined;
+    }
+
+    expect(observed).toHaveLength(1);
+    const { callStart, leaseEnd, attempted } = observed[0];
+
+    expect(callStart - attempted).toBeGreaterThanOrEqual(150);
+    expect(leaseEnd - callStart).toBeGreaterThanOrEqual(REPLY_SEND_LEASE_MS - 250);
+    expect(leaseEnd - callStart).toBeLessThanOrEqual(REPLY_SEND_LEASE_MS);
+    // The call still has more than its own deadline available.
+    expect(leaseEnd - callStart).toBeGreaterThan(REQUEST_TIMEOUT_MS);
   });
 
   /**

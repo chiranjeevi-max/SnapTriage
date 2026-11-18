@@ -32,12 +32,21 @@ export const DB_NOW_PLUS = Symbol("dbNowPlus");
  */
 export function dbNowPlus(ms: number): SQL<number> {
   const frag = process.env.DATABASE_URL
-    ? // Postgres: `now()` is the statement's transaction start in an autocommit
-      // update; the cast keeps the result a bigint, which the schema's epoch-ms
-      // columns store and the Neon type parser reads back as a number.
-      sql<number>`((extract(epoch from now()) * 1000) + ${ms})::bigint`
-    : // SQLite: whole seconds, so the instant is up to 999ms early. That is
-      // conservative against the lease and noise against its 90s of slack.
+    ? // Postgres: `clock_timestamp()`, not `now()`. `now()` is frozen at the
+      // transaction's start, so when a concurrent writer makes this update wait
+      // for the row lock, the re-run that follows the wait (EvalPlanQual) would
+      // still report the pre-wait instant; `clock_timestamp()` is re-evaluated
+      // then, so the lease is stamped after the wait, at the write. A lock held
+      // without updating the row would skip the re-run and keep the pre-wait
+      // value — but this app issues no `SELECT … FOR UPDATE` and its
+      // multi-statement transactions never touch this table, so every wait it
+      // can meet is a concurrent writer's. The cast keeps the result a bigint,
+      // which the schema's epoch-ms columns store and the Neon type parser reads
+      // back as a number.
+      sql<number>`((extract(epoch from clock_timestamp()) * 1000) + ${ms})::bigint`
+    : // SQLite: whole seconds, so the instant is up to 999ms early. The error is
+      // one-sided: the lease is never longer than designed, and never more than
+      // 999ms shorter — noise against its 90s of slack.
       sql<number>`(unixepoch() * 1000 + ${ms})`;
   return Object.assign(frag, { [DB_NOW_PLUS]: ms });
 }

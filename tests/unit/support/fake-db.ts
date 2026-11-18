@@ -390,6 +390,14 @@ export interface FakeDbState {
    * sequence. Reset by {@link FakeDb.reset}.
    */
   updateDelayMs?: number;
+  /**
+   * When set, every update applies immediately but resolves this long after.
+   *
+   * This is the other half of a slow write: the row is durable, but the app
+   * waits for the response before it starts the provider call. Reset by
+   * {@link FakeDb.reset}.
+   */
+  updateResponseDelayMs?: number;
 }
 
 /** A fake database and its `typedDb` replacement. */
@@ -674,18 +682,36 @@ export function createFakeDb(): FakeDb {
                 return updated;
               };
 
-              const delay = state.updateDelayMs ?? 0;
-              if (delay > 0) {
-                // Apply after the delay, so a `dbNowPlus` value is evaluated at
-                // the instant the row actually changes, like the real database.
-                const delayed = () =>
-                  new Promise<Row[]>((resolve) => setTimeout(() => resolve(apply()), delay));
+              const writeDelay = state.updateDelayMs ?? 0;
+              const responseDelay = state.updateResponseDelayMs ?? 0;
+              if (writeDelay > 0 || responseDelay > 0) {
+                // A write delay applies after the wait, so a `dbNowPlus` value
+                // is evaluated at the instant the row changes. A response delay
+                // applies immediately and holds the promise, modelling a slow
+                // reply after the row is durable.
+                const settle = () => {
+                  const applied =
+                    writeDelay > 0
+                      ? new Promise<Row[]>((resolve) =>
+                          setTimeout(() => resolve(apply()), writeDelay)
+                        )
+                      : Promise.resolve(apply());
+                  return responseDelay > 0
+                    ? applied.then(
+                        (rows) =>
+                          new Promise<Row[]>((resolve) =>
+                            setTimeout(() => resolve(rows), responseDelay)
+                          )
+                      )
+                    : applied;
+                };
+
                 return {
                   then: <TResult1 = Row[], TResult2 = never>(
                     onfulfilled?: ((value: Row[]) => TResult1 | PromiseLike<TResult1>) | null,
                     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
-                  ) => delayed().then(onfulfilled, onrejected),
-                  returning: () => delayed(),
+                  ) => settle().then(onfulfilled, onrejected),
+                  returning: () => settle(),
                 };
               }
 
@@ -732,6 +758,7 @@ export function createFakeDb(): FakeDb {
       };
       state.log = [];
       state.updateDelayMs = undefined;
+      state.updateResponseDelayMs = undefined;
     },
   };
 }
