@@ -223,6 +223,30 @@ export function describeResolution(resolution: PresetResolution): string {
 }
 
 /**
+ * Collapse case variants so a removal list carries one entry per provider name.
+ *
+ * `Bug` and `bug` are one label, and `Jo` and `jo` are one login. Removing both
+ * asks the provider to delete the same thing twice. For labels that is a second
+ * delete of a name the provider has already removed, and the failure takes the
+ * whole undo with it; for logins the removal is one list call and the duplicate
+ * is merely redundant. The rule is the same for both: the first casing wins, and
+ * callers pass the staged variant first because that is the casing the earlier
+ * action used.
+ *
+ * @param values - Names to deduplicate.
+ * @returns One name per case-insensitive key, in first-seen order.
+ */
+function uniqueByName(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * Build the inverse payload from the values the server read before writing.
  *
  * Unlike {@link invertResolution}, which takes a cached issue, this trusts the
@@ -260,24 +284,35 @@ export function invertToPayload(
 
   const addedLabels = resolution.payload.labels?.add ?? [];
   const cancelledLabelRemovals = (staged?.labels?.remove ?? []).filter((label) =>
-    addedLabels.includes(label)
+    addedLabels.some((added) => added.toLowerCase() === label.toLowerCase())
   );
   if (addedLabels.length > 0 || cancelledLabelRemovals.length > 0) {
     // A label the apply read already carried was not added by the preset, so it
-    // is filtered out of the removal set.
-    const added = addedLabels.filter((label) => !previous.labels.includes(label));
-    inverse.labels = { add: [], remove: [...new Set([...added, ...cancelledLabelRemovals])] };
+    // is filtered out of the removal set. Compared case-insensitively because
+    // the providers treat `Bug` and `bug` as one label, and the resolution may
+    // have been computed from a cache older than this snapshot: `Bug` can be in
+    // `addedLabels` while `previous.labels` already holds `bug`.
+    const applied = new Set(previous.labels.map((label) => label.toLowerCase()));
+    const added = addedLabels.filter((label) => !applied.has(label.toLowerCase()));
+    inverse.labels = {
+      add: [],
+      // The staged removal comes first so its casing is the one kept when the
+      // same label is also a real addition.
+      remove: uniqueByName([...cancelledLabelRemovals, ...added]),
+    };
   }
 
   const addedAssignees = resolution.payload.assignees?.add ?? [];
   const cancelledAssigneeRemovals = (staged?.assignees?.remove ?? []).filter((login) =>
-    addedAssignees.includes(login)
+    addedAssignees.some((added) => added.toLowerCase() === login.toLowerCase())
   );
   if (addedAssignees.length > 0 || cancelledAssigneeRemovals.length > 0) {
-    const added = addedAssignees.filter((login) => !previous.assignees.includes(login));
+    // Logins are case-insensitive on both providers, for the same reason.
+    const applied = new Set(previous.assignees.map((login) => login.toLowerCase()));
+    const added = addedAssignees.filter((login) => !applied.has(login.toLowerCase()));
     inverse.assignees = {
       add: [],
-      remove: [...new Set([...added, ...cancelledAssigneeRemovals])],
+      remove: uniqueByName([...cancelledAssigneeRemovals, ...added]),
     };
   }
 

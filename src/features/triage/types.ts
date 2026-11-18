@@ -141,17 +141,30 @@ export function mergePendingChanges(
     const addSet = new Set(prev.add);
     const removeSet = new Set(prev.remove);
 
+    // The same case-insensitive rule as labels: GitHub and GitLab treat `Jo` and
+    // `jo` as one account, so a case-sensitive comparison would leave a pending
+    // addition beside the removal that was meant to cancel it.
     for (const a of incoming.assignees.add ?? []) {
-      removeSet.delete(a);
+      for (const pending of [...removeSet]) {
+        if (pending.toLowerCase() === a.toLowerCase()) removeSet.delete(pending);
+      }
+      for (const pending of [...addSet]) {
+        if (pending.toLowerCase() === a.toLowerCase()) addSet.delete(pending);
+      }
       addSet.add(a);
     }
     for (const a of incoming.assignees.remove ?? []) {
-      if (addSet.has(a)) {
-        addSet.delete(a);
-        // Same rule as labels: a removal of something staged as an addition is
-        // still a real removal when the issue already has it, which is the undo of
-        // an apply that cancelled a staged removal.
-        if (appliedAssignees.includes(a)) removeSet.add(a);
+      const pendingAdds = [...addSet].filter(
+        (candidate) => candidate.toLowerCase() === a.toLowerCase()
+      );
+      const wasApplied = appliedAssignees.some(
+        (applied) => applied.toLowerCase() === a.toLowerCase()
+      );
+      if (pendingAdds.length > 0) {
+        // Cancels the pending addition, exactly as the label branch does.
+        for (const pending of pendingAdds) addSet.delete(pending);
+        // It is still a real removal when the issue already carries the login.
+        if (wasApplied) removeSet.add(a);
       } else {
         removeSet.add(a);
       }
