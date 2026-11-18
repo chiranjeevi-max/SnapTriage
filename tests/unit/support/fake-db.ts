@@ -366,12 +366,16 @@ interface QueryResult<RowType> extends Promise<RowType[]> {
   onConflictDoUpdate(config: unknown): Promise<RowType[]>;
 }
 
-function queryResult<RowType extends Row>(rows: RowType[]): QueryResult<RowType> {
-  const promise = Promise.resolve(rows) as unknown as QueryResult<RowType>;
+function queryResult<RowType extends Row>(rows: RowType[], delayMs = 0): QueryResult<RowType> {
+  const settle = () =>
+    delayMs > 0
+      ? new Promise<RowType[]>((resolve) => setTimeout(() => resolve(rows), delayMs))
+      : Promise.resolve(rows);
+  const promise = settle() as unknown as QueryResult<RowType>;
   return Object.assign(promise, {
-    orderBy: (...terms: unknown[]) => queryResult(sortRows(rows, terms)),
-    limit: (count: number) => queryResult(rows.slice(0, Math.max(count, 0))),
-    returning: () => Promise.resolve(rows),
+    orderBy: (...terms: unknown[]) => queryResult(sortRows(rows, terms), delayMs),
+    limit: (count: number) => queryResult(rows.slice(0, Math.max(count, 0)), delayMs),
+    returning: () => promise,
     onConflictDoNothing: () => promise,
     onConflictDoUpdate: () => promise,
   });
@@ -411,6 +415,14 @@ export interface FakeDbState {
    * {@link FakeDb.reset}.
    */
   updateResponseDelayMs?: number;
+  /**
+   * When set, every select resolves this long after its rows are read.
+   *
+   * Models a slow lease check: the database reads the row, but the app waits for
+   * the response before it can start the provider call. Reset by
+   * {@link FakeDb.reset}.
+   */
+  selectResponseDelayMs?: number;
   /**
    * How far the fake's database clock runs from the app clock when a condition
    * is evaluated, in milliseconds.
@@ -489,11 +501,19 @@ function defaultsFor(key: TableKey, values: Row): Row {
 }
 
 /** Resolve a projection entry for one row scope. */
-function project(projection: Record<string, unknown>, scope: ReadonlyMap<object, Row>): Row {
+function project(
+  projection: Record<string, unknown>,
+  scope: ReadonlyMap<object, Row>,
+  dbNowOffsetMs = 0
+): Row {
   const projected: Row = {};
   for (const [alias, source] of Object.entries(projection)) {
     if (isTable(source)) {
       projected[alias] = scope.get(source as object);
+      continue;
+    }
+    if (isDbNowPlus(source)) {
+      projected[alias] = new Date(Date.now() + source[DB_NOW_PLUS] + dbNowOffsetMs);
       continue;
     }
     if (typeof source === "object" && source !== null && isColumn(source)) {
@@ -596,7 +616,7 @@ export function createFakeDb(): FakeDb {
           const materialize = (scopes: Array<Map<object, Row>>): Row[] => {
             if (counting) return [{ total: scopes.length }];
             if (!projection) return scopes.map((scope) => scope.get(root.table) as Row);
-            return scopes.map((scope) => project(projection, scope));
+            return scopes.map((scope) => project(projection, scope, state.dbNowOffsetMs ?? 0));
           };
 
           const builder = {
@@ -609,7 +629,7 @@ export function createFakeDb(): FakeDb {
               // The filtered rows, then chained through `queryResult` so
               // `.orderBy()` and `.limit()` apply to this result rather than
               // starting from the unfiltered table again.
-              return queryResult(materialize(run(condition)));
+              return queryResult(materialize(run(condition)), state.selectResponseDelayMs ?? 0);
             },
           };
 
@@ -793,6 +813,7 @@ export function createFakeDb(): FakeDb {
       state.log = [];
       state.updateDelayMs = undefined;
       state.updateResponseDelayMs = undefined;
+      state.selectResponseDelayMs = undefined;
       state.dbNowOffsetMs = undefined;
     },
   };

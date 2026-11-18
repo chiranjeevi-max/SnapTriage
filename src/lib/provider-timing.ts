@@ -45,9 +45,9 @@ export const REPLY_SEND_LEASE_MS = REQUEST_TIMEOUT_MS * 4;
  * the comparison uses the same clock that stamped the lease. A lease with less
  * than this left refuses the send instead of starting a call it cannot cover
  * for the call's full duration. One request deadline plus a settle margin; the
- * margin covers the select's response and the dispatch between the check and the
- * fetch. On SQLite, the clock's whole-second truncation can spend up to a second
- * of that margin at the boundary; the error is one-sided and leaves several
- * seconds.
+ * check measures its own round trip and subtracts it, and the margin covers the
+ * dispatch between the check and the fetch. On SQLite, the clock's whole-second
+ * truncation can spend up to a second of that margin at the boundary; the error
+ * is one-sided and leaves several seconds.
  */
 export const REPLY_SEND_MIN_LEASE_MS = REQUEST_TIMEOUT_MS + 5_000;

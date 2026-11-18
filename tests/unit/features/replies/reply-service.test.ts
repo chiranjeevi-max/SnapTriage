@@ -652,6 +652,35 @@ describe("sendReply — the published path", () => {
 
   /**
    * @target sendReply
+   * @dependencies REPLY_SEND_MIN_LEASE_MS
+   * @scenario The lease check's select returns after 90s
+   * @expectedOutput 409 before the provider call: the check subtracts its own
+   *                 round trip, so a slow response cannot leave less than one
+   *                 deadline at call start.
+   */
+  it("should subtract the lease check's response time", async () => {
+    vi.useFakeTimers();
+    fakeDb.state.selectResponseDelayMs = 90_000;
+    try {
+      const pending = sendReply("user-1", TARGET, "Thanks for the report.");
+      await vi.advanceTimersByTimeAsync(90_000);
+      const failure = sendFailure(await pending);
+
+      expect(failure.status).toBe(409);
+      expect(failure.unconfirmed).toBeUndefined();
+      expect(provider.createComment).not.toHaveBeenCalled();
+      const row = fakeDb.state.rows.reply_draft[0];
+      expect(row.sendAttemptedAt).toBeNull();
+      expect(row.sendClaimId).toBeNull();
+      expect(row.sendInFlightUntil).toBeNull();
+    } finally {
+      fakeDb.state.selectResponseDelayMs = undefined;
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * @target sendReply
    * @dependencies providerLimits
    * @scenario The body is one character over GitHub's 65,536-character comment limit
    * @expectedOutput 400 and no provider call: the provider would refuse it, and

@@ -345,12 +345,20 @@ export async function sendReply(
     };
   }
 
-  // The lease was stamped by the database, so check it there. A JS comparison
-  // would mix the database clock with this instance's; when the database clock
-  // runs ahead, that would pass a call with less than one deadline left. The
-  // select is a read of the claim row and starts no provider work.
+  // The lease was stamped by the database, so check it there. The select returns
+  // the lease and the database clock at the same instant; its own round trip is
+  // subtracted below, so a slow response cannot leave less than one deadline at
+  // call start. The round trip is measured from before the query is sent, so it
+  // also absorbs the request's own latency. That undercounts the remaining
+  // lease, which is the safe direction. The 5s margin covers the dispatch to the
+  // fetch.
+  const checkedAt = Date.now();
   const covered = await typedDb
-    .select({ id: replyDrafts.id })
+    .select({
+      id: replyDrafts.id,
+      leaseEndsAt: replyDrafts.sendInFlightUntil,
+      dbNow: dbNowPlus(0),
+    })
     .from(replyDrafts)
     .where(
       and(
@@ -360,13 +368,19 @@ export async function sendReply(
         gte(replyDrafts.sendInFlightUntil, dbNowPlus(REPLY_SEND_MIN_LEASE_MS))
       )
     );
-  if (covered.length === 0) {
+  const checkMs = Math.max(0, Date.now() - checkedAt);
+  const remainingMs = covered[0]
+    ? (covered[0].leaseEndsAt?.getTime() ?? 0) - Number(covered[0].dbNow) - checkMs
+    : 0;
+  if (covered.length === 0 || remainingMs < REPLY_SEND_MIN_LEASE_MS) {
     // Log before the cleanup write. If that write fails, the lease end that
     // triggered the refusal is still on record.
     apiLogger.warn(
       {
         issueId: target.issueId,
         leaseEndsAt: refused.leaseEndsAt.toISOString(),
+        remainingMs,
+        checkMs,
         minLeaseMs: REPLY_SEND_MIN_LEASE_MS,
       },
       "Reply claim lease too short; send refused before any provider call"
