@@ -19,6 +19,7 @@ import { POST } from "@/app/api/issues/[id]/replies/route";
 import { auth } from "@/auth";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
+import { checkPersistentRateLimit } from "@/lib/rate-limit";
 import { ProviderApiError } from "@/lib/provider-error";
 import { providerLimits, type IssueProvider, type ProviderComment } from "@/lib/provider-interface";
 import {
@@ -33,6 +34,7 @@ import {
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/features/auth/get-provider-token", () => ({ getProviderToken: vi.fn() }));
 vi.mock("@/lib/providers", () => ({ getProvider: vi.fn() }));
+vi.mock("@/lib/rate-limit", () => ({ checkPersistentRateLimit: vi.fn() }));
 vi.mock("@/lib/db/query", async () => {
   const { fakeDb } = await import("../../../support/fake-db");
   return { typedDb: fakeDb.typedDb };
@@ -44,6 +46,7 @@ vi.mock("@/lib/logger", () => ({
 const mockAuth = vi.mocked(auth);
 const mockGetProviderToken = vi.mocked(getProviderToken);
 const mockGetProvider = vi.mocked(getProvider);
+const mockRateLimit = vi.mocked(checkPersistentRateLimit);
 
 let lastStatus = 0;
 let lastBody: unknown = null;
@@ -107,6 +110,7 @@ beforeEach(() => {
   mockAuth.mockResolvedValue({ user: { id: "user-1" } } as never);
   mockGetProviderToken.mockResolvedValue("token-abc");
   mockGetProvider.mockReturnValue(provider);
+  mockRateLimit.mockResolvedValue(false);
   fakeDb.state.rows.repo.push(repoRow());
   fakeDb.state.rows.issue.push(issueRow());
 });
@@ -141,6 +145,58 @@ describe("POST /api/issues/:id/replies — authorization", () => {
     expect(res.status).toBe(404);
     expect(mockGetProvider).not.toHaveBeenCalled();
     expect(fakeDb.state.log).not.toContain("provider:createComment");
+  });
+
+  /**
+   * @target POST /api/issues/:id/replies
+   * @dependencies checkPersistentRateLimit
+   * @scenario The user has sent more replies than the window allows
+   * @expectedOutput 429 with no provider call and no `unconfirmed` flag: the
+   *                 refusal is definitive, so Send must stay available
+   */
+  it("should return 429 when the send bucket is exhausted", async () => {
+    mockRateLimit.mockResolvedValue(true);
+
+    const res = await postReply({ body: "Thanks" });
+
+    expect(res.status).toBe(429);
+    expect((res.body as { unconfirmed?: true }).unconfirmed).toBeUndefined();
+    expect((res.body as { error: string }).error).toContain("Too many replies");
+    expect(mockGetProvider).not.toHaveBeenCalled();
+    expect(fakeDb.state.log).not.toContain("provider:createComment");
+    // The bound is checked before the claim, so a refused request leaves no
+    // attempt marker and no draft behind.
+    expect(fakeDb.state.rows.reply_draft).toHaveLength(0);
+  });
+
+  /**
+   * @target POST /api/issues/:id/replies
+   * @dependencies checkPersistentRateLimit
+   * @scenario The bucket is exhausted and the body is malformed
+   * @expectedOutput 429, not 400. The limit is checked before the body is
+   *                 parsed, so a runaway client cannot spend the window on
+   *                 requests that never reach the provider.
+   */
+  it("should refuse an exhausted bucket before validating the body", async () => {
+    mockRateLimit.mockResolvedValue(true);
+
+    const res = await postReply({});
+
+    expect(res.status).toBe(429);
+    expect(fakeDb.state.rows.reply_draft).toHaveLength(0);
+    expect(mockGetProvider).not.toHaveBeenCalled();
+  });
+
+  /**
+   * @target POST /api/issues/:id/replies
+   * @dependencies checkPersistentRateLimit
+   * @scenario An authenticated send under the allowance
+   * @expectedOutput The bucket is keyed by the user, not the client address
+   */
+  it("should key the send bucket by user", async () => {
+    await postReply({ body: "Thanks" });
+
+    expect(mockRateLimit).toHaveBeenCalledWith("reply:send:user-1", 10, 60_000);
   });
 });
 

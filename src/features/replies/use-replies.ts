@@ -28,6 +28,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { toast } from "sonner";
 import { readApiError } from "@/features/presets/api-error";
 import { devComments, devSavedReplies, readDataMode } from "@/features/dev-tools/data-mode";
+import { readSendFailure } from "@/features/replies/send-state";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
 /** The issue fields the reply surface reads. */
@@ -292,41 +293,6 @@ export function useDiscardDraft(issueId: string | undefined) {
       toast.error(error.message);
     },
   });
-}
-
-/**
- * Reads the reply failure and whether the comment may already exist.
- *
- * `readApiError` returns only the sentence, and this response carries the
- * `unconfirmed` flag in the same body, so one parse has to produce both.
- *
- * @param res - The failed send response.
- * @returns The server's sentence and whether the outcome is unknown.
- */
-async function readSendFailure(res: Response): Promise<{ message: string; unconfirmed: boolean }> {
-  try {
-    const body = (await res.json()) as { error?: unknown; unconfirmed?: unknown };
-    return {
-      message:
-        typeof body.error === "string" && body.error.trim().length > 0
-          ? body.error
-          : "Failed to post the reply",
-      // A 5xx is never a definitive rejection, whatever the body says. A gateway
-      // can swallow the `unconfirmed` flag, and treating that as a refusal drops
-      // the guard on a comment the provider may already have published.
-      unconfirmed: body.unconfirmed === true || res.status >= 500,
-    };
-  } catch {
-    // An unreadable body is not evidence the send failed. A proxy can return an
-    // HTML 502 after the server published the comment and deleted the draft, so
-    // treating this as an ordinary failure re-enables Send on a reply that is
-    // already public. Only a parsed response can report a definite rejection.
-    return {
-      message:
-        "The reply may already be posted. Check the issue before sending again; your draft has been kept.",
-      unconfirmed: true,
-    };
-  }
 }
 
 /**
