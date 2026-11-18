@@ -616,7 +616,7 @@ export function createFakeDb(): FakeDb {
             const created: Row[] = [];
 
             for (const values of incoming) {
-              const row = defaultsFor(key, resolveSet(values));
+              const row = defaultsFor(key, resolveSet(values, state.dbNowOffsetMs ?? 0));
               const existing = keyFields
                 ? tableRows(key).find((candidate) =>
                     keyFields.every((field) => candidate[field] === row[field])
@@ -636,7 +636,7 @@ export function createFakeDb(): FakeDb {
               }
               if (conflict.kind === "skip") continue;
 
-              Object.assign(existing, resolveSet(conflict.set));
+              Object.assign(existing, resolveSet(conflict.set, state.dbNowOffsetMs ?? 0));
               created.push(existing);
             }
 

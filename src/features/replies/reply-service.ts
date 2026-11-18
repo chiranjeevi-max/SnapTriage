@@ -354,11 +354,13 @@ export async function sendReply(
   // returns to editable — nothing was posted, so the user may simply retry.
   const remainingMs = refused.leaseEndsAt.getTime() - Date.now();
   if (remainingMs < REPLY_SEND_MIN_LEASE_MS) {
-    await clearAttempt(userId, target.issueId, refused.claimId);
+    // Log before the cleanup write: if that write fails, the evidence that
+    // triggered the refusal is the thing worth keeping.
     apiLogger.warn(
       { issueId: target.issueId, remainingMs },
       "Reply claim lease too short; send refused before any provider call"
     );
+    await clearAttempt(userId, target.issueId, refused.claimId);
     return {
       ok: false,
       status: 409,
