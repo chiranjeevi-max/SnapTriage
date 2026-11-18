@@ -16,7 +16,17 @@ describe("provider timing", () => {
     expect(REPLY_SEND_LEASE_MS).toBeGreaterThan(REQUEST_TIMEOUT_MS);
   });
 
-  it("should keep the lease at twice the request deadline", () => {
-    expect(REPLY_SEND_LEASE_MS).toBe(REQUEST_TIMEOUT_MS * 2);
+  /**
+   * @target REPLY_SEND_LEASE_MS
+   * @dependencies REQUEST_TIMEOUT_MS
+   * @scenario The lease is derived from the request deadline
+   * @expectedOutput Four deadlines: one for the claim's own database writes, one
+   *                 for the provider call, and two for scheduling and settlement.
+   *                 The lease is stamped before the claim update, so a
+   *                 two-deadline margin would let slow claim work eat the call's
+   *                 protection.
+   */
+  it("should keep the lease at four request deadlines", () => {
+    expect(REPLY_SEND_LEASE_MS).toBe(REQUEST_TIMEOUT_MS * 4);
   });
 });

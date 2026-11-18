@@ -5,11 +5,11 @@
  * them.
  *
  * The two values are related, and that relationship is the reason they live
- * together. The send lease has to outlive the longest provider call it guards;
- * if it did not, a call could still be running when the claim expired and a
- * second send could start beside it. Writing the lease out as its own number
- * left nothing enforcing that, and the deadline lives in two adapters, so a
- * comment was the only link between them.
+ * together. The send lease has to outlive the claim's own database writes and
+ * the longest provider call it guards; if it did not, a call could still be
+ * running when the claim expired and a second send could start beside it.
+ * Writing the lease out as its own number left nothing enforcing that, and the
+ * deadline lives in two adapters, so a comment was the only link between them.
  */
 
 /**
@@ -25,8 +25,10 @@ export const REQUEST_TIMEOUT_MS = 30_000;
 /**
  * How long a reply send keeps its claim marked "in flight".
  *
- * Derived rather than written out: raising the request deadline must raise the
- * lease with it. The margin covers the gap between the abort firing and the
- * request settling, so the lease always outlives the call.
+ * Four request deadlines: one for the claim's own database writes, one for the
+ * provider call, and two for scheduling and settlement. The lease is stamped
+ * immediately before the conditional claim update, so the first deadline is
+ * what keeps a slow write from eating the call's margin. Derived rather than
+ * written out, so raising the request deadline raises the lease with it.
  */
-export const REPLY_SEND_LEASE_MS = REQUEST_TIMEOUT_MS * 2;
+export const REPLY_SEND_LEASE_MS = REQUEST_TIMEOUT_MS * 4;

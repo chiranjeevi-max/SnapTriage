@@ -55,6 +55,34 @@ describe("stash", () => {
   });
 
   /**
+   * @target stashSnapshot, setStashed
+   * @dependencies sessionStorage
+   * @scenario Ten entries are written, the document reloads, and they are read
+   *           back in reverse order before an eleventh write
+   * @expectedOutput The oldest write (A) is evicted, not the most recently read
+   *                 entry (J). Eviction follows stored write order, so reading a
+   *                 draft cannot make it look newer than it is.
+   */
+  it("should evict by write order after a reload, not read order", async () => {
+    for (let index = 0; index < 10; index++) {
+      setStashed(`issue-order-${index}`, `text-${index}`);
+    }
+
+    vi.resetModules();
+    const reloaded = await import("@/features/replies/stash");
+
+    for (let index = 9; index >= 0; index--) {
+      expect(reloaded.stashSnapshot(`issue-order-${index}`)).toBe(`text-${index}`);
+    }
+
+    reloaded.setStashed("issue-order-10", "text-10");
+
+    expect(reloaded.stashSnapshot("issue-order-0")).toBeNull();
+    expect(reloaded.stashSnapshot("issue-order-9")).toBe("text-9");
+    expect(reloaded.stashSnapshot("issue-order-10")).toBe("text-10");
+  });
+
+  /**
    * @target setStashed
    * @dependencies sessionStorage
    * @scenario Twelve issues keep a copy, more than the cap allows
@@ -90,6 +118,38 @@ describe("stash", () => {
     vi.resetModules();
     const reloaded = await import("@/features/replies/stash");
     expect(reloaded.stashSnapshot("issue-clear")).toBeNull();
+  });
+
+  /**
+   * @target setStashed, stashSnapshot
+   * @dependencies sessionStorage
+   * @scenario `removeItem` fails while the index update succeeds
+   * @expectedOutput The retired text is not offered again, now or after a
+   *                 reload. The index is authoritative when the key cannot be
+   *                 deleted, so a failed cleanup cannot resurrect text the user
+   *                 already dismissed.
+   */
+  it("should not resurrect text when removeItem fails but the index update succeeds", async () => {
+    setStashed("issue-retire", "retired text");
+
+    const spy = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("remove blocked");
+    });
+
+    try {
+      setStashed("issue-retire", null);
+      expect(stashSnapshot("issue-retire")).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+
+    // The key survives because the removal failed; the index is what says it is
+    // no longer live.
+    expect(window.sessionStorage.getItem(`${KEY_PREFIX}issue-retire`)).toBe("retired text");
+
+    vi.resetModules();
+    const reloaded = await import("@/features/replies/stash");
+    expect(reloaded.stashSnapshot("issue-retire")).toBeNull();
   });
 
   /**
@@ -186,9 +246,7 @@ describe("stash", () => {
 
     expect(() => setStashed("issue-corrupt", "text")).not.toThrow();
     expect(stashSnapshot("issue-corrupt")).toBe("text");
-    expect(JSON.parse(window.sessionStorage.getItem(INDEX_KEY) ?? "[]")).toEqual([
-      "issue-corrupt",
-    ]);
+    expect(JSON.parse(window.sessionStorage.getItem(INDEX_KEY) ?? "[]")).toEqual(["issue-corrupt"]);
   });
 
   /**

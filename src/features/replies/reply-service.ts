@@ -444,8 +444,6 @@ async function claimAttempt(
   body: string,
   expectedVersion: number | null
 ): Promise<"unresolved" | "stale" | { claimId: string }> {
-  const now = new Date();
-
   // A row is created only when the caller expects no stored draft: `null` (no
   // opinion) or `0` (asserts absence). A caller holding a real version expects
   // its row to exist, so inserting one here would be replacing a draft another tab
@@ -455,7 +453,7 @@ async function claimAttempt(
   const created = mayCreate
     ? await typedDb
         .insert(replyDrafts)
-        .values({ issueId, userId, body, sendAttemptedAt: null, updatedAt: now })
+        .values({ issueId, userId, body, sendAttemptedAt: null, updatedAt: new Date() })
         .onConflictDoNothing({ target: [replyDrafts.issueId, replyDrafts.userId] })
         .returning({ id: replyDrafts.id, version: replyDrafts.version })
     : [];
@@ -468,19 +466,22 @@ async function claimAttempt(
   if (expectedVersion === 0 && creator === null) return "stale";
 
   const claimId = crypto.randomUUID();
+  // Stamped after the insert, not at the top of the function: the lease must
+  // start when the claim is written, not before a write that may take time.
+  const claimedAt = new Date();
   const claimed = await typedDb
     .update(replyDrafts)
     .set({
-      sendAttemptedAt: now,
+      sendAttemptedAt: claimedAt,
       sendClaimId: claimId,
       // A lease, not a flag: if this process dies mid-call the row must not stay
       // unreleasable forever. Past this instant the call is taken to have ended
       // however it ended, and the claim becomes an ordinary unresolved one. The
-      // value is derived from the request deadline, so it cannot end up shorter
-      // than a call that is still running.
-      sendInFlightUntil: new Date(now.getTime() + REPLY_SEND_LEASE_MS),
+      // value is four request deadlines, so it covers this update plus a full
+      // provider call even when the write is slow.
+      sendInFlightUntil: new Date(claimedAt.getTime() + REPLY_SEND_LEASE_MS),
       body,
-      updatedAt: now,
+      updatedAt: claimedAt,
     })
     .where(
       and(

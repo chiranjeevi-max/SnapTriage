@@ -37,6 +37,17 @@ const MAX_ENTRIES = 10;
 const memory = new Map<string, string>();
 const listeners = new Set<() => void>();
 
+/**
+ * The ids the stored index says are live, or `null` before the index is read.
+ *
+ * This is what makes a successful retirement authoritative even when
+ * `removeItem` fails: the key may still be readable, but the index no longer
+ * names it, so it is not offered again. `null` means the index is missing or
+ * unreadable, which is different from an empty one: the order is unknown, so a
+ * stored key is still recoverable.
+ */
+let liveIds: Set<string> | null = null;
+
 /** The tab's storage, or `null` when it is unavailable or access throws. */
 function storage(): Storage | null {
   try {
@@ -46,21 +57,60 @@ function storage(): Storage | null {
   }
 }
 
-/** Reads the eviction order, discarding anything that is not a list of ids. */
-function readIndex(store: Storage): string[] {
+/**
+ * Reads the eviction order, or `null` when the index is missing or unreadable.
+ *
+ * `null` and `[]` are not interchangeable here. An empty index is a valid,
+ * authoritative statement that nothing is live; a missing one means the order
+ * is unknown and a stored key may still be recoverable.
+ */
+function readIndexOrNull(store: Storage): string[] | null {
   try {
     const raw = store.getItem(INDEX_KEY);
-    if (!raw) return [];
+    if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed)
       ? parsed.filter((value): value is string => typeof value === "string")
-      : [];
+      : null;
   } catch {
-    return [];
+    return null;
+  }
+}
+
+/** Reads the eviction order, treating a missing index as empty. */
+function readIndex(store: Storage): string[] {
+  return readIndexOrNull(store) ?? [];
+}
+
+/**
+ * Load the stored entries into memory in their write order.
+ *
+ * The index is the only record of that order, and the cap evicts by memory
+ * order. Restoring entries as they are read would make the most recently read
+ * draft look like the newest write, so a later write would evict the wrong one.
+ * Runs once per module instance; a missing or unreadable index is retried on the
+ * next call rather than treated as an empty order.
+ */
+function hydrate(store: Storage): void {
+  if (liveIds !== null) return;
+
+  const ids = readIndexOrNull(store);
+  if (ids === null) return;
+
+  liveIds = new Set(ids);
+  for (const id of ids) {
+    if (memory.has(id)) continue;
+    try {
+      const value = store.getItem(KEY_PREFIX + id);
+      if (value !== null) memory.set(id, value);
+    } catch {
+      // One unreadable entry must not block the rest.
+    }
   }
 }
 
 function writeIndex(store: Storage, ids: string[]): void {
+  liveIds = new Set(ids);
   try {
     store.setItem(INDEX_KEY, JSON.stringify(ids));
   } catch {
@@ -96,9 +146,14 @@ function trimMemory(): string[] {
  */
 export function setStashed(issueId: string, body: string | null): void {
   const store = storage();
+  // Load the stored order before changing it. Without this, a write after a
+  // reload would append to whatever the reads happened to populate, and the cap
+  // would evict by read order instead of write order.
+  if (store) hydrate(store);
 
   if (body === null) {
     memory.delete(issueId);
+    liveIds?.delete(issueId);
     if (store) {
       try {
         store.removeItem(KEY_PREFIX + issueId);
@@ -115,6 +170,7 @@ export function setStashed(issueId: string, body: string | null): void {
     // cap evicts by.
     memory.delete(issueId);
     memory.set(issueId, body);
+    liveIds?.add(issueId);
 
     if (store) {
       try {
@@ -182,11 +238,19 @@ export function subscribeToStash(listener: () => void): () => void {
  * @returns The stashed text, or `null`.
  */
 export function stashSnapshot(issueId: string): string | null {
+  const store = storage();
+  if (store) hydrate(store);
+
   const cached = memory.get(issueId);
   if (cached !== undefined) return cached;
 
-  const store = storage();
   if (!store) return null;
+
+  // A live index that does not name this issue says the entry was retired, even
+  // when `removeItem` failed and the key is still readable. A missing index is
+  // different: the order is unknown, so a stored key is still offered rather
+  // than discarding text that may be the user's only copy.
+  if (liveIds !== null && !liveIds.has(issueId)) return null;
 
   let value: string | null = null;
   try {
