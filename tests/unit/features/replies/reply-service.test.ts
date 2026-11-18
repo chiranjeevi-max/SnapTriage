@@ -681,6 +681,43 @@ describe("sendReply — the published path", () => {
 
   /**
    * @target sendReply
+   * @dependencies REPLY_SEND_MIN_LEASE_MS
+   * @scenario The wall clock moves backward while the lease check is in flight
+   * @expectedOutput 409. The round trip is measured on a monotonic clock, so a
+   *                 backward adjustment cannot make a 90s check look instant.
+   */
+  it("should measure the lease check on a monotonic clock", async () => {
+    vi.useFakeTimers();
+    const start = new Date("2026-01-01T00:00:00.000Z").getTime();
+    vi.setSystemTime(start);
+    let monotonic = 0;
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => monotonic);
+    fakeDb.state.selectResponseDelayMs = 90_000;
+    try {
+      const pending = sendReply("user-1", TARGET, "Thanks for the report.");
+      // Let the claim and the select start before moving the wall clock.
+      await vi.advanceTimersByTimeAsync(0);
+      vi.setSystemTime(start - 100_000);
+      monotonic = 90_000;
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      const failure = sendFailure(await pending);
+      expect(failure.status).toBe(409);
+      expect(failure.unconfirmed).toBeUndefined();
+      expect(provider.createComment).not.toHaveBeenCalled();
+      const row = fakeDb.state.rows.reply_draft[0];
+      expect(row.sendAttemptedAt).toBeNull();
+      expect(row.sendClaimId).toBeNull();
+      expect(row.sendInFlightUntil).toBeNull();
+    } finally {
+      fakeDb.state.selectResponseDelayMs = undefined;
+      nowSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * @target sendReply
    * @dependencies providerLimits
    * @scenario The body is one character over GitHub's 65,536-character comment limit
    * @expectedOutput 400 and no provider call: the provider would refuse it, and

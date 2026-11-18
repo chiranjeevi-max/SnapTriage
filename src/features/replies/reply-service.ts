@@ -348,11 +348,12 @@ export async function sendReply(
   // The lease was stamped by the database, so check it there. The select returns
   // the lease and the database clock at the same instant; its own round trip is
   // subtracted below, so a slow response cannot leave less than one deadline at
-  // call start. The round trip is measured from before the query is sent, so it
-  // also absorbs the request's own latency. That undercounts the remaining
-  // lease, which is the safe direction. The 5s margin covers the dispatch to the
-  // fetch.
-  const checkedAt = Date.now();
+  // call start. The round trip is measured on a monotonic clock, so a wall-clock
+  // adjustment cannot make a slow check look instant. It is measured from before
+  // the query is sent, so it also absorbs the request's own latency. That
+  // undercounts the remaining lease, which is the safe direction. The 5s margin
+  // covers the dispatch to the fetch.
+  const checkedAt = performance.now();
   const covered = await typedDb
     .select({
       id: replyDrafts.id,
@@ -368,7 +369,8 @@ export async function sendReply(
         gte(replyDrafts.sendInFlightUntil, dbNowPlus(REPLY_SEND_MIN_LEASE_MS))
       )
     );
-  const checkMs = Math.max(0, Date.now() - checkedAt);
+  // Clamped defensively; performance.now() cannot move backward.
+  const checkMs = Math.max(0, performance.now() - checkedAt);
   const remainingMs = covered[0]
     ? (covered[0].leaseEndsAt?.getTime() ?? 0) - Number(covered[0].dbNow) - checkMs
     : 0;
