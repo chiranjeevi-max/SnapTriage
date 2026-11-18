@@ -19,6 +19,7 @@ import { DELETE, PUT } from "@/app/api/issues/[id]/follow-up/route";
 import { auth } from "@/auth";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
+import { checkPersistentRateLimit } from "@/lib/rate-limit";
 import type { IssueProvider } from "@/lib/provider-interface";
 import {
   ISSUE_ID,
@@ -32,6 +33,7 @@ import {
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/features/auth/get-provider-token", () => ({ getProviderToken: vi.fn() }));
 vi.mock("@/lib/providers", () => ({ getProvider: vi.fn() }));
+vi.mock("@/lib/rate-limit", () => ({ checkPersistentRateLimit: vi.fn() }));
 vi.mock("@/lib/db/query", async () => {
   const { fakeDb } = await import("../../../support/fake-db");
   return { typedDb: fakeDb.typedDb };
@@ -44,6 +46,7 @@ vi.mock("@/lib/logger", () => ({
 const mockAuth = vi.mocked(auth);
 const mockGetProviderToken = vi.mocked(getProviderToken);
 const mockGetProvider = vi.mocked(getProvider);
+const mockRateLimit = vi.mocked(checkPersistentRateLimit);
 
 let lastStatus = 0;
 let lastBody: unknown = null;
@@ -93,6 +96,7 @@ beforeEach(() => {
   mockAuth.mockResolvedValue({ user: { id: "user-1" } } as never);
   mockGetProviderToken.mockResolvedValue("token-abc");
   mockGetProvider.mockReturnValue(providerStub());
+  mockRateLimit.mockResolvedValue(false);
   fakeDb.state.rows.repo.push(repoRow());
   fakeDb.state.rows.issue.push(issueRow());
 });
@@ -139,6 +143,57 @@ describe("PUT /api/issues/:id/follow-up — authorization and validation", () =>
 
     expect(res.status).toBe(404);
     expect(fakeDb.state.rows.follow_up).toHaveLength(0);
+  });
+
+  /**
+   * @target PUT /api/issues/:id/follow-up
+   * @dependencies checkPersistentRateLimit
+   * @scenario The user has armed more follow-ups than the window allows
+   * @expectedOutput 429 with nothing written: arming is the only transition
+   *                 that reads the provider, so it is the only one limited
+   */
+  it("should return 429 when the arm bucket is exhausted", async () => {
+    mockRateLimit.mockResolvedValue(true);
+
+    const res = await putFollowUp({ action: "wait" });
+
+    expect(res.status).toBe(429);
+    expect(fakeDb.state.rows.follow_up).toHaveLength(0);
+    expect(mockRateLimit).toHaveBeenCalledWith("provider:follow-up:user-1", 30, 900_000);
+  });
+
+  /**
+   * @target PUT /api/issues/:id/follow-up
+   * @dependencies reviewFollowUp
+   * @scenario The arm bucket is exhausted, but the user reviews an existing watch
+   * @expectedOutput 200: review is a local write, so the arm limit must not
+   *                 block the only way to clear an item from the queue
+   */
+  it("should not rate-limit a review when the arm bucket is exhausted", async () => {
+    mockRateLimit.mockResolvedValue(true);
+    fakeDb.state.rows.follow_up.push(followUpRow({ reason: "reply" }));
+
+    const res = await putFollowUp({ action: "review" });
+
+    expect(res.status).toBe(200);
+    expect(fakeDb.state.rows.follow_up[0].state).toBe("reviewed");
+  });
+
+  /**
+   * @target PUT /api/issues/:id/follow-up
+   * @dependencies stopFollowUp
+   * @scenario The arm bucket is exhausted, but the user stops an existing watch
+   * @expectedOutput 200. Stop is a local write; blocking it would leave the user
+   *                 unable to remove an item from the queue.
+   */
+  it("should not rate-limit a stop when the arm bucket is exhausted", async () => {
+    mockRateLimit.mockResolvedValue(true);
+    fakeDb.state.rows.follow_up.push(followUpRow({ reason: "reply" }));
+
+    const res = await putFollowUp({ action: "stop" });
+
+    expect(res.status).toBe(200);
+    expect(fakeDb.state.rows.follow_up[0].state).toBe("stopped");
   });
 });
 

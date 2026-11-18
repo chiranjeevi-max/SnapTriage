@@ -28,6 +28,11 @@ import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
 import { ProviderApiError } from "@/lib/provider-error";
 import { apiLogger } from "@/lib/logger";
+import { checkPersistentRateLimit } from "@/lib/rate-limit";
+
+/** Page reads allowed per user per minute; the pane walks pages one at a time. */
+const READ_LIMIT = 60;
+const READ_WINDOW_MS = 60_000;
 
 /** Page size for the discussion pane; matches the provider's own default. */
 const DEFAULT_PAGE_SIZE = 30;
@@ -46,6 +51,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Each read is one provider call on the user's token. The limit is per user
+  // because that is whose quota is spent, and it is generous enough for a
+  // discussion walked a page at a time.
+  if (
+    await checkPersistentRateLimit(
+      `provider:comments:${session.user.id}`,
+      READ_LIMIT,
+      READ_WINDOW_MS
+    )
+  ) {
+    return NextResponse.json(
+      { error: "Too many discussion reads. Try again in a moment." },
+      { status: 429 }
+    );
   }
 
   const { id } = await params;
