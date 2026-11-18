@@ -31,6 +31,7 @@ import {
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
 import { ProviderApiError } from "@/lib/provider-error";
+import { REPLY_SEND_LEASE_MS } from "@/lib/provider-timing";
 import { providerLimits, type IssueProvider, type ProviderComment } from "@/lib/provider-interface";
 import {
   DRAFT_ID,
@@ -513,6 +514,52 @@ describe("sendReply — the published path", () => {
   });
 
   /**
+   * @target claimAttempt, sendReply
+   * @dependencies reply_drafts.sendInFlightUntil, dbNowPlus
+   * @scenario Every update is stalled, as a wedged database stalls them, and the
+   *           claim row is read inside the provider call it guards
+   * @expectedOutput The lease is stamped by the database's clock when the claim
+   *                 lands: the stalled write cannot shorten it, so it still
+   *                 carries nearly its full length when the call begins.
+   */
+  it("should stamp the lease inside the stalled claim write", async () => {
+    fakeDb.state.updateDelayMs = 200;
+    const observed: Array<{ callStart: number; leaseEnd: number; attempted: number }> = [];
+
+    vi.mocked(provider.createComment!).mockImplementationOnce(async () => {
+      const row = fakeDb.state.rows.reply_draft[0];
+      observed.push({
+        callStart: Date.now(),
+        leaseEnd: (row.sendInFlightUntil as Date).getTime(),
+        attempted: (row.sendAttemptedAt as Date).getTime(),
+      });
+      fakeDb.state.log.push("provider:createComment");
+      return comment();
+    });
+
+    try {
+      const result = await sendReply("user-1", TARGET, "Thanks for the report.");
+      expect(result.ok).toBe(true);
+    } finally {
+      fakeDb.state.updateDelayMs = undefined;
+    }
+
+    expect(observed).toHaveLength(1);
+    const { callStart, leaseEnd, attempted } = observed[0];
+
+    // The stall applied: the call begins well after the attempt marker, so the
+    // test cannot pass because the hook silently did nothing.
+    expect(callStart - attempted).toBeGreaterThanOrEqual(150);
+    // The property that matters: when the provider call begins, the lease still
+    // carries nearly its full length. A JS stamp taken before the stalled write
+    // would have lost the delay.
+    expect(leaseEnd - callStart).toBeGreaterThanOrEqual(REPLY_SEND_LEASE_MS - 50);
+    // The lease moved with the write: measured from the attempt marker, the
+    // delay grew the lease instead of being eaten by it.
+    expect(leaseEnd - attempted).toBeGreaterThanOrEqual(REPLY_SEND_LEASE_MS + 150);
+  });
+
+  /**
    * @target sendReply
    * @dependencies providerLimits
    * @scenario The body is one character over GitHub's 65,536-character comment limit
@@ -815,7 +862,9 @@ describe("resolveIdentity", () => {
         fetchedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
       })
     );
-    provider.getAuthenticatedUser = vi.fn().mockResolvedValue({ login: "new-account", avatar: null });
+    provider.getAuthenticatedUser = vi
+      .fn()
+      .mockResolvedValue({ login: "new-account", avatar: null });
 
     const identity = await resolveIdentity("user-1", "github");
 

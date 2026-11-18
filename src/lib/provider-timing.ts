@@ -25,10 +25,12 @@ export const REQUEST_TIMEOUT_MS = 30_000;
 /**
  * How long a reply send keeps its claim marked "in flight".
  *
- * Four request deadlines: one for the claim's own database writes, one for the
- * provider call, and two for scheduling and settlement. The lease is stamped
- * immediately before the conditional claim update, so the first deadline is
- * what keeps a slow write from eating the call's margin. Derived rather than
- * written out, so raising the request deadline raises the lease with it.
+ * Four request deadlines. `claimAttempt` stamps the lease with the database's
+ * own clock inside the claim write, so the write's duration — however stalled —
+ * cannot shorten it. The deadlines then cover the scheduling gap between the
+ * claim landing and the call starting, the call itself, settlement, and the skew
+ * between the database's clock and the app that later compares the lease. Derived
+ * rather than written out, so raising the request deadline raises the lease with
+ * it.
  */
 export const REPLY_SEND_LEASE_MS = REQUEST_TIMEOUT_MS * 4;

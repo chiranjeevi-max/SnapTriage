@@ -22,6 +22,7 @@
  */
 import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
+import { dbNowPlus } from "@/lib/db/db-clock";
 import { issues, providerIdentities, replyDrafts, repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
@@ -466,8 +467,7 @@ async function claimAttempt(
   if (expectedVersion === 0 && creator === null) return "stale";
 
   const claimId = crypto.randomUUID();
-  // Stamped after the insert, not at the top of the function: the lease must
-  // start when the claim is written, not before a write that may take time.
+  // Informational markers. The lease below is stamped by the database clock.
   const claimedAt = new Date();
   const claimed = await typedDb
     .update(replyDrafts)
@@ -475,11 +475,14 @@ async function claimAttempt(
       sendAttemptedAt: claimedAt,
       sendClaimId: claimId,
       // A lease, not a flag: if this process dies mid-call the row must not stay
-      // unreleasable forever. Past this instant the call is taken to have ended
-      // however it ended, and the claim becomes an ordinary unresolved one. The
-      // value is four request deadlines, so it covers this update plus a full
-      // provider call even when the write is slow.
-      sendInFlightUntil: new Date(claimedAt.getTime() + REPLY_SEND_LEASE_MS),
+      // unreleasable forever. Stamped by the database's own clock inside this
+      // write, so however long the write takes, the lease starts when the claim
+      // lands — a stalled claim cannot eat the provider call's budget. Four
+      // request deadlines: the first covers the scheduling gap between this
+      // write returning and the call starting (no database work sits in that
+      // gap), the second is the call itself, and two remain for settlement and
+      // for skew between the database's clock and the app.
+      sendInFlightUntil: dbNowPlus(REPLY_SEND_LEASE_MS),
       body,
       updatedAt: claimedAt,
     })

@@ -38,6 +38,7 @@ import {
   triagePresets,
   triageState,
 } from "@/lib/db/schema";
+import { DB_NOW_PLUS } from "@/lib/db/db-clock";
 
 export type IssueRow = typeof issues.$inferSelect;
 export type RepoRow = typeof repos.$inferSelect;
@@ -315,6 +316,34 @@ function sortRows<RowType extends Row>(rows: RowType[], terms: unknown[]): RowTy
   });
 }
 
+/**
+ * Resolve a write value the way the database would, at apply time.
+ *
+ * A `dbNowPlus` fragment carries the number of milliseconds to add; evaluating
+ * it here, when the fake applies the row, is what lets a delayed-write test see
+ * a deadline stamped after the delay. Any other SQL fragment is unsupported and
+ * throws rather than landing in a row as an object.
+ */
+function applyValue(value: unknown): unknown {
+  if (typeof value === "object" && value !== null) {
+    const marker = (value as Record<symbol, unknown>)[DB_NOW_PLUS];
+    if (typeof marker === "number") return new Date(Date.now() + marker);
+    if ("queryChunks" in (value as object)) {
+      throw new Error("fake-db: unsupported SQL expression in a write value");
+    }
+  }
+  return value;
+}
+
+/** Resolve every value in a `set` object at apply time. */
+function resolveSet(values: Row): Row {
+  const resolved: Row = {};
+  for (const [key, value] of Object.entries(values)) {
+    resolved[key] = applyValue(value);
+  }
+  return resolved;
+}
+
 /** A resolved query result that also answers the builder methods callers chain. */
 interface QueryResult<RowType> extends Promise<RowType[]> {
   orderBy(...terms: unknown[]): QueryResult<RowType>;
@@ -353,6 +382,14 @@ export interface FakeDbState {
   };
   /** Ordered operation log, e.g. `db:update:triage_state`. */
   log: string[];
+  /**
+   * When set, every update waits this long before applying.
+   *
+   * A stalled database stalls all writes, not just the first one, so a test that
+   * needs to prove a deadline is stamped inside its write must delay the whole
+   * sequence. Reset by {@link FakeDb.reset}.
+   */
+  updateDelayMs?: number;
 }
 
 /** A fake database and its `typedDb` replacement. */
@@ -377,7 +414,7 @@ function defaultsFor(key: TableKey, values: Row): Row {
       id: `triage-${crypto.randomUUID()}`,
       dismissed: false,
       batchPending: false,
-    revision: 0,
+      revision: 0,
       pendingChanges: {},
       updatedAt: now,
       ...values,
@@ -461,7 +498,8 @@ function wrappedColumn(node: unknown): { table: object; name: string } | null {
   const found: Token[] = [];
   flatten(chunks, found);
   const columns = found.filter(
-    (token): token is { column: { table: object; name: string } } => typeof token === "object" && "column" in token
+    (token): token is { column: { table: object; name: string } } =>
+      typeof token === "object" && "column" in token
   );
   return columns.length === 1 ? columns[0].column : null;
 }
@@ -562,7 +600,7 @@ export function createFakeDb(): FakeDb {
             const created: Row[] = [];
 
             for (const values of incoming) {
-              const row = defaultsFor(key, values);
+              const row = defaultsFor(key, resolveSet(values));
               const existing = keyFields
                 ? tableRows(key).find((candidate) =>
                     keyFields.every((field) => candidate[field] === row[field])
@@ -582,7 +620,7 @@ export function createFakeDb(): FakeDb {
               }
               if (conflict.kind === "skip") continue;
 
-              Object.assign(existing, conflict.set);
+              Object.assign(existing, resolveSet(conflict.set));
               created.push(existing);
             }
 
@@ -623,15 +661,35 @@ export function createFakeDb(): FakeDb {
         set(values: Row) {
           return {
             where(condition?: unknown) {
-              const updated: Row[] = [];
-              for (const row of tableRows(key)) {
-                const scope = new Map<object, Row>([[table as object, row]]);
-                if (condition !== undefined && !matches(condition, scope)) continue;
-                Object.assign(row, values);
-                updated.push(row);
+              const apply = () => {
+                const resolved = resolveSet(values);
+                const updated: Row[] = [];
+                for (const row of tableRows(key)) {
+                  const scope = new Map<object, Row>([[table as object, row]]);
+                  if (condition !== undefined && !matches(condition, scope)) continue;
+                  Object.assign(row, resolved);
+                  updated.push(row);
+                }
+                state.log.push(`db:update:${key}`);
+                return updated;
+              };
+
+              const delay = state.updateDelayMs ?? 0;
+              if (delay > 0) {
+                // Apply after the delay, so a `dbNowPlus` value is evaluated at
+                // the instant the row actually changes, like the real database.
+                const delayed = () =>
+                  new Promise<Row[]>((resolve) => setTimeout(() => resolve(apply()), delay));
+                return {
+                  then: <TResult1 = Row[], TResult2 = never>(
+                    onfulfilled?: ((value: Row[]) => TResult1 | PromiseLike<TResult1>) | null,
+                    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+                  ) => delayed().then(onfulfilled, onrejected),
+                  returning: () => delayed(),
+                };
               }
-              state.log.push(`db:update:${key}`);
-              return queryResult(updated);
+
+              return queryResult(apply());
             },
           };
         },
@@ -673,6 +731,7 @@ export function createFakeDb(): FakeDb {
         provider_identity: [],
       };
       state.log = [];
+      state.updateDelayMs = undefined;
     },
   };
 }
