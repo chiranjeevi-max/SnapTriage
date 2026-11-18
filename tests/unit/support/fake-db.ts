@@ -324,10 +324,10 @@ function sortRows<RowType extends Row>(rows: RowType[], terms: unknown[]): RowTy
  * a deadline stamped after the delay. Any other SQL fragment is unsupported and
  * throws rather than landing in a row as an object.
  */
-function applyValue(value: unknown): unknown {
+function applyValue(value: unknown, offsetMs = 0): unknown {
   if (typeof value === "object" && value !== null) {
     const marker = (value as Record<symbol, unknown>)[DB_NOW_PLUS];
-    if (typeof marker === "number") return new Date(Date.now() + marker);
+    if (typeof marker === "number") return new Date(Date.now() + marker + offsetMs);
     if ("queryChunks" in (value as object)) {
       throw new Error("fake-db: unsupported SQL expression in a write value");
     }
@@ -336,10 +336,10 @@ function applyValue(value: unknown): unknown {
 }
 
 /** Resolve every value in a `set` object at apply time. */
-function resolveSet(values: Row): Row {
+function resolveSet(values: Row, offsetMs = 0): Row {
   const resolved: Row = {};
   for (const [key, value] of Object.entries(values)) {
-    resolved[key] = applyValue(value);
+    resolved[key] = applyValue(value, offsetMs);
   }
   return resolved;
 }
@@ -398,6 +398,14 @@ export interface FakeDbState {
    * {@link FakeDb.reset}.
    */
   updateResponseDelayMs?: number;
+  /**
+   * How far the fake's database clock runs from the app clock, in milliseconds.
+   *
+   * Negative means the database is behind, so a `dbNowPlus` deadline arrives
+   * partly spent. This is the seam for testing the pre-call lease guard without
+   * waiting out a real response delay. Reset by {@link FakeDb.reset}.
+   */
+  dbNowOffsetMs?: number;
 }
 
 /** A fake database and its `typedDb` replacement. */
@@ -670,7 +678,7 @@ export function createFakeDb(): FakeDb {
           return {
             where(condition?: unknown) {
               const apply = () => {
-                const resolved = resolveSet(values);
+                const resolved = resolveSet(values, state.dbNowOffsetMs ?? 0);
                 const updated: Row[] = [];
                 for (const row of tableRows(key)) {
                   const scope = new Map<object, Row>([[table as object, row]]);
@@ -685,25 +693,29 @@ export function createFakeDb(): FakeDb {
               const writeDelay = state.updateDelayMs ?? 0;
               const responseDelay = state.updateResponseDelayMs ?? 0;
               if (writeDelay > 0 || responseDelay > 0) {
-                // A write delay applies after the wait, so a `dbNowPlus` value
-                // is evaluated at the instant the row changes. A response delay
-                // applies immediately and holds the promise, modelling a slow
-                // reply after the row is durable.
+                // A write delay postpones the row change, so a `dbNowPlus` value
+                // is evaluated when the row actually changes. A response delay
+                // applies the row immediately and holds the promise, modelling a
+                // slow reply after the row is durable.
+                let settled: Promise<Row[]> | null = null;
                 const settle = () => {
+                  if (settled) return settled;
                   const applied =
                     writeDelay > 0
                       ? new Promise<Row[]>((resolve) =>
                           setTimeout(() => resolve(apply()), writeDelay)
                         )
                       : Promise.resolve(apply());
-                  return responseDelay > 0
-                    ? applied.then(
-                        (rows) =>
-                          new Promise<Row[]>((resolve) =>
-                            setTimeout(() => resolve(rows), responseDelay)
-                          )
-                      )
-                    : applied;
+                  settled =
+                    responseDelay > 0
+                      ? applied.then(
+                          (rows) =>
+                            new Promise<Row[]>((resolve) =>
+                              setTimeout(() => resolve(rows), responseDelay)
+                            )
+                        )
+                      : applied;
+                  return settled;
                 };
 
                 return {
@@ -759,6 +771,7 @@ export function createFakeDb(): FakeDb {
       state.log = [];
       state.updateDelayMs = undefined;
       state.updateResponseDelayMs = undefined;
+      state.dbNowOffsetMs = undefined;
     },
   };
 }

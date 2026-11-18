@@ -19,6 +19,9 @@
  *
  * That is weaker than a distributed transaction. Recovering an unconfirmed send
  * is a manual act: the user checks the issue before trying again.
+ *
+ * A send starts only when the claim's lease provably covers the provider call; a
+ * lease that arrives too short refuses the send before any provider request.
  */
 import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
@@ -28,7 +31,7 @@ import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { providerLimits, type ProviderName } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
-import { REPLY_SEND_LEASE_MS } from "@/lib/provider-timing";
+import { REPLY_SEND_LEASE_MS, REPLY_SEND_MIN_LEASE_MS } from "@/lib/provider-timing";
 import { apiLogger } from "@/lib/logger";
 import type { ProviderComment } from "@/lib/provider-interface";
 
@@ -342,6 +345,27 @@ export async function sendReply(
     };
   }
 
+  // The lease was stamped by the database when the claim was written;
+  // everything since — delivering the response, scheduling this code — has
+  // spent it invisibly. Start the call only when the lease provably covers its
+  // full duration plus settlement, comparing the database-stamped deadline
+  // against the same app clock a release would use. A refusal here is
+  // definitive: no provider call was made, the claim is cleared, and the draft
+  // returns to editable — nothing was posted, so the user may simply retry.
+  const remainingMs = refused.leaseEndsAt.getTime() - Date.now();
+  if (remainingMs < REPLY_SEND_MIN_LEASE_MS) {
+    await clearAttempt(userId, target.issueId, refused.claimId);
+    apiLogger.warn(
+      { issueId: target.issueId, remainingMs },
+      "Reply claim lease too short; send refused before any provider call"
+    );
+    return {
+      ok: false,
+      status: 409,
+      error: "The send did not start in time. Nothing was posted; try again.",
+    };
+  }
+
   try {
     const comment = await provider.createComment(
       target.owner,
@@ -437,14 +461,16 @@ export async function sendReply(
  * @param body - The text being sent.
  * @param expectedVersion - The version the composer displayed, or `null`.
  * @returns Why the claim failed, or the identity it took when this caller owns
- *          the attempt. The identity is what a later release must match.
+ *          the attempt, plus the lease's end so the caller can refuse a call
+ *          the lease cannot cover. The identity is what a later release must
+ *          match.
  */
 async function claimAttempt(
   userId: string,
   issueId: string,
   body: string,
   expectedVersion: number | null
-): Promise<"unresolved" | "stale" | { claimId: string }> {
+): Promise<"unresolved" | "stale" | { claimId: string; leaseEndsAt: Date }> {
   // A row is created only when the caller expects no stored draft: `null` (no
   // opinion) or `0` (asserts absence). A caller holding a real version expects
   // its row to exist, so inserting one here would be replacing a draft another tab
@@ -505,9 +531,14 @@ async function claimAttempt(
             : eq(replyDrafts.version, expectedVersion)
       )
     )
-    .returning({ id: replyDrafts.id });
+    .returning({ id: replyDrafts.id, sendInFlightUntil: replyDrafts.sendInFlightUntil });
 
-  if (claimed.length > 0) return { claimId };
+  if (claimed.length > 0) {
+    const leaseEndsAt = claimed[0].sendInFlightUntil;
+    // Unreachable in practice — the same update just wrote it — but the column
+    // is nullable, and a missing lease must refuse the send, never run one.
+    return { claimId, leaseEndsAt: leaseEndsAt ?? new Date(0) };
+  }
 
   // Two different reasons reach this point, and the user's next action differs:
   // an unresolved attempt means check the provider, a stale draft means reload.

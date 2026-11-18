@@ -31,6 +31,23 @@ export const REQUEST_TIMEOUT_MS = 30_000;
  * claim landing and the call starting, the call itself, settlement, and the skew
  * between the database's clock and the app that later compares the lease. Derived
  * rather than written out, so raising the request deadline raises the lease with
- * it.
+ * it. `sendReply` refuses to start a call with less than
+ * {@link REPLY_SEND_MIN_LEASE_MS} of it remaining.
  */
 export const REPLY_SEND_LEASE_MS = REQUEST_TIMEOUT_MS * 4;
+
+/**
+ * The least lease that must remain when the provider call starts.
+ *
+ * The lease is stamped when the claim is written, and everything between that
+ * write and the call — delivering the response, scheduling, a database clock
+ * running behind the app's — spends it invisibly. `sendReply` checks the
+ * claim's returned deadline against this floor before any provider call, so a
+ * lease that arrives mostly spent refuses the send instead of starting a call
+ * it cannot cover for the call's full duration. One request deadline plus a
+ * settle margin; the margin also covers the synchronous dispatch between the
+ * check and the fetch, and the clock spread between instances, since the guard
+ * compares a database-stamped deadline against the app clock a release later
+ * uses.
+ */
+export const REPLY_SEND_MIN_LEASE_MS = REQUEST_TIMEOUT_MS + 5_000;

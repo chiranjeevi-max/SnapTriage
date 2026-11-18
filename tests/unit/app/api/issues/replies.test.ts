@@ -377,4 +377,26 @@ describe("POST /api/issues/:id/replies — outcomes", () => {
     expect(res.status).toBe(403);
     expect(mockGetProvider).not.toHaveBeenCalled();
   });
+
+  /**
+   * @target POST /api/issues/:id/replies
+   * @dependencies sendReply, REPLY_SEND_MIN_LEASE_MS
+   * @scenario The claim's lease arrives too short to cover the provider call
+   * @expectedOutput 409 without `unconfirmed`: nothing was posted, so the
+   *                 composer keeps Send available.
+   */
+  it("should return a definitive 409 when the claim's lease is too short", async () => {
+    fakeDb.state.dbNowOffsetMs = -100_000;
+
+    try {
+      const res = await postReply({ body: "Thanks" });
+
+      expect(res.status).toBe(409);
+      expect((res.body as { unconfirmed?: true }).unconfirmed).toBeUndefined();
+      expect((res.body as { error: string }).error).toContain("did not start");
+      expect(provider.createComment).not.toHaveBeenCalled();
+    } finally {
+      fakeDb.state.dbNowOffsetMs = undefined;
+    }
+  });
 });
