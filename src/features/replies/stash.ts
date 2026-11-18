@@ -44,7 +44,9 @@ const listeners = new Set<() => void>();
  * `removeItem` fails: the key may still be readable, but the index no longer
  * names it, so it is not offered again. `null` means the index is missing or
  * unreadable, which is different from an empty one: the order is unknown, so a
- * stored key is still recoverable.
+ * stored key is still recoverable. That fallback lasts only until the next write
+ * or retirement rebuilds the index from this tab's knowledge; after that, a key
+ * the new index does not name is no longer offered.
  */
 let liveIds: Set<string> | null = null;
 
@@ -249,7 +251,9 @@ export function stashSnapshot(issueId: string): string | null {
   // A live index that does not name this issue says the entry was retired, even
   // when `removeItem` failed and the key is still readable. A missing index is
   // different: the order is unknown, so a stored key is still offered rather
-  // than discarding text that may be the user's only copy.
+  // than discarding text that may be the user's only copy. That fallback ends at
+  // the next write or retirement, which rebuilds the index from this tab's
+  // knowledge.
   if (liveIds !== null && !liveIds.has(issueId)) return null;
 
   let value: string | null = null;
