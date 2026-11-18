@@ -55,6 +55,7 @@ import {
   type SavedReply,
 } from "@/features/replies/use-replies";
 import { canSend, replySendState, unconfirmedNotice } from "@/features/replies/send-state";
+import { setStashed, stashSnapshot, subscribeToStash } from "@/features/replies/stash";
 
 /** How long typing has to stop before the draft is saved. */
 const AUTOSAVE_DELAY_MS = 1500;
@@ -106,47 +107,6 @@ interface ComposerProps {
   issue: { id: string; url: string; provider: string };
   /** Extra classes for the panel. */
   className?: string;
-}
-
-/**
- * Text an unmount flush could not save, keyed by issue.
- *
- * Module scope, because the component that owned the text is gone by the time the
- * request settles. It exists only to keep a copy the user can be offered again —
- * a 409 or a network failure during unmount otherwise lost their text with no
- * trace and no way to know it happened.
- */
-const stashedFlush = new Map<string, string>();
-
-/**
- * Listeners for {@link stashedFlush}, so a flush that lands *after* the composer
- * mounted still reaches it.
- *
- * The map is written from a promise callback with no component in scope, so
- * nothing would notify a mounted composer of a late entry without this.
- */
-const stashListeners = new Set<() => void>();
-
-/**
- * Write or clear the stashed copy and wake any mounted composer.
- *
- * @param issueId - The issue the text belongs to.
- * @param body - The text, or `null` to retire the entry.
- */
-function setStashed(issueId: string, body: string | null): void {
-  if (body === null) stashedFlush.delete(issueId);
-  else stashedFlush.set(issueId, body);
-  for (const listener of stashListeners) listener();
-}
-
-function subscribeToStash(listener: () => void): () => void {
-  stashListeners.add(listener);
-  return () => stashListeners.delete(listener);
-}
-
-/** The snapshot React compares between renders. Identity-stable while unchanged. */
-function stashSnapshot(issueId: string): string | null {
-  return stashedFlush.get(issueId) ?? null;
 }
 
 /**
@@ -225,9 +185,10 @@ export function Composer({ issue, className }: ComposerProps) {
   const notice = conflict ?? (lateArrival ? STORED_DRAFT_ARRIVED_LATE : null);
 
   // Text an unmount flush could not save, recovered when the composer is opened
-  // again. Subscribed rather than read once: the map outlives the component, so a
-  // flush that fails *after* this mount has no other way to reach a composer that
-  // is already on screen.
+  // again. Subscribed rather than read once: the store outlives the component, so
+  // a flush that fails *after* this mount has no other way to reach a composer
+  // that is already on screen. It is also mirrored into sessionStorage, so the
+  // offer survives a refresh rather than only a navigation within one document.
   //
   // The entry is deliberately not removed on read — the user may leave without
   // answering, and it is only retired when they choose.
