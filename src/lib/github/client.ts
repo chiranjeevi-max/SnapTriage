@@ -16,6 +16,7 @@ import type {
   ProviderIssue,
   ProviderLabel,
 } from "@/lib/provider-interface";
+import { LISTING_PAGE_LIMIT } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
 import { providerLogger } from "@/lib/logger";
 import { REQUEST_TIMEOUT_MS } from "@/lib/provider-timing";
@@ -456,7 +457,7 @@ export const githubProvider: IssueProvider = {
     const labels: ProviderLabel[] = [];
     let page = 1;
 
-    while (true) {
+    while (page <= LISTING_PAGE_LIMIT) {
       const params = new URLSearchParams({ per_page: "100", page: String(page) });
       const res = await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/labels?${params}`, token);
       if (!res.ok) {
@@ -497,7 +498,7 @@ export const githubProvider: IssueProvider = {
     const collaborators: ProviderCollaborator[] = [];
     let page = 1;
 
-    while (true) {
+    while (page <= LISTING_PAGE_LIMIT) {
       const params = new URLSearchParams({ per_page: "100", page: String(page) });
       const res = await ghFetch(
         `${GITHUB_API}/repos/${owner}/${repo}/collaborators?${params}`,

@@ -314,9 +314,17 @@ export const followUps = pgTable(
   (table) => [
     uniqueIndex("follow_up_issue_user_unique").on(table.issueId, table.userId),
     index("follow_up_user_state_idx").on(table.userId, table.state),
-    // Mirrors the SQLite index. Both dialects must declare the same indexes, or
-    // one deployment sorts every waiting row per check pass.
-    index("follow_up_due_idx").on(table.userId, table.state, table.attemptedAt, table.checkedAt),
+    // Mirrors the SQLite index by name and columns. The NULL placement differs
+    // because the two drivers need different things from it: SQLite sorts NULL
+    // below every value, so a plain index serves the pass's `NULLS FIRST` order,
+    // while Postgres defaults to NULLS LAST and would sort the selected rows
+    // itself. Declaring the placement here makes the order index-backed on both.
+    index("follow_up_due_idx").on(
+      table.userId,
+      table.state,
+      table.attemptedAt.nullsFirst(),
+      table.checkedAt.nullsFirst()
+    ),
   ]
 );
 

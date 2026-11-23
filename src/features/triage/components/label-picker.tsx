@@ -44,7 +44,7 @@ interface LabelPickerProps {
  * @returns The label picker dialog, or `null` if no issue is provided.
  */
 export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerProps) {
-  const { data: labels, isLoading } = useRepoLabels(issue?.repoId);
+  const { data: labels, isLoading, isError } = useRepoLabels(issue?.repoId);
   const triage = useTriageMutation();
 
   if (!issue) return null;
@@ -87,7 +87,11 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
       <CommandInput placeholder="Search labels..." className="min-w-0 pr-10" />
       <CommandList className="min-h-0 max-h-[min(20rem,60dvh)] flex-1">
         <CommandEmpty className="py-6 text-xs text-muted-foreground">
-          {isLoading ? "Loading labels..." : "No labels found."}
+          {isLoading
+            ? "Loading labels..."
+            : isError
+              ? "Could not load labels. The issue's own labels are still available below."
+              : "No labels found."}
         </CommandEmpty>
         <CommandGroup>
           {(labels ?? []).map((label) => {

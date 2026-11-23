@@ -197,4 +197,24 @@ describe("GET /api/repos/:id/collaborators", () => {
 
     expect(await call(getCollaborators)).toEqual({ status: 200, body: [] });
   });
+
+  /**
+   * @target GET /api/repos/:id/collaborators
+   * @dependencies provider.fetchCollaborators
+   * @scenario The provider read throws
+   * @expectedOutput 502 rather than an empty list, for the same reason as labels.
+   */
+  it("should report a failed provider read as 502", async () => {
+    fakeDb.state.rows.repo.push(repoRow());
+    mockGetProvider.mockReturnValue(
+      stubProvider({
+        fetchCollaborators: vi.fn().mockRejectedValue(new Error("provider is down")),
+      })
+    );
+
+    const result = await call(getCollaborators);
+
+    expect(result.status).toBe(502);
+    expect((result.body as { error: string }).error).toBe("provider is down");
+  });
 });

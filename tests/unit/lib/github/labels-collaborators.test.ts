@@ -339,3 +339,48 @@ describe("gitlabProvider.fetchCollaborators", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe("listing page budget", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * @target githubProvider.fetchLabels
+   * @dependencies ghFetch, LISTING_PAGE_LIMIT
+   * @scenario Every page comes back full, as a pathological repository would
+   * @expectedOutput The loop stops at the budget instead of reading forever. The
+   *                 picker opens on a keystroke, so an unbounded listing turns one
+   *                 keypress into an unbounded number of provider calls.
+   */
+  it("stops a label listing at the page budget", async () => {
+    const { LISTING_PAGE_LIMIT } = await import("@/lib/provider-interface");
+    const fetchMock = vi.fn(async () => jsonResponse(fullPage(githubLabel)));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const labels = await githubProvider.fetchLabels?.("acme", "widgets", "token");
+
+    expect(fetchMock).toHaveBeenCalledTimes(LISTING_PAGE_LIMIT);
+    expect(labels).toHaveLength(LISTING_PAGE_LIMIT * 100);
+  });
+
+  /**
+   * @target gitlabProvider.fetchCollaborators
+   * @dependencies timedFetch, LISTING_PAGE_LIMIT
+   * @scenario Every member page comes back full
+   * @expectedOutput The same bound, so the two adapters behave alike.
+   */
+  it("stops a member listing at the page budget", async () => {
+    const { LISTING_PAGE_LIMIT } = await import("@/lib/provider-interface");
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        fullPage((index) => ({ access_level: 30, username: `u${index}`, avatar_url: null }))
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await gitlabProvider.fetchCollaborators?.("group", "app", "token");
+
+    expect(fetchMock).toHaveBeenCalledTimes(LISTING_PAGE_LIMIT);
+  });
+});

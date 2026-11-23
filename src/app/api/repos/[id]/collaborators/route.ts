@@ -53,6 +53,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json([]);
   }
 
-  const collaborators = await provider.fetchCollaborators(repo.owner, repo.name, token);
-  return NextResponse.json(collaborators);
+  try {
+    const collaborators = await provider.fetchCollaborators(repo.owner, repo.name, token);
+    return NextResponse.json(collaborators);
+  } catch (error) {
+    // Same distinction as the labels route: nobody assignable and an unreachable
+    // provider are not the same answer.
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Could not read collaborators" },
+      { status: 502 }
+    );
+  }
 }

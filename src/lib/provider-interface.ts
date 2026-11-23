@@ -82,6 +82,15 @@ export interface ProviderLabel {
   description: string | null;
 }
 
+/**
+ * Pages a label or collaborator listing may read.
+ *
+ * These listings are read on a keystroke to open a picker, so a repository with
+ * pathologically many entries must not turn one keypress into an unbounded number
+ * of provider calls. 20 pages is 2,000 entries, well past any real repository.
+ */
+export const LISTING_PAGE_LIMIT = 20;
+
 /** A collaborator on a repo */
 export interface ProviderCollaborator {
   username: string;

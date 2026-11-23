@@ -45,7 +45,7 @@ interface AssigneePickerProps {
  * @returns The assignee picker dialog, or `null` if no issue is provided.
  */
 export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePickerProps) {
-  const { data: collaborators, isLoading } = useRepoCollaborators(issue?.repoId);
+  const { data: collaborators, isLoading, isError } = useRepoCollaborators(issue?.repoId);
   const triage = useTriageMutation();
 
   if (!issue) return null;
@@ -88,7 +88,11 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
       <CommandInput placeholder="Search collaborators..." className="min-w-0 pr-10" />
       <CommandList className="min-h-0 max-h-[min(20rem,60dvh)] flex-1">
         <CommandEmpty className="py-6 text-xs text-muted-foreground">
-          {isLoading ? "Loading collaborators..." : "No collaborators found."}
+          {isLoading
+            ? "Loading collaborators..."
+            : isError
+              ? "Could not load collaborators. Try again in a moment."
+              : "No collaborators found."}
         </CommandEmpty>
         <CommandGroup>
           {(collaborators ?? []).map((collab) => {

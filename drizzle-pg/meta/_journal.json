@@ -57,6 +57,13 @@
       "when": 1794848105181,
       "tag": "0007_slippery_gladiator",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795473671791,
+      "tag": "0008_peaceful_smasher",
+      "breakpoints": true
     }
   ]
 }

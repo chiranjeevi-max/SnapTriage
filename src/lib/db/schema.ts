@@ -552,12 +552,11 @@ export const followUps = sqliteTable(
      * 5,000 rows; the columns continue the filter's own prefix so one index
      * covers the selectivity.
      *
-     * The order itself is index-backed on SQLite only. Postgres cannot use a
-     * default-ascending index for `NULLS FIRST`, which the pass needs so a
-     * never-attempted row leads, so there it sorts the rows the index selected.
-     * That set is one user's waiting follow-ups bounded by the batch limit, so the
-     * cost is small; making it index-backed on Postgres needs a descending-era
-     * index expressed in raw SQL, which drizzle cannot declare from here.
+     * The order is index-backed on both drivers, but they need different index
+     * definitions to get there: SQLite sorts NULL below every value, so this plain
+     * index already serves the pass's `NULLS FIRST` order, while Postgres defaults
+     * to NULLS LAST and needs the placement declared. `schema.pg.ts` therefore
+     * declares the same index name with `.nullsFirst()` on the trailing columns.
      */
     index("follow_up_due_idx").on(table.userId, table.state, table.attemptedAt, table.checkedAt),
   ]

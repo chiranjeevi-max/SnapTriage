@@ -53,6 +53,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json([]);
   }
 
-  const labels = await provider.fetchLabels(repo.owner, repo.name, token);
-  return NextResponse.json(labels);
+  try {
+    const labels = await provider.fetchLabels(repo.owner, repo.name, token);
+    return NextResponse.json(labels);
+  } catch (error) {
+    // An empty list and an unreadable one mean different things to the picker:
+    // the first offers the issue's own labels, the second should say the provider
+    // could not be reached rather than pretending the repository has none.
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Could not read labels" },
+      { status: 502 }
+    );
+  }
 }
