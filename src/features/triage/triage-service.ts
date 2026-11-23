@@ -357,17 +357,34 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
     }
   }
 
-  if (personal) {
-    const triageId = await ensureTriageRow();
-    await typedDb
-      .update(triageState)
-      .set({ ...personal, updatedAt: new Date() })
-      .where(eq(triageState.id, triageId));
-  }
+  // Everything below runs after the provider has already accepted the write, so
+  // it cannot be rolled back: a throw here would reach the route as a 500 and the
+  // client would roll its optimistic update back to values upstream no longer
+  // holds. The cached issue row is written first because it mirrors what the
+  // provider just did — a failure in the personal write after this cannot leave
+  // the cache disagreeing with upstream, and a sync would otherwise silently
+  // revert the change the user just saw succeed.
+  try {
+    if (touchesProvider) {
+      const cacheUpdate = providerFields(issue, payload);
+      if (cacheUpdate) await typedDb.update(issues).set(cacheUpdate).where(eq(issues.id, issueId));
+    }
 
-  if (touchesProvider) {
-    const cacheUpdate = providerFields(issue, payload);
-    if (cacheUpdate) await typedDb.update(issues).set(cacheUpdate).where(eq(issues.id, issueId));
+    if (personal) {
+      const triageId = await ensureTriageRow();
+      await typedDb
+        .update(triageState)
+        .set({ ...personal, updatedAt: new Date() })
+        .where(eq(triageState.id, triageId));
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    apiLogger.error({ issueId, mode, error: message }, "Triage write recorded nowhere");
+    return {
+      ok: false,
+      status: 502,
+      error: `${repo.provider} accepted the change, but recording it locally failed. Refresh to see the current state.`,
+    };
   }
 
   apiLogger.info(

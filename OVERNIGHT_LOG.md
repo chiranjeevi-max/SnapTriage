@@ -84,3 +84,11 @@ instant leads ours by a few seconds.
 happened, and the client kept showing a row the server had never removed. They now return
 404 through `.returning()`, matching the pattern `saved-replies/[id]` already used;
 `disconnectRepo`/`updateRepo` return whether a row matched. Five tests fail without it.
+
+### Cycle 11 — Do not fail after the provider accepted the write
+`applyTriage` committed the provider change, then ran two unguarded local writes. A failure
+in either — `ensureTriageRow` throwing "Failed to get triage state", or a locked database —
+escaped through the PATCH route as a 500, and the client rolled its optimistic update back
+to values upstream no longer held. The cached issue row now writes first (it mirrors what
+the provider just did, so a later failure cannot leave the cache disagreeing with upstream),
+both writes are guarded, and the failure returns a distinguishable 502.

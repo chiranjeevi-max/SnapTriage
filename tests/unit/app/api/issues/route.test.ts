@@ -16,6 +16,7 @@ import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
 import type { IssueProvider } from "@/lib/provider-interface";
 import { ISSUE_ID, fakeDb, issueRow, repoRow, triageRow } from "../../../support/fake-db";
+import { triageState as triageStateTable } from "@/lib/db/schema";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/features/auth/get-provider-token", () => ({ getProviderToken: vi.fn() }));
@@ -225,6 +226,42 @@ describe("PATCH /api/issues/:id", () => {
     // Whatever the interleaving, neither write may be lost.
     expect(staged.labels?.add ?? []).toContain("bug");
     expect(staged.assignees?.add ?? []).toContain("octocat");
+  });
+
+  /**
+   * @target PATCH /api/issues/:id
+   * @dependencies applyTriage
+   * @scenario The provider accepts the write, then recording it locally fails
+   * @expectedOutput A 502 the client can distinguish, rather than a thrown 500.
+   *                 A 500 here is indistinguishable from "nothing happened", and
+   *                 the client's rollback would restore values upstream no longer
+   *                 holds. The cached issue row is written first, so it still
+   *                 mirrors the provider after the personal write fails.
+   */
+  it("should report a 502 when the local write fails after the provider accepted", async () => {
+    fakeDb.state.rows.repo.push(repoRow({ syncMode: "live" }));
+    fakeDb.state.rows.issue.push(issueRow());
+    fakeDb.state.rows.triage_state.push(triageRow({ priority: 3 }));
+
+    const updateIssue = vi.fn(async () => {});
+    mockGetProvider.mockReturnValue(providerStub(updateIssue));
+
+    const { typedDb } = await import("@/lib/db/query");
+    const originalUpdate = typedDb.update.bind(typedDb);
+    vi.spyOn(typedDb, "update").mockImplementation(((table: unknown) => {
+      // Only the triage row fails; the issue cache write has already landed.
+      if (table === triageStateTable) throw new Error("database is locked");
+      return originalUpdate(table as never);
+    }) as never);
+
+    const res = await patchIssue({ priority: 0, labels: { add: ["bug"] } });
+
+    expect(res.status).toBe(502);
+    expect((res.body as { error: string }).error).toContain("accepted the change");
+    expect(updateIssue).toHaveBeenCalledTimes(1);
+    expect(fakeDb.state.rows.issue[0].labels).toEqual(["bug"]);
+
+    vi.restoreAllMocks();
   });
 
   /**
