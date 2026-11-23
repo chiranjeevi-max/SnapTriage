@@ -6,25 +6,18 @@
  */
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { parseQuery, type IssueQuery } from "./issue-query";
+import { useLocalStorageValue } from "./use-local-storage-value";
 
 const STORAGE_KEY = "snaptriage:issue-query";
 
 export function useIssueQuery(): [string, (next: string) => void, IssueQuery] {
-  const [text, setText] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    return window.localStorage.getItem(STORAGE_KEY) ?? "";
-  });
-
-  const update = (next: string) => {
-    setText(next);
-    if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, next);
-  };
+  const [text, setText] = useLocalStorageValue<string>(STORAGE_KEY, "", (stored) => stored ?? "");
 
   // Parsed once per keystroke rather than once per row: the box re-renders on
   // every character, and a per-row parse would rebuild the same object N times.
   const query = useMemo(() => parseQuery(text), [text]);
 
-  return [text, update, query];
+  return [text, setText, query];
 }
