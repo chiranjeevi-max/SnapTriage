@@ -222,15 +222,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
   // Subscribers are synced page by page, up to a hard page budget.
   //
   // The budget matters as much as the paging. A repository popular enough to fill
-  // many pages would otherwise run thousands of syncs inside one request; if the
-  // worker is killed part-way the delivery record stays, so the provider's retry
-  // is treated as a replay and the rest is never reached. Stopping at the budget
-  // and reporting the remainder keeps one request bounded and leaves the delivery
-  // retryable.
+  // many pages would otherwise run thousands of syncs inside one request, which a
+  // worker will not survive. Stopping at the budget and forgetting the delivery
+  // keeps one request bounded and leaves it retryable.
   //
-  // Every read is guarded. A database error on a later page would otherwise throw
-  // out of the handler after earlier pages had already synced, and the delivery
-  // record would stay behind, stranding the subscribers on the unread pages.
+  // A successful delivery keeps its record: that is what makes a re-sent delivery
+  // a no-op. So any incomplete run must delete the record before returning, or the
+  // provider's retry is taken for a replay and the remaining subscribers are never
+  // reached. That is why the budget branch and the error branches all call
+  // `forgetDelivery` first.
+  //
+  // Every page read is guarded for the same reason. A database error on a later
+  // page would otherwise throw out of the handler after earlier pages had already
+  // synced, leaving the record in place and the unread pages unreachable.
   let synced = 0;
   let failedCount = 0;
   let page = firstPage;
