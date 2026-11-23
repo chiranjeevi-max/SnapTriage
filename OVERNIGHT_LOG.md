@@ -77,3 +77,10 @@ or after that baseline, so a future instant matched nothing and the issue could 
 resurface — a review that silently disabled the watch for good, reachable by any signed-in
 user. Rejected beyond a 60s clock-skew allowance, which still accepts an honest review whose
 instant leads ours by a few seconds.
+
+### Cycle 10 — Report 404 when a destructive route touches nothing
+`DELETE /api/views/[id]`, `DELETE /api/repos/[id]` and `PATCH /api/repos/[id]` answered
+`{ ok: true }` unconditionally. A stale id therefore reported a deletion that never
+happened, and the client kept showing a row the server had never removed. They now return
+404 through `.returning()`, matching the pattern `saved-replies/[id]` already used;
+`disconnectRepo`/`updateRepo` return whether a row matched. Five tests fail without it.

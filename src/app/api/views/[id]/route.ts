@@ -18,9 +18,17 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
-  await typedDb
+  const removed = await typedDb
     .delete(savedViews)
-    .where(and(eq(savedViews.id, id), eq(savedViews.userId, session.user.id)));
+    .where(and(eq(savedViews.id, id), eq(savedViews.userId, session.user.id)))
+    .returning({ id: savedViews.id });
+
+  // `returning` is what distinguishes a delete from a no-op. Answering 200 for a
+  // row that was never there tells the client its removal succeeded when the
+  // view is still on screen and the next fetch will bring it back.
+  if (removed.length === 0) {
+    return NextResponse.json({ error: "View not found" }, { status: 404 });
+  }
 
   return NextResponse.json({ ok: true });
 }
