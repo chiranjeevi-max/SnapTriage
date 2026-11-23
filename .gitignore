@@ -63,3 +63,6 @@ next-env.d.ts
 
 # tool-managed (never committed)
 /.commandcode/
+
+# session notes, not part of the repo
+/OVERNIGHT_LOG.md
