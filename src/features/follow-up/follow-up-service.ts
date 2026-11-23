@@ -13,7 +13,7 @@
  * not hammer the provider. Anything not examined keeps its previous
  * `checkedAt`, which is what the UI shows to make freshness honest.
  */
-import { and, eq, inArray, desc, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, desc, isNull, lt, or, sql } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { followUps, issues, repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
@@ -615,31 +615,4 @@ function toEntry(
     checkedAt: state.checkedAt?.toISOString() ?? null,
     due: state.due,
   };
-}
-
-/** Follow-up states an issue can be in, for the query filter. */
-export const FOLLOW_UP_STATES = ["waiting", "reviewed", "stopped"] as const;
-
-/**
- * Load the follow-up rows for a set of issues.
- *
- * Used by the queue overlay so the inbox can mark issues it is already waiting
- * on without one query per row.
- *
- * @param userId - The authenticated user.
- * @param issueIds - The issues to look up.
- * @returns A map from issue id to its follow-up state.
- */
-export async function followUpStatesFor(
-  userId: string,
-  issueIds: string[]
-): Promise<Map<string, FollowUpEntry["state"]>> {
-  if (issueIds.length === 0) return new Map();
-
-  const rows = await typedDb
-    .select({ issueId: followUps.issueId, state: followUps.state })
-    .from(followUps)
-    .where(and(eq(followUps.userId, userId), inArray(followUps.issueId, issueIds)));
-
-  return new Map(rows.map((row) => [row.issueId, row.state as FollowUpEntry["state"]]));
 }

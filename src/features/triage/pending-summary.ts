@@ -26,17 +26,6 @@ export interface PendingSummary {
   stagedPriorities: number;
 }
 
-/** An empty summary, which describes a push that would do nothing. */
-export const EMPTY_PENDING_SUMMARY: PendingSummary = {
-  issues: 0,
-  labelsToAdd: [],
-  labelsToRemove: [],
-  assigneesToAdd: [],
-  assigneesToRemove: [],
-  stagedStates: 0,
-  stagedPriorities: 0,
-};
-
 /**
  * Add a value to a list unless it is already there, comparing case-insensitively.
  *
@@ -151,6 +140,16 @@ export function describePending(summary: PendingSummary, maxValues = 3): Summary
     lines.push({
       label: summary.stagedStates === 1 ? "Change state on 1 issue" : "Change state",
       values: summary.stagedStates === 1 ? [] : [`${summary.stagedStates} issues`],
+    });
+  }
+
+  // Priority is personal, so it never reaches the provider — but it is still
+  // staged work this push clears, and leaving it out made the preview silently
+  // understate what the push settles.
+  if (summary.stagedPriorities > 0) {
+    lines.push({
+      label: summary.stagedPriorities === 1 ? "Set priority on 1 issue" : "Set priority",
+      values: summary.stagedPriorities === 1 ? [] : [`${summary.stagedPriorities} issues`],
     });
   }
 

@@ -162,4 +162,19 @@ describe("describePending", () => {
 
     expect(lines).toEqual([{ label: "Change state on 1 issue", values: [] }]);
   });
+
+  /**
+   * @target describePending
+   * @dependencies none
+   * @scenario Only personal fields are staged
+   * @expectedOutput A line naming them. Priority never reaches the provider, but
+   *                 the push still clears it, so omitting it made the preview
+   *                 understate what the push settles.
+   */
+  it("names a staged priority even though it is not sent to the provider", () => {
+    const lines = describePending(summarizePending([issue({ priority: 1 })]));
+
+    expect(lines).toEqual([{ label: "Set priority on 1 issue", values: [] }]);
+    expect(hasProviderChanges(summarizePending([issue({ priority: 1 })]))).toBe(false);
+  });
 });
