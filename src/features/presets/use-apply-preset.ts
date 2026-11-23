@@ -218,7 +218,12 @@ export function useApplyPreset() {
       });
     },
 
-    onSettled: (_result, _error, input) => {
+    onSettled: (result, _error, input) => {
+      // A warning means the provider accepted the change but the server could not
+      // record it. Refetching reads that unchanged row and reverts the write in
+      // the UI, which contradicts the warning just shown. The next sync repairs it.
+      if ((result as { warning?: string } | null)?.warning) return;
+
       queryClient.invalidateQueries({ queryKey: ["issues"] });
       queryClient.invalidateQueries({ queryKey: ["issue", input.issueId] });
     },

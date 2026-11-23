@@ -74,9 +74,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
  *   `{ priority?, snoozedUntil?, dismissed?, labels?, assignees?, state?, batch? }`
  * @param params - Dynamic route params containing `id` (the issue's DB primary key)
  * @returns JSON `{ ok: true, warning? }` on success, or an error with
- *          400/401/403/404/502 status. `warning` is present when the provider
+ *          400/401/403/404/409/502 status. `warning` is present when the provider
  *          accepted the change but recording it locally failed, so the caller
  *          should not roll its optimistic state back.
+ *
+ *          409 means a batch write lost the compare-and-set: another change was
+ *          staged between the read and the write, so the merge was refused rather
+ *          than overwriting it. The caller retries against the newer state.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();

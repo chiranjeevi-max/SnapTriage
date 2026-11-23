@@ -498,14 +498,6 @@ describe("POST /api/webhooks/:provider — failure recovery", () => {
 
   /**
    * @target POST /api/webhooks/:provider
-   * @dependencies recordDelivery, reposForDelivery
-   * @scenario The subscriber read fails while paging to a later page
-   * @expectedOutput A retryable failure. Without forgetting the delivery the
-   *                 record stays, so the provider's retry is treated as a replay
-   *                 and the subscribers on the unread pages are never reached.
-   */
-  /**
-   * @target POST /api/webhooks/:provider
    * @dependencies MAX_SUBSCRIBER_PAGES
    * @scenario A repository has more subscribers than the page budget allows
    * @expectedOutput 503 with the delivery forgotten, so a retry starts over. The
@@ -538,6 +530,14 @@ describe("POST /api/webhooks/:provider — failure recovery", () => {
     expect(mockSyncRepo).toHaveBeenCalledTimes(1_000);
   });
 
+  /**
+   * @target POST /api/webhooks/:provider
+   * @dependencies recordDelivery, reposForDelivery
+   * @scenario The subscriber read fails while paging to a later page
+   * @expectedOutput A retryable failure. Without forgetting the delivery the
+   *                 record stays, so the provider's retry is treated as a replay
+   *                 and the subscribers on the unread pages are never reached.
+   */
   it("makes the delivery retryable when a page read fails", async () => {
     const body = { repository: { full_name: "owner/repo" } };
     const signature = hmac256("whsec_test_secret", JSON.stringify(body));

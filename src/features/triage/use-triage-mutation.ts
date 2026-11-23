@@ -11,7 +11,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { TriagePayload } from "./types";
 import { showUndoToast, useUndoStore } from "./use-undo";
-import type { IssueWithTriage } from "@/features/inbox/use-issues";
+import type { IssueDetail, IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
  * Input shape for the triage mutation.
@@ -72,6 +72,7 @@ export function useTriageMutation() {
     onMutate: async (input) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["issues"] });
+      await queryClient.cancelQueries({ queryKey: ["issue", input.issueId] });
 
       // Snapshot current data from all matching queries
       const queryCache = queryClient.getQueryCache();
@@ -91,6 +92,22 @@ export function useTriageMutation() {
             return applyPayloadToIssue(issue, input.payload);
           });
         });
+      }
+
+      // The detail pane reads its own key. Without an optimistic write it keeps
+      // showing the pre-write state, so the next toggle is computed from stale
+      // data — and a provider-accepted write that cannot be refetched would never
+      // correct it.
+      const detailKey = ["issue", input.issueId] as const;
+      const detail = queryClient.getQueryData<IssueDetail | null>(detailKey);
+      if (detail) {
+        snapshots.push({ queryKey: detailKey, data: detail });
+        // The merge only touches fields both shapes carry, so the update is
+        // wider than `IssueDetail` and is narrowed back on assignment.
+        queryClient.setQueryData<IssueDetail>(
+          detailKey,
+          applyPayloadToIssue(detail, input.payload) as IssueDetail
+        );
       }
 
       return { snapshots };
