@@ -106,3 +106,10 @@ adapter's docblock documents as already fixed there. A provider that sent header
 stalled held the request open forever. Also crashed the whole page on a project with a null
 `namespace`, dropping every page already read, and leaked a timer on error responses. Timer
 release moved to a body-read helper; owner falls back to the full path.
+
+### Cycle 14 — Surface the webhook subscriber cap
+The webhook route synced at most 50 subscribers per delivery and then answered
+`{ ok: true, synced: 50 }`. For a repository popular enough to exceed the cap — the exact
+case multi-tenant tracking produces — the last subscribers were never synced and nothing
+said so. The cap stays (it bounds one request's fan-out) but now fetches one row past it to
+detect truncation, logs, and answers 503 with the delivery kept retryable.

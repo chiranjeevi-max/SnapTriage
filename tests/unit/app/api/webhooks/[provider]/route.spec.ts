@@ -91,10 +91,11 @@ async function postDelivery(
   return res;
 }
 
-/** Configures the select().from().where().limit() chain to return the given rows. */
+/** Configures the select().from().where().orderBy().limit() chain to return the given rows. */
 function selectReturns(rows: unknown[]) {
   const limitMock = vi.fn().mockResolvedValue(rows);
-  const whereMock = vi.fn().mockReturnValue({ limit: limitMock });
+  const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
+  const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock, limit: limitMock });
   const fromMock = vi.fn().mockReturnValue({ where: whereMock });
   mockSelect.mockReturnValue({ from: fromMock } as never);
   return whereMock;
@@ -128,11 +129,9 @@ describe("POST /api/webhooks/:provider", () => {
     it("should return 503 when the webhook secret is not configured", async () => {
       delete process.env.WEBHOOK_SECRET;
 
-      const res = await postDelivery(
-        { repository: { full_name: "o/r" } },
-        hmac256("x", "{}"),
-        { "x-github-delivery": "delivery-503" }
-      );
+      const res = await postDelivery({ repository: { full_name: "o/r" } }, hmac256("x", "{}"), {
+        "x-github-delivery": "delivery-503",
+      });
 
       expect(res.status).toBe(503);
       expect(mockSyncRepo).not.toHaveBeenCalled();
@@ -324,6 +323,35 @@ describe("POST /api/webhooks/:provider", () => {
 
       expect(res.status).toBe(500);
       expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-fail");
+    });
+
+    /**
+     * @target POST /api/webhooks/:provider
+     * @dependencies syncRepo
+     * @scenario More repositories subscribe to the repo than one delivery may sync
+     * @expectedOutput 503 with the delivery kept retryable, and only the cap's
+     *                 worth of syncing attempted. The surplus used to be dropped
+     *                 silently behind an `{ ok: true }`, so the delivery looked
+     *                 complete while the last subscribers were never synced.
+     */
+    it("should refuse to report success when the subscriber cap is reached", async () => {
+      const body = { repository: { full_name: "owner/popular" } };
+      const signature = hmac256("whsec_test_secret", JSON.stringify(body));
+
+      // 51 rows: one past the cap, which is what makes truncation detectable.
+      const subscribers = Array.from({ length: 51 }, (_, index) => ({
+        id: `repo-${index}`,
+        userId: `USR-${String(index).padStart(3, "0")}`,
+      }));
+      selectReturns(subscribers);
+
+      const res = await postDelivery(body, signature, {
+        "x-github-delivery": "delivery-capped",
+      });
+
+      expect(res.status).toBe(503);
+      expect(mockSyncRepo).toHaveBeenCalledTimes(50);
+      expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-capped");
     });
   });
 
