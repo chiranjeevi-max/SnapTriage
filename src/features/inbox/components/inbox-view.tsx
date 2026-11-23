@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { BellRing, BookmarkPlus, List } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/segmented-control";
 import { SelectField } from "@/components/select-field";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,8 @@ import { IssueDetail, type IssueDetailTarget } from "@/features/inbox/components
 import { useIssues } from "@/features/inbox/use-issues";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 import { useIssueFilter } from "@/features/inbox/use-issue-filter";
+import { useIssueQuery } from "@/features/inbox/use-issue-query";
+import { filterByQuery } from "@/features/inbox/issue-query";
 import { filterIssues, ISSUE_FILTERS } from "@/features/inbox/issue-filters";
 import { useSavedViews, useSaveCurrentView } from "@/features/inbox/use-saved-views";
 import { useBulkTriage } from "@/features/triage/use-bulk-triage";
@@ -95,6 +98,7 @@ export function resolveDetailTarget(
 export function InboxView() {
   const { data: issues, isLoading } = useIssues();
   const [filter, setFilter] = useIssueFilter();
+  const [queryText, setQueryText, query] = useIssueQuery();
   const [surface, setSurface] = useState<InboxSurface>("queue");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   /**
@@ -111,7 +115,14 @@ export function InboxView() {
   const saveCurrentView = useSaveCurrentView();
 
   const issueList = useMemo(() => issues ?? [], [issues]);
-  const filteredIssues = useMemo(() => filterIssues(issueList, filter), [issueList, filter]);
+  // The query narrows first, so the count, the virtualizer, and the keyboard all
+  // read the same visible list. Applying it after `filterIssues` would leave the
+  // two disagreeing about what is on screen.
+  const searchedIssues = useMemo(() => filterByQuery(issueList, query), [issueList, query]);
+  const filteredIssues = useMemo(
+    () => filterIssues(searchedIssues, filter),
+    [searchedIssues, filter]
+  );
 
   const {
     selectedIndex,
@@ -295,6 +306,14 @@ export function InboxView() {
               exists to surface. The controls hide rather than sit inert. */}
           {surface === "queue" ? (
             <>
+              <Input
+                type="search"
+                aria-label="Search issues"
+                placeholder="Search… (label:bug, author:me, #123)"
+                value={queryText}
+                onChange={(event) => setQueryText(event.target.value)}
+                className="h-9 w-full min-w-0 max-w-[16rem] flex-1 text-sm sm:max-w-[20rem]"
+              />
               <SelectField
                 aria-label="Filter issues"
                 value={filter}

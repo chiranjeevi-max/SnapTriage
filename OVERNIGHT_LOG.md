@@ -124,3 +124,8 @@ Justification: the close/reopen path already exists end to end — the patch sch
 `state`, `applyTriage` passes it to the provider, both clients implement it, and the
 optimistic updater applies it — but nothing ever sends it, so a maintainer cannot finish an
 issue without leaving the app.
+
+### Feature 2 — Inbox query bar
+Justification: with a large queue the only way to reach a known issue is `j` one row at a
+time; there is no text search anywhere in the app. A tokenized query over the fields already
+on the queue payload is pure client logic and needs no schema or API change.
