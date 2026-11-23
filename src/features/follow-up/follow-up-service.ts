@@ -346,7 +346,21 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
       continue;
     }
 
-    const result = await checkOne(userId, row.followUp, row.issue, row.repo, context);
+    // A pass with no usable token could read nothing, and the row keeps its
+    // baseline either way. Recording the turn is what stops the same twenty rows
+    // from being selected first on every pass and starving the queue behind
+    // them; without it a user whose token cannot be decrypted has no working
+    // follow-ups at all, not merely stale ones.
+    if (!context.token) {
+      await markAttempted(row.followUp.id);
+      skipped++;
+      continue;
+    }
+
+    const result = await checkOne(userId, row.followUp, row.issue, row.repo, {
+      token: context.token,
+      identity: context.identity,
+    });
     if (!result) {
       skipped++;
       continue;
@@ -373,12 +387,11 @@ async function checkOne(
   followUp: FollowUpRow,
   issue: IssueRow,
   repo: RepoRow,
-  context: { token: string | null; identity: { login: string } | null }
+  context: { token: string; identity: { login: string } | null }
 ): Promise<FollowUpCheck | null> {
   const providerName = repo.provider as ProviderName;
   const provider = getProvider(providerName);
   if (!provider.fetchComments) return null;
-  if (!context.token) return null;
 
   const token = context.token;
   const now = new Date();

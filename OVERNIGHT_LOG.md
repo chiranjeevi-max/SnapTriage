@@ -20,3 +20,12 @@ were still arriving carried an `updated_at` earlier than the watermark and was n
 fetched again — silent, permanent data loss, not a delay. Now stamped from the instant the
 read began, minus a 60s margin so a provider clock running behind ours cannot hide a
 boundary update either. Verified by reverting the fix: both new tests fail without it.
+
+### Cycle 3 — Record the turn when a follow-up pass has no token
+`checkOne` returned `null` on a missing token, and `runFollowUpCheck` counted that as
+`skipped` without calling `markAttempted` — unlike the two sibling skip paths, which do it
+because otherwise the same rows are re-selected every pass. With an undecryptable or absent
+token the first 20 waiting rows occupied the batch forever and nothing behind them was ever
+checked, so a bad token disabled follow-up entirely rather than merely staling it. The token
+check moved into the loop beside the other skip paths, `checkOne` now takes a non-null token,
+and three tests fail without the change.
