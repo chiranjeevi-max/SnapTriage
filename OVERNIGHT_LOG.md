@@ -29,3 +29,9 @@ token the first 20 waiting rows occupied the batch forever and nothing behind th
 checked, so a bad token disabled follow-up entirely rather than merely staling it. The token
 check moved into the loop beside the other skip paths, `checkOne` now takes a non-null token,
 and three tests fail without the change.
+
+### Cycle 4 — Treat an unparseable request body as a client error
+`PATCH /api/issues/[id]` and `POST /api/views` read `await req.json()` unguarded while the
+other eleven mutating routes all use `.catch(() => null)`. A truncated or absent body threw
+`SyntaxError` out of the handler, surfacing as a 500 on the app's hottest write path. Both
+now match the established convention and return 400; three tests fail without the change.

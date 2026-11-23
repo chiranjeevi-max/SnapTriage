@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const rawBody = await req.json();
+  const rawBody = await req.json().catch(() => null);
   const parsed = parseBody(createViewSchema, rawBody);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });

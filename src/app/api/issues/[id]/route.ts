@@ -82,7 +82,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const { id } = await params;
-  const rawBody = await req.json();
+  const rawBody = await req.json().catch(() => null);
   const parsed = parseBody(triagePatchSchema, rawBody);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });

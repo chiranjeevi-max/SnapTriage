@@ -60,4 +60,46 @@ describe("PATCH /api/issues/:id", () => {
       await typedDb.select().from(triageState).where(eq(triageState.issueId, "gitlab-issue"))
     ).toEqual([]);
   });
+
+  /**
+   * @target PATCH /api/issues/:id
+   * @dependencies parseBody
+   * @scenario The body is truncated JSON
+   * @expectedOutput 400, not a 500. Every field in the patch schema is optional,
+   *                 so a missing body is meant to be accepted; only one that
+   *                 cannot be parsed is refused, and refusing it is the client's
+   *                 error to see.
+   */
+  it("answers a malformed body with 400", async () => {
+    const response = await PATCH(
+      new Request("http://localhost/api/issues/gitlab-issue", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: '{"priority":',
+      }),
+      { params: Promise.resolve({ id: "gitlab-issue" }) }
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  /**
+   * @target PATCH /api/issues/:id
+   * @dependencies applyTriage
+   * @scenario The body is an empty object
+   * @expectedOutput Accepted, since every patch field is optional. This is the
+   *                 behaviour the catch above must preserve.
+   */
+  it("accepts an empty patch body", async () => {
+    const response = await PATCH(
+      new Request("http://localhost/api/issues/gitlab-issue", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }),
+      { params: Promise.resolve({ id: "gitlab-issue" }) }
+    );
+
+    expect(response.status).toBe(200);
+  });
 });
