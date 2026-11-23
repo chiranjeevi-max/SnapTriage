@@ -130,6 +130,11 @@ export function formatKey(shortcut: Shortcut): string {
  * @returns The matched shortcut, or `null` if no match.
  */
 export function matchShortcut(event: KeyboardEvent): Shortcut | null {
+  // A modified keystroke belongs to the browser or the OS, never to a bare
+  // shortcut. Without this, Cmd+C on selected issue text matched `c` and closed
+  // the issue instead of copying.
+  if (event.ctrlKey || event.metaKey || event.altKey) return null;
+
   for (const shortcut of shortcuts) {
     if (shortcut.shift && !event.shiftKey) continue;
     if (!shortcut.shift && event.shiftKey) continue;

@@ -129,6 +129,30 @@ describe("follow-up scheduling order", () => {
   }, 30000);
 
   /**
+   * @target followUpOrder
+   * @dependencies none
+   * @scenario The ordering clause the scheduler builds
+   * @expectedOutput The NULL placement is written out. SQLite already sorts NULL
+   *                 first, so every result assertion here passes without it; only
+   *                 the generated SQL distinguishes a fix that also holds on
+   *                 Postgres from one that silently depends on the driver.
+   */
+  it("states the NULL placement in the clause it builds", async () => {
+    const { followUpOrder } = await import("@/features/follow-up/follow-up-service");
+    const { PgDialect } = await import("drizzle-orm/pg-core");
+
+    const sqlText = new PgDialect()
+      .sqlToQuery(
+        // Drizzle's SQL type is the same shape both drivers build; the Postgres
+        // dialect renders the clause the way Neon will see it.
+        followUpOrder()[0] as never
+      )
+      .sql.toLowerCase();
+
+    expect(sqlText).toContain("nulls first");
+  });
+
+  /**
    * @target the query plan of the scheduler's read
    * @dependencies SQLite, follow_up_due_idx
    * @scenario The pass asks for the twenty oldest attempts, NULLs leading
