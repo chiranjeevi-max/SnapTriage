@@ -12,3 +12,11 @@ SQLite deployment: disconnecting a repo orphans its issues, triage_state, reply_
 follow_up, triage_preset and sync_log rows. AGENTS.md invariant 3 says cascade deletes are
 assumed, so this is a direct invariant violation — and it produces duplicate/orphan data
 that a later reconnect surfaces as phantom presets.
+
+### Cycle 2 — Stamp the sync watermark when the read starts
+`sync-engine.ts` wrote `lastSyncedAt = new Date()` *after* every upsert batch. Both
+providers filter `since` / `updated_after` strictly, so an issue updated while the pages
+were still arriving carried an `updated_at` earlier than the watermark and was never
+fetched again — silent, permanent data loss, not a delay. Now stamped from the instant the
+read began, minus a 60s margin so a provider clock running behind ours cannot hide a
+boundary update either. Verified by reverting the fix: both new tests fail without it.

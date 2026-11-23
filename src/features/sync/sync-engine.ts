@@ -16,6 +16,19 @@ import { syncLogger } from "@/lib/logger";
 const SYNC_CONCURRENCY = 3;
 
 /**
+ * Slack subtracted from a sync's start instant before it is stored as the
+ * watermark.
+ *
+ * Both providers filter `since` / `updated_after` strictly, and they stamp
+ * `updated_at` with their own clocks. Storing the exact start instant assumes
+ * those clocks agree with ours; where the provider's runs behind, an issue
+ * updated in the window carries an `updated_at` earlier than the watermark and
+ * is skipped forever. The overlap costs one re-read of a minute's worth of
+ * issues, which the upsert absorbs, and removes that assumption.
+ */
+const WATERMARK_SKEW_MARGIN_MS = 60_000;
+
+/**
  * Issues written per upsert statement: as many as fit in SQLite's limit of
  * 32,766 bound parameters, since each row binds one parameter per column.
  */
@@ -77,6 +90,12 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
     if (!token) throw new Error(`No ${repo.provider} token found`);
 
     const provider = getProvider(repo.provider as "github" | "gitlab");
+    // The watermark is the instant the read *started*, not the instant the
+    // write finished. An issue updated while the pages are still coming in has
+    // an `updated_at` earlier than a finish-time stamp, and the next sync's
+    // strict `since` would step over it — losing the change permanently rather
+    // than delaying it.
+    const syncStartedAt = Date.now();
     const since = repo.lastSyncedAt ? new Date(repo.lastSyncedAt) : undefined;
     const fetched = await provider.fetchIssues(repo.owner, repo.name, token, since);
 
@@ -131,7 +150,10 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
     }
 
     // Update repo lastSyncedAt
-    await typedDb.update(repos).set({ lastSyncedAt: new Date() }).where(eq(repos.id, repoId));
+    await typedDb
+      .update(repos)
+      .set({ lastSyncedAt: new Date(syncStartedAt - WATERMARK_SKEW_MARGIN_MS) })
+      .where(eq(repos.id, repoId));
 
     // Log sync completion
     await typedDb
