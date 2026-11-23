@@ -20,7 +20,23 @@ import { useUndoStore } from "@/features/triage/use-undo";
 import { useBatchPush } from "@/features/triage/use-batch";
 import { toggleIssueState } from "@/features/triage/triage-actions";
 
-export function useKeyboardActions(issues: IssueWithTriage[]) {
+/**
+ * Handlers for actions that belong to the view rather than the dispatcher.
+ *
+ * Bulk selection is the case: the dispatcher knows the keystroke, but only the
+ * inbox view knows which rows are visible, so it hands the work back through a
+ * callback instead of routing it through the shared store. A store round trip
+ * would have to be consumed during render — writing to an external store there
+ * is not the same as a React state update, and React rejects it.
+ */
+export interface KeyboardActionOptions {
+  /** Add or remove one issue from the bulk selection. */
+  toggleSelection?: (issueId: string) => void;
+  /** Select every visible issue, or clear if they are all selected. */
+  selectAllVisible?: () => void;
+}
+
+export function useKeyboardActions(issues: IssueWithTriage[], options?: KeyboardActionOptions) {
   const {
     selectedIndex,
     moveSelection,
@@ -31,7 +47,6 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
     setSnoozePickerOpen,
     setPresetPickerOpen,
     setFollowUpArmRequested,
-    setSelectionRequest,
   } = useKeyboardStore();
   const triage = useTriageMutation();
   const sync = useSync();
@@ -154,16 +169,12 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           }
           break;
         }
-        case "select-toggle": {
-          // The dispatcher does not own the selection: it knows the keystroke,
-          // but only the inbox view knows which rows are on screen. It leaves a
-          // request for the view to consume against its visible list.
+        case "select-toggle":
           if (!currentIssue) break;
-          setSelectionRequest({ action: "toggle", issueId: currentIssue.id });
+          options?.toggleSelection?.(currentIssue.id);
           break;
-        }
         case "select-all":
-          setSelectionRequest({ action: "all" });
+          options?.selectAllVisible?.();
           break;
         case "batch-push":
           batchPushRef.current.mutate();
@@ -185,7 +196,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
       setSnoozePickerOpen,
       setPresetPickerOpen,
       setFollowUpArmRequested,
-      setSelectionRequest,
+      options,
       popUndo,
     ]
   );

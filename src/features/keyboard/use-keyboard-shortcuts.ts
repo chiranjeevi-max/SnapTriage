@@ -14,19 +14,22 @@
 import { useEffect } from "react";
 import { useKeyboardStore } from "./keyboard-store";
 import { matchShortcut } from "./shortcut-registry";
-import { useKeyboardActions } from "./use-keyboard-actions";
+import { useKeyboardActions, type KeyboardActionOptions } from "./use-keyboard-actions";
 import { isEditableElement } from "./is-editable-element";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
  * Attaches a global keydown listener that dispatches matched shortcuts.
  * Must be called once in the inbox view with the current issue list.
+ *
  * @param issues - Current issue list (forwarded to action dispatch).
+ * @param options - Optional handlers for actions that belong to a view rather
+ *                  than the dispatcher; see {@link KeyboardActionOptions}.
  */
-export function useKeyboardShortcuts(issues: IssueWithTriage[]) {
+export function useKeyboardShortcuts(issues: IssueWithTriage[], options?: KeyboardActionOptions) {
   const overlayOpen = useKeyboardStore((s) => s.overlayOpen);
   const isAnyPickerOpen = useKeyboardStore((s) => s.isAnyPickerOpen);
-  const execute = useKeyboardActions(issues);
+  const execute = useKeyboardActions(issues, options);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {

@@ -144,8 +144,6 @@ export function InboxView() {
     setSnoozePickerOpen,
     presetPickerOpen,
     setPresetPickerOpen,
-    selectionRequest,
-    setSelectionRequest,
   } = useKeyboardStore();
 
   // The follow-up surface replaces the queue in the list pane, so the keyboard
@@ -174,19 +172,16 @@ export function InboxView() {
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  // The keyboard asks for a selection change; only this view knows which rows are
-  // visible, so the request is resolved during render against the current
-  // selection. Resolving it in an effect would apply one frame late, and the
-  // state write there would be a cascading render.
-  if (selectionRequest) {
-    const request = selectionRequest;
-    setSelectionRequest(null);
-    setSelectedIds((previous) =>
-      request.action === "toggle"
-        ? toggleSelectedId(previous, request.issueId)
-        : toggleSelectAll(previous, filteredIssues)
-    );
-  }
+  const selectAllVisible = useCallback(() => {
+    setSelectedIds((previous) => toggleSelectAll(previous, filteredIssues));
+  }, [filteredIssues]);
+
+  // Passed to the keyboard dispatcher rather than routed through the store: the
+  // selection is view state, and this closes over the list that is on screen.
+  const keyboardOptions = useMemo(
+    () => ({ toggleSelection: toggleSelected, selectAllVisible }),
+    [toggleSelected, selectAllVisible]
+  );
 
   const visibleSelectedIds = useMemo(
     () => visibleSelection(selectedIds, filteredIssues),
@@ -233,7 +228,7 @@ export function InboxView() {
     }
   }, [filteredIssues, setSelectedIndex]);
 
-  useKeyboardShortcuts(shownIssues);
+  useKeyboardShortcuts(shownIssues, keyboardOptions);
 
   const handleSelect = useCallback(
     (issue: { id: string }) => {

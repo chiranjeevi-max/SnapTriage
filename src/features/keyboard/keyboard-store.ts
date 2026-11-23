@@ -33,16 +33,6 @@ interface KeyboardState {
    * consumes a request naming its own issue, and clears it when it does.
    */
   followUpArmRequested: string | null;
-  /**
-   * A pending bulk-selection command from the keyboard, or `null`.
-   *
-   * A request rather than a direct write because the selection itself belongs to
-   * the inbox view, which is the only place that knows which rows are visible.
-   * The dispatcher knows the keystroke; the view knows the list. `toggle` names
-   * the row it applies to, which is why it carries an id rather than a flag.
-   */
-  selectionRequest: { action: "toggle"; issueId: string } | { action: "all" } | null;
-
   setSelectedIndex: (i: number) => void;
   setIssueCount: (n: number | null) => void;
   moveSelection: (delta: number) => void;
@@ -54,7 +44,6 @@ interface KeyboardState {
   setSavedReplyPickerOpen: (open: boolean) => void;
   setFollowUpPanelOpen: (open: boolean) => void;
   setFollowUpArmRequested: (issueId: string | null) => void;
-  setSelectionRequest: (request: KeyboardState["selectionRequest"]) => void;
   isAnyPickerOpen: () => boolean;
   reset: () => void;
 }
@@ -71,7 +60,6 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   savedReplyPickerOpen: false,
   followUpPanelOpen: false,
   followUpArmRequested: null,
-  selectionRequest: null,
 
   setSelectedIndex: (i) => set({ selectedIndex: i }),
 
@@ -108,7 +96,6 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   setSavedReplyPickerOpen: (open) => set({ savedReplyPickerOpen: open }),
   setFollowUpPanelOpen: (open) => set({ followUpPanelOpen: open }),
   setFollowUpArmRequested: (issueId) => set({ followUpArmRequested: issueId }),
-  setSelectionRequest: (request) => set({ selectionRequest: request }),
 
   // The two dialogs that belong to the reply surface are counted here even
   // though they are not triage controls: their buttons are not editable
@@ -138,6 +125,5 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
       savedReplyPickerOpen: false,
       followUpPanelOpen: false,
       followUpArmRequested: null,
-      selectionRequest: null,
     }),
 }));
