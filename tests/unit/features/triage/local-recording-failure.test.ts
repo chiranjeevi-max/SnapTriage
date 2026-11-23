@@ -58,3 +58,23 @@ describe("localRecordingFailureMessage", () => {
     }
   });
 });
+
+describe("localRecordingFailureMessage with an emptied diff", () => {
+  /**
+   * @target localRecordingFailureMessage
+   * @dependencies none
+   * @scenario A label pair whose values cancelled out, plus a priority
+   * @expectedOutput No promise of a sync. `payloadToIssueUpdate` drops an empty
+   *                 pair, so nothing reached the provider and there is nothing to
+   *                 catch up on.
+   */
+  it("does not treat an emptied pair as a provider change", () => {
+    const message = localRecordingFailureMessage("github", {
+      labels: { add: [], remove: [] },
+      priority: 1,
+    });
+
+    expect(message).not.toContain("sync");
+    expect(message).toContain("could not be saved");
+  });
+});

@@ -88,3 +88,40 @@ describe("mayRollBack", () => {
     expect(mayRollBack("issue-a", mine)).toBe(true);
   });
 });
+
+describe("endWrite", () => {
+  /**
+   * @target endWrite
+   * @dependencies beginWrite
+   * @scenario A settled write releases its stamp
+   * @expectedOutput The entry is gone, so the map does not grow with every issue
+   *                 ever written.
+   */
+  it("releases a settled write's stamp", async () => {
+    const { beginWrite, endWrite, mayRollBack } =
+      await import("@/features/triage/use-triage-mutation");
+
+    const sequence = beginWrite("issue-settled");
+    endWrite("issue-settled", sequence);
+
+    expect(mayRollBack("issue-settled", sequence)).toBe(false);
+  });
+
+  /**
+   * @target endWrite
+   * @dependencies beginWrite
+   * @scenario An older write settles after a newer one has started
+   * @expectedOutput The newer stamp survives. Dropping it would let the older
+   *                 write roll back over the newer one's optimistic state.
+   */
+  it("does not release a stamp a newer write installed", async () => {
+    const { beginWrite, endWrite, mayRollBack } =
+      await import("@/features/triage/use-triage-mutation");
+
+    const older = beginWrite("issue-overlap");
+    const newer = beginWrite("issue-overlap");
+    endWrite("issue-overlap", older);
+
+    expect(mayRollBack("issue-overlap", newer)).toBe(true);
+  });
+});

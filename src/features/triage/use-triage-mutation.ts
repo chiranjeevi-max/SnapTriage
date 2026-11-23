@@ -92,6 +92,20 @@ export function beginWrite(issueId: string): number {
   return sequence;
 }
 
+/**
+ * Release an issue's order stamp once its write has settled.
+ *
+ * Without this the map grows with every issue ever written. The check is
+ * conditional so a settled write cannot drop the stamp a newer overlapping write
+ * installed, which would let the older one roll back over it.
+ *
+ * @param issueId - The issue the settled write targeted.
+ * @param sequence - The stamp that write was given.
+ */
+export function endWrite(issueId: string, sequence: number): void {
+  if (latestWrite.get(issueId) === sequence) latestWrite.delete(issueId);
+}
+
 export function useTriageMutation() {
   const queryClient = useQueryClient();
   const pushUndo = useUndoStore((s) => s.push);
@@ -227,7 +241,9 @@ export function useTriageMutation() {
       }
     },
 
-    onSettled: (data, _error, input) => {
+    onSettled: (data, _error, input, context) => {
+      if (context) endWrite(context.issueId, context.sequence);
+
       // A warning means the provider accepted the change but the local row could
       // not be recorded. Refetching now would read that unchanged row and replace
       // the optimistic update with pre-write values, so the user would watch their

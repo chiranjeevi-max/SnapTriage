@@ -88,7 +88,14 @@ export type ApplyTriageResult =
  * @returns One sentence describing which half, if any, will reconcile.
  */
 export function localRecordingFailureMessage(provider: string, payload: TriagePayload): string {
-  const providerFields = "labels" in payload || "assignees" in payload || "state" in payload;
+  // A pair whose values all cancelled out sends nothing to the provider, which is
+  // the same rule `payloadToIssueUpdate` applies. Counting it here would promise a
+  // sync for a no-op.
+  const hasValues = (set?: { add?: string[]; remove?: string[] }) =>
+    (set?.add?.length ?? 0) > 0 || (set?.remove?.length ?? 0) > 0;
+
+  const providerFields =
+    hasValues(payload.labels) || hasValues(payload.assignees) || payload.state !== undefined;
   const personalFields =
     "priority" in payload || "snoozedUntil" in payload || "dismissed" in payload;
 
