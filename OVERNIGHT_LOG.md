@@ -98,3 +98,11 @@ The comments route handled `ProviderApiError` and rethrew everything else, so a 
 `fetch` rejection — DNS failure, reset socket, a self-hosted GitLab that is down — surfaced
 as a 500. That is the same "provider is unreachable" condition as the branch above it and
 now returns the same 502, which the UI already knows how to present.
+
+### Cycle 13 — Bound the repo browser's body read
+`fetch-available-repos.ts` (no tests at all) cleared its abort timer in a `finally` the
+moment `fetch` resolved, leaving `res.json()` with no deadline — the exact defect the GitLab
+adapter's docblock documents as already fixed there. A provider that sent headers then
+stalled held the request open forever. Also crashed the whole page on a project with a null
+`namespace`, dropping every page already read, and leaked a timer on error responses. Timer
+release moved to a body-read helper; owner falls back to the full path.
