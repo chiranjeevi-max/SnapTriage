@@ -276,3 +276,25 @@ it might be fine, and leaving an operator no trace. Now 401 only for `InvalidTok
 Two nits in my own Feature 2 code: repeated issue numbers were an OR while every other field
 was an AND, so `#1 #2` was the only term that could widen; and the free-text haystack was
 rebuilt inside the term loop for every row.
+
+### Cycle 24 — Cover labels and collaborators
+
+The two gaps I had deferred. `fetchLabels` and `fetchCollaborators` on both adapters back the
+label and assignee pickers that open on every triage action, and neither had a test; the two
+routes serving them had none either.
+
+24 tests added. The assertions that matter: `role_name` and GitLab access levels must map to
+the same permission scale `getRepoPermission` uses, or the picker offers someone as a
+maintainer who cannot write; GitLab label colours must have their leading `#` stripped, or
+the swatch is an invalid CSS colour on one provider only; and a failed page must release its
+abort timer, since this is the most-travelled path in the app.
+
+All were mutation-tested rather than assumed: dropping the `#` strip, dropping the
+`maintain → write` mapping, restoring a `discard()` leak, and removing the route's ownership
+guard each made a test fail.
+
+One finding recorded rather than fixed: both routes answer `200 []` for a provider failure as
+well as for a genuinely empty result, so the picker cannot tell "this repo has no labels" from
+"your token expired". Neither picker reads `isError` today, so an error status would render a
+blank list rather than an explanation — the ambiguity is captured in a test so changing it
+later is a deliberate decision.
