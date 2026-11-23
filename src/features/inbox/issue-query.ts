@@ -165,7 +165,13 @@ export function isEmptyQuery(query: IssueQuery): boolean {
  */
 export function matchesQuery(issue: IssueWithTriage, query: IssueQuery): boolean {
   if (query.state && issue.state !== query.state) return false;
-  if (query.numbers.length > 0 && !query.numbers.includes(issue.number)) return false;
+
+  // Every constraint is an AND, including repeated ones. `#1 #2` therefore
+  // matches nothing, which is the honest answer for an issue that cannot be two
+  // numbers — and it keeps the rule uniform, so adding a term always narrows.
+  for (const number of query.numbers) {
+    if (issue.number !== number) return false;
+  }
 
   const labels = issue.labels.map((label) => label.toLowerCase());
   for (const label of query.labels) {
@@ -185,12 +191,16 @@ export function matchesQuery(issue: IssueWithTriage, query: IssueQuery): boolean
   }
 
   if (query.terms.length > 0) {
-    const title = issue.title.toLowerCase();
-    const labelText = labels.join(" ");
-    const assigneeText = assignees.join(" ");
+    // Built once: a query with five terms would otherwise rebuild the same
+    // string five times per row, for every row in the queue.
+    const haystack = [
+      issue.title.toLowerCase(),
+      author,
+      labels.join(" "),
+      assignees.join(" "),
+    ].join(" ");
 
     for (const term of query.terms) {
-      const haystack = `${title} ${author} ${labelText} ${assigneeText}`;
       if (!haystack.includes(term)) return false;
     }
   }

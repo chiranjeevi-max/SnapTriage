@@ -134,6 +134,19 @@ describe("matchesQuery", () => {
     expect(matchesQuery(issue(), parseQuery("#124"))).toBe(false);
   });
 
+  /**
+   * @target matchesQuery
+   * @dependencies none
+   * @scenario Two issue numbers in one query
+   * @expectedOutput Nothing, because every constraint is an AND and an issue has
+   *                 one number. A union here would be the only field that widens
+   *                 when a term is added.
+   */
+  it("treats repeated numbers as an intersection", () => {
+    expect(matchesQuery(issue(), parseQuery("#123 #124"))).toBe(false);
+    expect(matchesQuery(issue(), parseQuery("#123 #123"))).toBe(true);
+  });
+
   it("combines a field and free text", () => {
     expect(matchesQuery(issue(), parseQuery("label:bug crash"))).toBe(true);
     expect(matchesQuery(issue(), parseQuery("label:chore crash"))).toBe(false);

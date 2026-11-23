@@ -13,7 +13,7 @@ import type { PendingChanges } from "./types";
 
 /** One repository's staged work, already folded together. */
 export interface PendingSummary {
-  /** Issues with at least one staged change. */
+  /** Issues marked batch-pending, so the push will clear this many rows. */
   issues: number;
   /** Label names to add, de-duplicated case-insensitively, in staging order. */
   labelsToAdd: string[];
@@ -61,7 +61,9 @@ export function summarizePending(issues: IssueWithTriage[]): PendingSummary {
     const pending = issue.triage?.pendingChanges as PendingChanges | null | undefined;
     if (!pending) continue;
 
-    // A staged change still means work, even one this summary does not name.
+    // Counted per row carrying a staged diff, including one whose values happen
+    // to be empty: the row is marked pending, so the push will clear it and the
+    // count is what the bar reports.
     summary.issues++;
 
     for (const label of pending.labels?.add ?? []) addUnique(summary.labelsToAdd, label);
