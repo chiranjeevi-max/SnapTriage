@@ -35,3 +35,10 @@ and three tests fail without the change.
 other eleven mutating routes all use `.catch(() => null)`. A truncated or absent body threw
 `SyntaxError` out of the handler, surfacing as a 500 on the app's hottest write path. Both
 now match the established convention and return 400; three tests fail without the change.
+
+### Cycle 5 — Stop the issue filter widening to every repo
+`GET /api/issues` treated an unrecognised `repoId` as "no filter" and fell through to
+`inArray(issues.repoId, repoIds)`, returning the whole queue. A stale id therefore made the
+repo selector look like it had silently stopped working, and after a disconnect the client
+still holds the deleted id. A filter that cannot match now selects nothing; the test fails
+against the old code with both repos' issues returned.
