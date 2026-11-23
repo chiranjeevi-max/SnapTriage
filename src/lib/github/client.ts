@@ -320,10 +320,25 @@ export const githubProvider: IssueProvider = {
    * @param changes - The set of changes to apply.
    */
   async updateIssue(owner, repo, issueNumber, token, changes) {
-    const checked = async (url: string, tok: string, init?: RequestInit): Promise<Response> => {
-      const response = await ghFetch(url, tok, init);
+    // Every response is released here, success or failure. `readText` and
+    // `discard` are what clear the request's abort timer, and a write that leaks
+    // one arms an abort against a signal nobody holds for the full 30s.
+    //
+    // The content type is explicit because `fetch` otherwise stamps
+    // `text/plain` on a body. GitHub parses a request body as JSON only when the
+    // header says so; without it the update is rejected, and the `DELETE
+    // /assignees` body is ignored outright — which removes every assignee rather
+    // than the named one.
+    const checked = async (url: string, tok: string, init: RequestInit = {}): Promise<void> => {
+      const response = await ghFetch(url, tok, {
+        ...init,
+        headers: {
+          ...(init.body ? { "Content-Type": "application/json" } : {}),
+          ...init.headers,
+        },
+      });
       if (!response.ok) {
-        const body = await response.text().catch(() => "");
+        const body = await readText(response);
         throw new ProviderApiError(response.status, body, {
           provider: "github",
           operation: "updateIssue",
@@ -331,7 +346,7 @@ export const githubProvider: IssueProvider = {
           repo,
         });
       }
-      return response;
+      discard(response);
     };
 
     // Build the update payload
