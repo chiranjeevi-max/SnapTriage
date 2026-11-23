@@ -275,8 +275,9 @@ export async function pushBatchChanges(
 
       // Skip if no provider changes to push
       if (Object.keys(issueUpdate).length === 0) {
-        // Just clear the batch pending flag
-        await clearBatchPendingQuery(row.id, userId);
+        // Just clear the batch pending flag. Conditional on the revision read at
+        // the start of the pass, so a personal change staged since then survives.
+        await clearBatchPendingQuery(row.id, userId, row.revision);
         pushed++;
         continue;
       }
@@ -326,10 +327,12 @@ export async function pushBatchChanges(
         localUpdate.state = changes.state;
       }
       // localUpdate covers the same fields as issueUpdate, so it is never empty
-      // here. It commits together with the cleared flag.
+      // here. It commits together with the cleared flag. The issue row mirrors
+      // what the provider now holds, so it is written even when the clear is
+      // refused — the newer staged values stay pending for the next push.
       await runTransaction([
         typedDb.update(issues).set(localUpdate).where(eq(issues.id, row.issueId)),
-        clearBatchPendingQuery(row.id, userId),
+        clearBatchPendingQuery(row.id, userId, row.revision),
       ]);
 
       pushed++;
@@ -348,10 +351,21 @@ export async function pushBatchChanges(
 /**
  * Builds, without running, the write that marks a user's triage row as pushed.
  *
+ * Conditional on `revision`, which the caller read before it sent anything to the
+ * provider: a push can spend up to the request timeout on the network call, and
+ * anything the user stages in that window bumps the revision. Clearing
+ * unconditionally would wipe those newer values to `{}` — they were never sent,
+ * and with the flag cleared nothing would ever retry them.
+ *
+ * A row that changed hands is left alone entirely: `batchPending` stays set and
+ * the next push sends what is now staged. Re-sending the values this push already
+ * delivered is harmless, since the update is a set rather than an increment.
+ *
  * @param triageId - The triage state row whose staged changes were sent.
  * @param userId - The user the row belongs to.
+ * @param revision - The revision the staged changes were read at.
  */
-function clearBatchPendingQuery(triageId: string, userId: string) {
+function clearBatchPendingQuery(triageId: string, userId: string, revision: number) {
   return typedDb
     .update(triageState)
     .set({
@@ -363,5 +377,11 @@ function clearBatchPendingQuery(triageId: string, userId: string) {
       revision: sql`${triageState.revision} + 1`,
       updatedAt: new Date(),
     })
-    .where(and(eq(triageState.id, triageId), eq(triageState.userId, userId)));
+    .where(
+      and(
+        eq(triageState.id, triageId),
+        eq(triageState.userId, userId),
+        eq(triageState.revision, revision)
+      )
+    );
 }
