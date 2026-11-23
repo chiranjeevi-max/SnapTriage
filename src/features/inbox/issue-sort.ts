@@ -109,3 +109,28 @@ export function sortIssues(issues: IssueWithTriage[], sort: IssueSort): IssueWit
 function compareIds(left: IssueWithTriage, right: IssueWithTriage): number {
   return left.id.localeCompare(right.id);
 }
+
+/**
+ * Where the selection should land after the visible list changed.
+ *
+ * Called with the list as it was *before* the change and the index the user was
+ * on. A search, a sort, or a filter swaps the array under a positional index, so
+ * the same index after the swap names a different issue. Anchoring to the id
+ * keeps the pane and the next keystroke on the issue the user was reading.
+ *
+ * @param previous - The visible list before the change.
+ * @param next - The visible list after it.
+ * @param selectedIndex - The index the user was on in `previous`.
+ * @returns The index of the same issue in `next`, or `null` when it is gone.
+ */
+export function anchorSelection(
+  previous: readonly IssueWithTriage[],
+  next: readonly IssueWithTriage[],
+  selectedIndex: number
+): number | null {
+  const anchorId = previous[selectedIndex]?.id;
+  if (!anchorId) return null;
+
+  const index = next.findIndex((issue) => issue.id === anchorId);
+  return index >= 0 ? index : null;
+}

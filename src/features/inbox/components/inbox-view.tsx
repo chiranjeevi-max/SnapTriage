@@ -32,7 +32,12 @@ import { useIssueFilter } from "@/features/inbox/use-issue-filter";
 import { useIssueQuery } from "@/features/inbox/use-issue-query";
 import { filterByQuery } from "@/features/inbox/issue-query";
 import { useIssueSort } from "@/features/inbox/use-issue-sort";
-import { ISSUE_SORTS, sortIssues, type IssueSort } from "@/features/inbox/issue-sort";
+import {
+  anchorSelection,
+  ISSUE_SORTS,
+  sortIssues,
+  type IssueSort,
+} from "@/features/inbox/issue-sort";
 import { filterIssues, ISSUE_FILTERS } from "@/features/inbox/issue-filters";
 import { useSavedViews, useSaveCurrentView } from "@/features/inbox/use-saved-views";
 import { useBulkTriage } from "@/features/triage/use-bulk-triage";
@@ -221,18 +226,21 @@ export function InboxView() {
     [pinnedIssue, queueIssue]
   );
 
-  // Stabilize selection after data refresh
-  const selectedIdRef = useRef<string | null>(null);
+  // Keep the selection on the same issue when the list is reordered or narrowed.
+  //
+  // The anchor has to come from the *previous* list. Reading it from the current
+  // one after the swap would read whatever now sits at that index, so a search or
+  // sort change silently moved the selection to a different issue and the next
+  // keystroke acted on it.
+  const previousListRef = useRef<IssueWithTriage[]>(filteredIssues);
   useEffect(() => {
-    if (currentIssue) selectedIdRef.current = currentIssue.id;
-  }, [currentIssue]);
+    const previous = previousListRef.current;
+    previousListRef.current = filteredIssues;
+    if (previous === filteredIssues) return;
 
-  useEffect(() => {
-    if (selectedIdRef.current && filteredIssues.length > 0) {
-      const idx = filteredIssues.findIndex((i) => i.id === selectedIdRef.current);
-      if (idx >= 0) setSelectedIndex(idx);
-    }
-  }, [filteredIssues, setSelectedIndex]);
+    const nextIndex = anchorSelection(previous, filteredIssues, selectedIndex);
+    if (nextIndex !== null && nextIndex !== selectedIndex) setSelectedIndex(nextIndex);
+  }, [filteredIssues, selectedIndex, setSelectedIndex]);
 
   useKeyboardShortcuts(shownIssues, keyboardOptions);
 
@@ -497,6 +505,9 @@ export function InboxView() {
         <ResizablePanel defaultSize="58%" minSize="32%">
           <IssueDetail
             issue={currentIssue}
+            // A pinned follow-up is not a queue row, so the keyboard dispatcher
+            // has no current issue and `c` cannot fire for it.
+            shortcutTarget={currentIssue !== null && currentIssue === queueIssue}
             onClose={() => {
               // The pin outlives the selection, so closing has to clear it too.
               // Without this, Escape closes a pinned follow-up and the pane
@@ -513,7 +524,7 @@ export function InboxView() {
           up there is no queue row to hide, so the selection class is dropped and
           the list keeps the screen even though the detail pane still holds the
           last issue and its unsaved reply. */}
-      <BatchStatusBar issues={issueList} />
+      <BatchStatusBar />
 
       {/* Picker dialogs */}
       <LabelPicker open={labelPickerOpen} onOpenChange={setLabelPickerOpen} issue={queueIssue} />

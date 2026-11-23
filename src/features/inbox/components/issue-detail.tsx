@@ -51,6 +51,14 @@ export type IssueDetailTarget = Pick<IssueWithTriage, "id"> &
 interface IssueDetailProps {
   issue: IssueDetailTarget | null;
   onClose: () => void;
+  /**
+   * Whether the queue row for this issue is on screen.
+   *
+   * The detail pane also renders a pinned follow-up, which is not a queue row:
+   * the keyboard dispatcher has no current issue then, so a shortcut hint would
+   * promise something that cannot fire.
+   */
+  shortcutTarget?: boolean;
 }
 
 /**
@@ -72,7 +80,11 @@ function snoozeTimeLeft(isoStr: string): string {
  * Renders the full detail view for a single issue including triage controls.
  * Shows an empty-state prompt when no issue is selected.
  */
-export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) {
+export function IssueDetail({
+  issue: issueSummary,
+  onClose,
+  shortcutTarget = true,
+}: IssueDetailProps) {
   const { data: issue } = useIssue(issueSummary?.id);
   const triage = useTriageMutation();
   const resolvedIssue = (issue ?? issueSummary) as IssueDetail;
@@ -245,7 +257,10 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
             </TooltipTrigger>
             <TooltipContent side="bottom" className="flex items-center gap-1.5">
               <span>{resolvedIssue.state === "closed" ? "Reopen issue" : "Close issue"}</span>
-              <Kbd>C</Kbd>
+              {/* A pinned follow-up has no queue row, so the keyboard dispatcher
+                  has no current issue and `c` does nothing there. Showing the
+                  hint would promise a shortcut that cannot fire. */}
+              {shortcutTarget && <Kbd>C</Kbd>}
             </TooltipContent>
           </Tooltip>
 

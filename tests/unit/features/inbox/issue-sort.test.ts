@@ -6,7 +6,13 @@
  * swap under `j` while the user is reading them.
  */
 import { describe, expect, it } from "vitest";
-import { ISSUE_SORTS, isIssueSort, sortIssues, type IssueSort } from "@/features/inbox/issue-sort";
+import {
+  anchorSelection,
+  ISSUE_SORTS,
+  isIssueSort,
+  sortIssues,
+  type IssueSort,
+} from "@/features/inbox/issue-sort";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
 function issue(overrides: Partial<IssueWithTriage> = {}): IssueWithTriage {
@@ -197,5 +203,38 @@ describe("sortIssues", () => {
     }
 
     expect(rows.map((row) => row.id)).toEqual(before);
+  });
+});
+
+describe("anchorSelection", () => {
+  const a = issue({ id: "a", number: 20 });
+  const b = issue({ id: "b", number: 10 });
+
+  /**
+   * @target anchorSelection
+   * @dependencies none
+   * @scenario A sort reorders the list under the user's index
+   * @expectedOutput The index of the same issue. Keeping the positional index
+   *                 moved the detail pane and the next keystroke to a different
+   *                 issue as soon as the order changed.
+   */
+  it("follows the issue, not the position", () => {
+    // `[a, b]` becomes `[b, a]`; the user was on `b` at index 1.
+    expect(anchorSelection([a, b], [b, a], 1)).toBe(0);
+  });
+
+  /**
+   * @target anchorSelection
+   * @dependencies none
+   * @scenario A search removes the issue the user was on
+   * @expectedOutput `null`, so the caller leaves the selection alone rather than
+   *                 silently retargeting it at whatever moved into that slot.
+   */
+  it("reports nothing when the issue left the list", () => {
+    expect(anchorSelection([a, b], [a], 1)).toBeNull();
+  });
+
+  it("reports nothing for an empty selection", () => {
+    expect(anchorSelection([a, b], [b, a], 5)).toBeNull();
   });
 });

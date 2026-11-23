@@ -21,7 +21,9 @@ export {
   snoozeIssue,
   unsnoozeIssue,
   dismissIssue,
+  toggleIssueState,
 } from "./triage-actions";
+export type { IssueState } from "./triage-actions";
 
 // Hooks
 export { useTriageMutation } from "./use-triage-mutation";

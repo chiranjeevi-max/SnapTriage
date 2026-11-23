@@ -8,6 +8,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { PendingChanges } from "@/features/triage/types";
 
 /**
  * Query hook that fetches the count of pending (un-pushed) batch changes
@@ -23,6 +24,28 @@ export function usePendingBatchCount() {
       if (!res.ok) throw new Error("Failed to fetch pending count");
       const data = await res.json();
       return data.count;
+    },
+    refetchInterval: 30_000,
+  });
+}
+
+/**
+ * The staged diffs a push would send, for the preview.
+ *
+ * Read from the same rows the push selects rather than from the loaded queue: the
+ * queue holds open issues only, and a staged change on a closed issue is still
+ * pushed.
+ *
+ * @returns The staged changes, newest state first, or an empty list.
+ */
+export function usePendingBatchChanges() {
+  return useQuery<PendingChanges[]>({
+    queryKey: ["batch-pending-changes"],
+    queryFn: async () => {
+      const res = await fetch("/api/batch/pending-count");
+      if (!res.ok) throw new Error("Failed to fetch pending changes");
+      const data = (await res.json()) as { pending?: PendingChanges[] };
+      return data.pending ?? [];
     },
     refetchInterval: 30_000,
   });
@@ -52,6 +75,7 @@ export function useBatchPush() {
       }
       queryClient.invalidateQueries({ queryKey: ["issues"] });
       queryClient.invalidateQueries({ queryKey: ["batch-pending-count"] });
+      queryClient.invalidateQueries({ queryKey: ["batch-pending-changes"] });
     },
     onError: () => {
       toast.error("Failed to push batch changes");

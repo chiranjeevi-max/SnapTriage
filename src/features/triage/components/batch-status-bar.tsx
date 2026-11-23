@@ -9,37 +9,34 @@
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/features/keyboard";
-import { usePendingBatchCount, useBatchPush } from "@/features/triage/use-batch";
+import {
+  usePendingBatchCount,
+  usePendingBatchChanges,
+  useBatchPush,
+} from "@/features/triage/use-batch";
 import {
   describePending,
   hasProviderChanges,
   summarizePending,
 } from "@/features/triage/pending-summary";
-import type { IssueWithTriage } from "@/features/inbox/use-issues";
-
-interface BatchStatusBarProps {
-  /**
-   * The queue as loaded, used to describe what the push will send.
-   *
-   * Optional so the bar still renders its count and Push button on a surface
-   * that has no queue loaded; it simply cannot preview the diff then.
-   */
-  issues?: IssueWithTriage[];
-}
-
 /**
  * Bottom status bar for batch mode. Renders what is pending and a push button.
  * Hidden when there are no pending changes.
  *
  * @returns The batch status bar element, or `null` when there are no pending changes.
  */
-export function BatchStatusBar({ issues = [] }: BatchStatusBarProps) {
+
+export function BatchStatusBar() {
   const { data: count } = usePendingBatchCount();
+  // The staged diffs come from the same rows the push selects, not from the
+  // loaded queue: the queue is open issues only, so a closed issue's staged
+  // change was pushed without appearing here.
+  const { data: pending } = usePendingBatchChanges();
   const batchPush = useBatchPush();
 
   if (!count || count === 0) return null;
 
-  const summary = summarizePending(issues);
+  const summary = summarizePending(pending ?? []);
   const lines = describePending(summary);
   // A push that stages only personal fields still clears the flag without calling
   // the provider, so saying "nothing will be sent" is the honest reading of it.

@@ -24,7 +24,7 @@ vi.mock("@/auth", () => ({
 
 async function pendingCount() {
   const response = await GET();
-  return (await response.json()) as { count: number };
+  return (await response.json()) as { count: number; pending: unknown[] };
 }
 
 describe("GET /api/batch/pending-count", () => {
@@ -79,7 +79,11 @@ describe("GET /api/batch/pending-count", () => {
    *                 cannot overstate the work.
    */
   it("counts only the caller's pending rows", async () => {
-    expect(await pendingCount()).toEqual({ count: 2 });
+    const body = await pendingCount();
+    expect(body.count).toBe(2);
+    // The staged diffs travel with the count so the preview covers the same rows
+    // the push selects, including closed issues the queue never loads.
+    expect(body.pending).toHaveLength(2);
   });
 
   /**
@@ -92,7 +96,9 @@ describe("GET /api/batch/pending-count", () => {
   it("reports zero when nothing is staged", async () => {
     await typedDb.update(triageState).set({ batchPending: false });
 
-    expect(await pendingCount()).toEqual({ count: 0 });
+    const body = await pendingCount();
+    expect(body.count).toBe(0);
+    expect(body.pending).toEqual([]);
 
     await typedDb
       .update(triageState)

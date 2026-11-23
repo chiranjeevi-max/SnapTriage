@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * - **Auth:** Required (session-based)
  */
 import { NextResponse } from "next/server";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { auth } from "@/auth";
 import { typedDb } from "@/lib/db/query";
 import { triageState } from "@/lib/db/schema";
@@ -32,10 +32,14 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [row] = await typedDb
-    .select({ total: count() })
+  // The staged diffs travel with the count so the bar can describe exactly what
+  // the push will send. Deriving that from the loaded queue instead left closed
+  // issues out: the push covers every batch-pending row regardless of state, so
+  // a staged change on a closed issue was sent without appearing in the preview.
+  const rows = await typedDb
+    .select({ pendingChanges: triageState.pendingChanges })
     .from(triageState)
     .where(and(eq(triageState.userId, session.user.id), eq(triageState.batchPending, true)));
 
-  return NextResponse.json({ count: row.total });
+  return NextResponse.json({ count: rows.length, pending: rows.map((row) => row.pendingChanges) });
 }

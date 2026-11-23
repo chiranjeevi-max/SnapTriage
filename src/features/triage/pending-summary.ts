@@ -8,7 +8,6 @@
  * was the one the user could not inspect. Folding the staged changes into one
  * summary lets the bar say what is about to leave the machine before it leaves.
  */
-import type { IssueWithTriage } from "@/features/inbox/use-issues";
 import type { PendingChanges } from "./types";
 
 /** One repository's staged work, already folded together. */
@@ -46,7 +45,7 @@ function addUnique(list: string[], value: string): void {
  *          so the result is safe to derive from the whole queue rather than a
  *          pre-filtered subset.
  */
-export function summarizePending(issues: IssueWithTriage[]): PendingSummary {
+export function summarizePending(pendingChanges: PendingChanges[]): PendingSummary {
   const summary: PendingSummary = {
     issues: 0,
     labelsToAdd: [],
@@ -57,16 +56,11 @@ export function summarizePending(issues: IssueWithTriage[]): PendingSummary {
     stagedPriorities: 0,
   };
 
-  for (const issue of issues) {
-    // `batchPending` is the marker the push itself reads. `pendingChanges`
-    // defaults to `{}` on every triage row, so treating a present object as
-    // staged work would count rows a push will never touch.
-    if (!issue.triage?.batchPending) continue;
-    const pending = (issue.triage.pendingChanges ?? {}) as PendingChanges;
-
-    // Counted per row carrying a staged diff, including one whose values happen
-    // to be empty: the row is marked pending, so the push will clear it and the
-    // count is what the bar reports.
+  // One entry per batch-pending row, which is exactly what the push selects. The
+  // caller passes the staged diffs themselves rather than the loaded queue,
+  // because the queue holds open issues only and a closed issue's staged change
+  // is still pushed.
+  for (const pending of pendingChanges) {
     summary.issues++;
 
     for (const label of pending.labels?.add ?? []) addUnique(summary.labelsToAdd, label);

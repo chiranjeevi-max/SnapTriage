@@ -11,44 +11,10 @@ import {
   hasProviderChanges,
   summarizePending,
 } from "@/features/triage/pending-summary";
-import type { IssueWithTriage } from "@/features/inbox/use-issues";
-import type { PendingChanges } from "@/features/triage/types";
-
-let nextId = 0;
-
-function issue(pendingChanges: PendingChanges | null): IssueWithTriage {
-  return {
-    id: `issue-${nextId++}`,
-    repoId: "repo-1",
-    provider: "github",
-    number: 1,
-    title: "Title",
-    author: "nadia",
-    authorAvatar: null,
-    state: "open",
-    labels: [],
-    assignees: [],
-    url: "https://example.test/1",
-    providerIssueId: "gh-1",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-02T00:00:00.000Z",
-    fetchedAt: "2026-01-02T00:00:00.000Z",
-    triage: pendingChanges
-      ? {
-          id: "triage",
-          priority: null,
-          snoozedUntil: null,
-          dismissed: false,
-          batchPending: true,
-          pendingChanges,
-        }
-      : null,
-  };
-}
 
 describe("summarizePending", () => {
   it("is empty for a queue with nothing staged", () => {
-    expect(summarizePending([issue(null)])).toEqual({
+    expect(summarizePending([])).toEqual({
       issues: 0,
       labelsToAdd: [],
       labelsToRemove: [],
@@ -59,36 +25,17 @@ describe("summarizePending", () => {
     });
   });
 
-  /**
-   * @target summarizePending
-   * @dependencies none
-   * @scenario A live-triage row carries an empty `pendingChanges` object
-   * @expectedOutput Nothing counted. The column defaults to `{}`, so treating a
-   *                 present object as staged work would describe a push that
-   *                 touches none of those rows.
-   */
-  it("ignores a row that is not batch-pending", () => {
-    const liveRow = issue({});
-    liveRow.triage = { ...liveRow.triage!, batchPending: false, pendingChanges: {} };
-
-    expect(summarizePending([liveRow]).issues).toBe(0);
-  });
-
   it("counts only issues that carry staged changes", () => {
-    const summary = summarizePending([
-      issue(null),
-      issue({ labels: { add: ["bug"], remove: [] } }),
-      issue({}),
-    ]);
+    const summary = summarizePending([{ labels: { add: ["bug"], remove: [] } }, {}]);
 
     expect(summary.issues).toBe(2);
   });
 
   it("folds labels and assignees across issues", () => {
     const summary = summarizePending([
-      issue({ labels: { add: ["bug"], remove: [] } }),
-      issue({ labels: { add: ["chore"], remove: ["wontfix"] } }),
-      issue({ assignees: { add: ["octocat"], remove: [] } }),
+      { labels: { add: ["bug"], remove: [] } },
+      { labels: { add: ["chore"], remove: ["wontfix"] } },
+      { assignees: { add: ["octocat"], remove: [] } },
     ]);
 
     expect(summary.labelsToAdd).toEqual(["bug", "chore"]);
@@ -106,10 +53,10 @@ describe("summarizePending", () => {
    */
   it("de-duplicates values case-insensitively", () => {
     const summary = summarizePending([
-      issue({ labels: { add: ["Bug"], remove: [] } }),
-      issue({ labels: { add: ["bug"], remove: [] } }),
-      issue({ assignees: { add: ["Octocat"], remove: [] } }),
-      issue({ assignees: { add: ["octocat"], remove: [] } }),
+      { labels: { add: ["Bug"], remove: [] } },
+      { labels: { add: ["bug"], remove: [] } },
+      { assignees: { add: ["Octocat"], remove: [] } },
+      { assignees: { add: ["octocat"], remove: [] } },
     ]);
 
     expect(summary.labelsToAdd).toEqual(["Bug"]);
@@ -117,10 +64,7 @@ describe("summarizePending", () => {
   });
 
   it("counts staged state and priority changes", () => {
-    const summary = summarizePending([
-      issue({ state: "closed", priority: 1 }),
-      issue({ state: "open" }),
-    ]);
+    const summary = summarizePending([{ state: "closed", priority: 1 }, { state: "open" }]);
 
     expect(summary.stagedStates).toBe(2);
     expect(summary.stagedPriorities).toBe(1);
@@ -129,30 +73,30 @@ describe("summarizePending", () => {
 
 describe("hasProviderChanges", () => {
   it("is false when only personal fields are staged", () => {
-    expect(hasProviderChanges(summarizePending([issue({ priority: 2 })]))).toBe(false);
+    expect(hasProviderChanges(summarizePending([{ priority: 2 }]))).toBe(false);
   });
 
   it("is true for a staged label", () => {
-    expect(
-      hasProviderChanges(summarizePending([issue({ labels: { add: ["bug"], remove: [] } })]))
-    ).toBe(true);
+    expect(hasProviderChanges(summarizePending([{ labels: { add: ["bug"], remove: [] } }]))).toBe(
+      true
+    );
   });
 
   it("is true for a staged state", () => {
-    expect(hasProviderChanges(summarizePending([issue({ state: "closed" })]))).toBe(true);
+    expect(hasProviderChanges(summarizePending([{ state: "closed" }]))).toBe(true);
   });
 });
 
 describe("describePending", () => {
   it("renders nothing when nothing is staged", () => {
-    expect(describePending(summarizePending([issue(null)]))).toEqual([]);
+    expect(describePending(summarizePending([]))).toEqual([]);
   });
 
   it("names the values being added and removed", () => {
     const lines = describePending(
       summarizePending([
-        issue({ labels: { add: ["bug"], remove: ["wontfix"] } }),
-        issue({ assignees: { add: ["octocat"], remove: [] } }),
+        { labels: { add: ["bug"], remove: ["wontfix"] } },
+        { assignees: { add: ["octocat"], remove: [] } },
       ])
     );
 
@@ -172,7 +116,7 @@ describe("describePending", () => {
    */
   it("summarises a long list instead of truncating it silently", () => {
     const lines = describePending(
-      summarizePending([issue({ labels: { add: ["a", "b", "c", "d", "e"], remove: [] } })]),
+      summarizePending([{ labels: { add: ["a", "b", "c", "d", "e"], remove: [] } }]),
       3
     );
 
@@ -180,7 +124,7 @@ describe("describePending", () => {
   });
 
   it("describes a state change without listing labels", () => {
-    const lines = describePending(summarizePending([issue({ state: "closed" })]));
+    const lines = describePending(summarizePending([{ state: "closed" }]));
 
     expect(lines).toEqual([{ label: "Change state on 1 issue", values: [] }]);
   });
@@ -194,9 +138,9 @@ describe("describePending", () => {
    *                 understate what the push settles.
    */
   it("names a staged priority even though it is not sent to the provider", () => {
-    const lines = describePending(summarizePending([issue({ priority: 1 })]));
+    const lines = describePending(summarizePending([{ priority: 1 }]));
 
     expect(lines).toEqual([{ label: "Set priority on 1 issue", values: [] }]);
-    expect(hasProviderChanges(summarizePending([issue({ priority: 1 })]))).toBe(false);
+    expect(hasProviderChanges(summarizePending([{ priority: 1 }]))).toBe(false);
   });
 });
