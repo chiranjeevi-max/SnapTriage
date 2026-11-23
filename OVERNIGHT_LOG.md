@@ -134,3 +134,8 @@ on the queue payload is pure client logic and needs no schema or API change.
 Justification: the API hardcodes `updatedAt` descending, so the ordering a maintainer
 actually wants — oldest untouched first, or untriaged to the top — is unreachable. The whole
 list is already client-side, so this is a pure comparator plus one control.
+
+### Feature 4 — Keyboard bulk selection
+Justification: bulk triage works but selection is checkbox-only, which undercuts the
+"keyboard-driven inbox" premise — the one workflow that saves the most time is the one that
+needs a mouse. Two keys and a pure reducer, no schema or API change.

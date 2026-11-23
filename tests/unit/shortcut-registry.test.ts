@@ -93,7 +93,19 @@ describe("shortcut-registry", () => {
     it("returns null for unbound keys", () => {
       expect(matchShortcut(makeKeyboardEvent("5"))).toBeNull();
       expect(matchShortcut(makeKeyboardEvent("Tab"))).toBeNull();
-      expect(matchShortcut(makeKeyboardEvent("x"))).toBeNull();
+      expect(matchShortcut(makeKeyboardEvent("q"))).toBeNull();
+    });
+
+    it("matches x to select-toggle", () => {
+      expect(matchShortcut(makeKeyboardEvent("x"))?.id).toBe("select-toggle");
+    });
+
+    it("matches shift+x to select-all", () => {
+      expect(matchShortcut(makeKeyboardEvent("X", { shiftKey: true }))?.id).toBe("select-all");
+    });
+
+    it("matches c to toggle-state", () => {
+      expect(matchShortcut(makeKeyboardEvent("c"))?.id).toBe("toggle-state");
     });
 
     it("does not match ? without shift", () => {

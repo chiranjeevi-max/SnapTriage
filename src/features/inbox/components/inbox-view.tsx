@@ -36,6 +36,11 @@ import { ISSUE_SORTS, sortIssues, type IssueSort } from "@/features/inbox/issue-
 import { filterIssues, ISSUE_FILTERS } from "@/features/inbox/issue-filters";
 import { useSavedViews, useSaveCurrentView } from "@/features/inbox/use-saved-views";
 import { useBulkTriage } from "@/features/triage/use-bulk-triage";
+import {
+  toggleSelected as toggleSelectedId,
+  toggleSelectAll,
+  visibleSelection,
+} from "@/features/triage/selection";
 import { priorityOptions } from "@/features/triage/priority";
 import { useKeyboardStore, useKeyboardShortcuts, ShortcutOverlay } from "@/features/keyboard";
 import {
@@ -139,6 +144,8 @@ export function InboxView() {
     setSnoozePickerOpen,
     presetPickerOpen,
     setPresetPickerOpen,
+    selectionRequest,
+    setSelectionRequest,
   } = useKeyboardStore();
 
   // The follow-up surface replaces the queue in the list pane, so the keyboard
@@ -162,21 +169,27 @@ export function InboxView() {
   }, [surface, filteredIssues.length, setIssueCount]);
 
   const toggleSelected = useCallback((issueId: string) => {
-    setSelectedIds((previous) => {
-      const next = new Set(previous);
-      if (next.has(issueId)) {
-        next.delete(issueId);
-      } else {
-        next.add(issueId);
-      }
-      return next;
-    });
+    setSelectedIds((previous) => toggleSelectedId(previous, issueId));
   }, []);
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
+  // The keyboard asks for a selection change; only this view knows which rows are
+  // visible, so the request is resolved during render against the current
+  // selection. Resolving it in an effect would apply one frame late, and the
+  // state write there would be a cascading render.
+  if (selectionRequest) {
+    const request = selectionRequest;
+    setSelectionRequest(null);
+    setSelectedIds((previous) =>
+      request.action === "toggle"
+        ? toggleSelectedId(previous, request.issueId)
+        : toggleSelectAll(previous, filteredIssues)
+    );
+  }
+
   const visibleSelectedIds = useMemo(
-    () => [...selectedIds].filter((id) => filteredIssues.some((issue) => issue.id === id)),
+    () => visibleSelection(selectedIds, filteredIssues),
     [selectedIds, filteredIssues]
   );
 

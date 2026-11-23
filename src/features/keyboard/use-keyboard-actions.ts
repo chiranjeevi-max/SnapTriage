@@ -31,6 +31,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
     setSnoozePickerOpen,
     setPresetPickerOpen,
     setFollowUpArmRequested,
+    setSelectionRequest,
   } = useKeyboardStore();
   const triage = useTriageMutation();
   const sync = useSync();
@@ -153,6 +154,17 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           }
           break;
         }
+        case "select-toggle": {
+          // The dispatcher does not own the selection: it knows the keystroke,
+          // but only the inbox view knows which rows are on screen. It leaves a
+          // request for the view to consume against its visible list.
+          if (!currentIssue) break;
+          setSelectionRequest({ action: "toggle", issueId: currentIssue.id });
+          break;
+        }
+        case "select-all":
+          setSelectionRequest({ action: "all" });
+          break;
         case "batch-push":
           batchPushRef.current.mutate();
           break;
@@ -173,6 +185,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
       setSnoozePickerOpen,
       setPresetPickerOpen,
       setFollowUpArmRequested,
+      setSelectionRequest,
       popUndo,
     ]
   );

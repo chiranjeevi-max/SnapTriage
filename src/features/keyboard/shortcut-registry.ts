@@ -76,6 +76,14 @@ export const shortcuts: Shortcut[] = [
     description: "Wait for a reply",
   },
   { id: "undo", key: "z", category: "triage", description: "Undo last action" },
+  { id: "select-toggle", key: "x", category: "triage", description: "Select issue" },
+  {
+    id: "select-all",
+    key: "X",
+    shift: true,
+    category: "triage",
+    description: "Select all visible",
+  },
   {
     id: "batch-push",
     key: "P",
