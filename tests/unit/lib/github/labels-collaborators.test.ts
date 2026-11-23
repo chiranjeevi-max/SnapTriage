@@ -101,16 +101,16 @@ describe("githubProvider.fetchLabels", () => {
    *                 failure. A partial list is the honest answer here because the
    *                 picker also offers labels the issue already carries.
    */
-  it("stops at a failed page and leaks no timer", async () => {
+  it("rejects a failed page and leaks no timer", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("forbidden", { status: 403 }))
     );
 
-    const labels = await githubProvider.fetchLabels?.("acme", "widgets", "token");
-
-    expect(labels).toEqual([]);
+    await expect(githubProvider.fetchLabels?.("acme", "widgets", "token")).rejects.toMatchObject({
+      status: 403,
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -191,14 +191,16 @@ describe("githubProvider.fetchCollaborators", () => {
    * @expectedOutput An empty list and no armed timer. The assignee picker then
    *                 offers nobody, which is at least not a wrong list.
    */
-  it("reports nothing and leaks no timer on a failed read", async () => {
+  it("rejects a failed read and leaks no timer", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("nope", { status: 404 }))
     );
 
-    expect(await githubProvider.fetchCollaborators?.("acme", "widgets", "token")).toEqual([]);
+    await expect(
+      githubProvider.fetchCollaborators?.("acme", "widgets", "token")
+    ).rejects.toMatchObject({ status: 404 });
     expect(vi.getTimerCount()).toBe(0);
   });
 });
@@ -256,14 +258,16 @@ describe("gitlabProvider.fetchLabels", () => {
     expect(new URL(requested[0]).pathname).toBe("/api/v4/projects/group%2Fapp/labels");
   });
 
-  it("stops at a failed page and leaks no timer", async () => {
+  it("rejects a failed page and leaks no timer", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("nope", { status: 401 }))
     );
 
-    expect(await gitlabProvider.fetchLabels?.("group", "app", "token")).toEqual([]);
+    await expect(gitlabProvider.fetchLabels?.("group", "app", "token")).rejects.toMatchObject({
+      status: 401,
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 });
@@ -328,14 +332,16 @@ describe("gitlabProvider.fetchCollaborators", () => {
     expect(new URL(requested[0]).pathname).toBe("/api/v4/projects/group%2Fapp/members/all");
   });
 
-  it("reports nothing and leaks no timer on a failed read", async () => {
+  it("rejects a failed read and leaks no timer", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("nope", { status: 500 }))
     );
 
-    expect(await gitlabProvider.fetchCollaborators?.("group", "app", "token")).toEqual([]);
+    await expect(
+      gitlabProvider.fetchCollaborators?.("group", "app", "token")
+    ).rejects.toMatchObject({ status: 500 });
     expect(vi.getTimerCount()).toBe(0);
   });
 });
@@ -362,6 +368,44 @@ describe("listing page budget", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(LISTING_PAGE_LIMIT);
     expect(labels).toHaveLength(LISTING_PAGE_LIMIT * 100);
+  });
+
+  /**
+   * @target githubProvider.fetchCollaborators
+   * @dependencies ghFetch, LISTING_PAGE_LIMIT
+   * @scenario Every collaborator page comes back full
+   * @expectedOutput The bound applies to this loop too. Each of the four listing
+   *                 loops is separate, so one left unbounded would never be caught
+   *                 by covering the other three.
+   */
+  it("stops a collaborator listing at the page budget", async () => {
+    const { LISTING_PAGE_LIMIT } = await import("@/lib/provider-interface");
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(fullPage((index) => githubCollaborator(index, "write")))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await githubProvider.fetchCollaborators?.("acme", "widgets", "token");
+
+    expect(fetchMock).toHaveBeenCalledTimes(LISTING_PAGE_LIMIT);
+  });
+
+  /**
+   * @target gitlabProvider.fetchLabels
+   * @dependencies timedFetch, LISTING_PAGE_LIMIT
+   * @scenario Every label page comes back full
+   * @expectedOutput The bound applies here as well.
+   */
+  it("stops a GitLab label listing at the page budget", async () => {
+    const { LISTING_PAGE_LIMIT } = await import("@/lib/provider-interface");
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(fullPage((index) => ({ name: `l${index}`, color: "#fff", description: null })))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await gitlabProvider.fetchLabels?.("group", "app", "token");
+
+    expect(fetchMock).toHaveBeenCalledTimes(LISTING_PAGE_LIMIT);
   });
 
   /**

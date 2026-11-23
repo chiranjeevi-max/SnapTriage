@@ -215,6 +215,6 @@ describe("GET /api/repos/:id/collaborators", () => {
     const result = await call(getCollaborators);
 
     expect(result.status).toBe(502);
-    expect((result.body as { error: string }).error).toBe("provider is down");
+    expect((result.body as { error: string }).error).toBe("Could not read collaborators");
   });
 });

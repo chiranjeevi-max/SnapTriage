@@ -382,7 +382,8 @@ export const gitlabProvider: IssueProvider = {
   },
 
   /**
-   * Fetches all labels defined on a GitLab project.
+   * Fetches the labels defined on a GitLab project, bounded by
+   * `LISTING_PAGE_LIMIT` pages. Rejects when a page cannot be read.
    * Strips the leading `#` from color values for consistency with GitHub.
    * @param owner - Project namespace.
    * @param repo - Project name.
@@ -401,8 +402,15 @@ export const gitlabProvider: IssueProvider = {
         headers: headers(token),
       });
       if (!res.ok) {
-        discard(res);
-        break;
+        // A failed page is unknown, not empty: breaking here made an expired
+        // token render as "no labels found".
+        const body = await readText(res);
+        throw new ProviderApiError(res.status, body, {
+          provider: "gitlab",
+          operation: "fetchLabels",
+          owner,
+          repo,
+        });
       }
 
       const data =
@@ -427,8 +435,8 @@ export const gitlabProvider: IssueProvider = {
   },
 
   /**
-   * Fetches all members (including inherited) of a GitLab project.
-   * Uses the `/members/all` endpoint to include group-inherited members.
+   * Fetches the members (including inherited) of a GitLab project, bounded the
+   * same way. Uses `/members/all` so a group-level member is assignable.
    * @param owner - Project namespace.
    * @param repo - Project name.
    * @param token - GitLab auth token.
@@ -446,8 +454,13 @@ export const gitlabProvider: IssueProvider = {
         headers: headers(token),
       });
       if (!res.ok) {
-        discard(res);
-        break;
+        const body = await readText(res);
+        throw new ProviderApiError(res.status, body, {
+          provider: "gitlab",
+          operation: "fetchCollaborators",
+          owner,
+          repo,
+        });
       }
 
       const data =

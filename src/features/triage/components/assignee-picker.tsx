@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { useMemo } from "react";
 import Image from "next/image";
 import { Check } from "lucide-react";
 import {
@@ -47,6 +48,27 @@ interface AssigneePickerProps {
 export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePickerProps) {
   const { data: collaborators, isLoading, isError } = useRepoCollaborators(issue?.repoId);
   const triage = useTriageMutation();
+
+  /**
+   * The repository's collaborators, plus anyone already assigned.
+   *
+   * The listing can be unavailable, and the listing budget can stop before every
+   * collaborator. Somebody already on the issue must stay manageable, so those
+   * logins are merged in.
+   *
+   * Above the early return so the hook order is stable.
+   */
+  const options = useMemo(() => {
+    const listed = collaborators ?? [];
+    const issueAssignees = issue?.assignees ?? [];
+    const missing = issueAssignees.filter(
+      (login) => !listed.some((collab) => collab.username.toLowerCase() === login.toLowerCase())
+    );
+    return [
+      ...listed,
+      ...missing.map((username) => ({ username, avatar: null, permission: "read" as const })),
+    ];
+  }, [collaborators, issue?.assignees]);
 
   if (!issue) return null;
 
@@ -95,7 +117,7 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
               : "No collaborators found."}
         </CommandEmpty>
         <CommandGroup>
-          {(collaborators ?? []).map((collab) => {
+          {options.map((collab) => {
             const isAssigned = currentAssignees.has(collab.username);
             return (
               <CommandItem

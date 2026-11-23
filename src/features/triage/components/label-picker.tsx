@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { useMemo } from "react";
 import { Check } from "lucide-react";
 import {
   CommandDialog,
@@ -46,6 +47,24 @@ interface LabelPickerProps {
 export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerProps) {
   const { data: labels, isLoading, isError } = useRepoLabels(issue?.repoId);
   const triage = useTriageMutation();
+
+  /**
+   * The repository's labels, plus any the issue already carries.
+   *
+   * The listing can be unavailable (an expired token, a provider outage) or stop
+   * at the listing budget. Those labels still need to be removable, so the issue's
+   * own set is merged in rather than relying on the listing to contain it.
+   *
+   * Above the early return so the hook order is stable.
+   */
+  const options = useMemo(() => {
+    const listed = labels ?? [];
+    const issueLabels = issue?.labels ?? [];
+    const missing = issueLabels.filter(
+      (name) => !listed.some((label) => label.name.toLowerCase() === name.toLowerCase())
+    );
+    return [...listed, ...missing.map((name) => ({ name, color: null, description: null }))];
+  }, [labels, issue?.labels]);
 
   if (!issue) return null;
 
@@ -94,7 +113,7 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
               : "No labels found."}
         </CommandEmpty>
         <CommandGroup>
-          {(labels ?? []).map((label) => {
+          {options.map((label) => {
             const isApplied = currentLabels.has(label.name);
             return (
               <CommandItem
