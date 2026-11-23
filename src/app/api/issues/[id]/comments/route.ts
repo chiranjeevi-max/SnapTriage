@@ -130,6 +130,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         { status: error.isAuthError ? 403 : 502 }
       );
     }
-    throw error;
+
+    // A network failure — DNS, a reset socket, a self-hosted instance that is
+    // down — arrives as a plain `TypeError`, not a `ProviderApiError`. It is the
+    // same "the provider is unreachable" condition as the branch above and gets
+    // the same 502; rethrowing made it a 500, which reads as our own defect.
+    apiLogger.warn(
+      { issueId: id, provider: target.provider, error: String(error) },
+      "Comment fetch could not reach the provider"
+    );
+    return NextResponse.json(
+      { error: "Could not load this discussion right now." },
+      { status: 502 }
+    );
   }
 }

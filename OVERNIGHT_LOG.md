@@ -92,3 +92,9 @@ escaped through the PATCH route as a 500, and the client rolled its optimistic u
 to values upstream no longer held. The cached issue row now writes first (it mirrors what
 the provider just did, so a later failure cannot leave the cache disagreeing with upstream),
 both writes are guarded, and the failure returns a distinguishable 502.
+
+### Cycle 12 — Treat an unreachable provider as unreachable
+The comments route handled `ProviderApiError` and rethrew everything else, so a plain
+`fetch` rejection — DNS failure, reset socket, a self-hosted GitLab that is down — surfaced
+as a 500. That is the same "provider is unreachable" condition as the branch above it and
+now returns the same 502, which the UI already knows how to present.
