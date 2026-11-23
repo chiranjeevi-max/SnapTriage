@@ -58,8 +58,11 @@ export function summarizePending(issues: IssueWithTriage[]): PendingSummary {
   };
 
   for (const issue of issues) {
-    const pending = issue.triage?.pendingChanges as PendingChanges | null | undefined;
-    if (!pending) continue;
+    // `batchPending` is the marker the push itself reads. `pendingChanges`
+    // defaults to `{}` on every triage row, so treating a present object as
+    // staged work would count rows a push will never touch.
+    if (!issue.triage?.batchPending) continue;
+    const pending = (issue.triage.pendingChanges ?? {}) as PendingChanges;
 
     // Counted per row carrying a staged diff, including one whose values happen
     // to be empty: the row is marked pending, so the push will clear it and the

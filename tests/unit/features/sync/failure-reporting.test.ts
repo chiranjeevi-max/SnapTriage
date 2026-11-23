@@ -73,6 +73,28 @@ describe("syncRepo failure reporting", () => {
 
   /**
    * @target syncRepo
+   * @dependencies typedDb.select
+   * @scenario The database fails on the very first read, the repository lookup
+   * @expectedOutput A failed `SyncResult`, not a rejected promise. The lookup sat
+   *                 outside the guard, so this was the case the route could not
+   *                 report at all.
+   */
+  it("returns a failed result when the repository lookup fails", async () => {
+    const { syncRepo } = await import("@/features/sync/sync-engine");
+    const { typedDb } = await import("@/lib/db/query");
+
+    const select = vi.spyOn(typedDb, "select").mockImplementationOnce(() => {
+      throw new Error("database is locked");
+    });
+
+    const result = await syncRepo("fail-repo", "fail-user");
+
+    expect(result).toMatchObject({ status: "failed", error: "database is locked" });
+    select.mockRestore();
+  }, 30000);
+
+  /**
+   * @target syncRepo
    * @dependencies getProviderToken
    * @scenario The sync fails for an ordinary reason (no token)
    * @expectedOutput A failed result whose failure is recorded in `sync_log`, so

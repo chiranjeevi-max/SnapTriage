@@ -43,12 +43,11 @@ describe("parseQuery", () => {
   });
 
   it("reads each field prefix", () => {
-    const query = parseQuery("label:Bug author:nadia assignee:Octocat is:closed");
+    const query = parseQuery("label:Bug author:nadia assignee:Octocat");
 
     expect(query.labels).toEqual(["bug"]);
     expect(query.authors).toEqual(["nadia"]);
     expect(query.assignees).toEqual(["octocat"]);
-    expect(query.state).toBe("closed");
   });
 
   it("reads an issue number", () => {
@@ -74,7 +73,7 @@ describe("parseQuery", () => {
     expect(parseQuery("label:").terms).toEqual(["label:"]);
   });
 
-  it("falls back to free text for an `is:` value it does not know", () => {
+  it("treats an unknown field prefix as free text", () => {
     expect(parseQuery("is:stale").terms).toEqual(["is:stale"]);
   });
 });
@@ -87,7 +86,7 @@ describe("isEmptyQuery", () => {
 
   it("is not empty once a constraint exists", () => {
     expect(isEmptyQuery(parseQuery("crash"))).toBe(false);
-    expect(isEmptyQuery(parseQuery("is:open"))).toBe(false);
+    expect(isEmptyQuery(parseQuery("label:bug"))).toBe(false);
   });
 });
 
@@ -122,11 +121,6 @@ describe("matchesQuery", () => {
     expect(matchesQuery(issue(), parseQuery("author:octocat"))).toBe(false);
     expect(matchesQuery(issue(), parseQuery("assignee:octocat"))).toBe(true);
     expect(matchesQuery(issue(), parseQuery("assignee:nadia"))).toBe(false);
-  });
-
-  it("filters by state", () => {
-    expect(matchesQuery(issue(), parseQuery("is:open"))).toBe(true);
-    expect(matchesQuery(issue(), parseQuery("is:closed"))).toBe(false);
   });
 
   it("filters by issue number", () => {

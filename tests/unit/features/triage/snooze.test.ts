@@ -121,6 +121,23 @@ describe("snoozeInputMin", () => {
    *                 browser offers no past instant. Formatting in UTC would
    *                 shift the floor by the zone offset.
    */
+  /**
+   * @target snoozeInputMin
+   * @dependencies none
+   * @scenario The clock is partway through a minute
+   * @expectedOutput The next whole minute. The input's `min` is inclusive, so
+   *                 the minute already in progress would be offered and then
+   *                 refused by the future check, leaving Set disabled.
+   */
+  it("rounds the bound up past a partly elapsed minute", () => {
+    const midMinute = new Date("2026-11-23T12:00:30.000Z");
+    const bound = new Date(snoozeInputMin(midMinute));
+
+    expect(bound.getTime()).toBeGreaterThan(midMinute.getTime());
+    expect(bound.getSeconds()).toBe(0);
+    expect(parseCustomSnooze(snoozeInputMin(midMinute), midMinute)).not.toBeNull();
+  });
+
   it("formats the bound in local time", () => {
     const value = snoozeInputMin(NOW);
 

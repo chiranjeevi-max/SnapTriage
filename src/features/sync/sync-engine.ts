@@ -67,18 +67,25 @@ function excluded(column: { name: string }) {
  */
 export async function syncRepo(repoId: string, userId: string): Promise<SyncResult> {
   const logId = crypto.randomUUID();
-
-  const repoRows = await typedDb
-    .select()
-    .from(repos)
-    .where(and(eq(repos.id, repoId), eq(repos.userId, userId)));
-
-  const repo = repoRows[0];
-  if (!repo) return { repoId, status: "failed", issuesFetched: 0, error: "Repo not found" };
-
-  syncLogger.info({ repoId, fullName: repo.fullName, provider: repo.provider }, "Sync started");
+  // Named for the catch block: the repository may never have been read.
+  let repoName: string | undefined;
 
   try {
+    // The repository read is inside the guard too. When the database is the
+    // failing component this is the *first* thing that fails, and a plain read
+    // here would reject out of the single-repo route as a bare 500 instead of
+    // the failed `SyncResult` the caller is promised.
+    const repoRows = await typedDb
+      .select()
+      .from(repos)
+      .where(and(eq(repos.id, repoId), eq(repos.userId, userId)));
+
+    const repo = repoRows[0];
+    if (!repo) return { repoId, status: "failed", issuesFetched: 0, error: "Repo not found" };
+    repoName = repo.fullName;
+
+    syncLogger.info({ repoId, fullName: repo.fullName, provider: repo.provider }, "Sync started");
+
     // Inside the try: when the database itself is the failing component, this
     // write throws too, and the call must still return a failed SyncResult
     // rather than rejecting out of the route handler that awaited it.
@@ -178,7 +185,7 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
-    syncLogger.error({ repoId, fullName: repo.fullName, error: errorMsg }, "Sync failed");
+    syncLogger.error({ repoId, fullName: repoName, error: errorMsg }, "Sync failed");
 
     // The failure record is written by the same database that may have just
     // failed. Letting its error escape would replace a reportable failure with a

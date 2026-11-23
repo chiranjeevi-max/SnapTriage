@@ -65,10 +65,8 @@ describe("PATCH /api/issues/:id", () => {
    * @target PATCH /api/issues/:id
    * @dependencies parseBody
    * @scenario The body is truncated JSON
-   * @expectedOutput 400, not a 500. Every field in the patch schema is optional,
-   *                 so a missing body is meant to be accepted; only one that
-   *                 cannot be parsed is refused, and refusing it is the client's
-   *                 error to see.
+   * @expectedOutput 400, not a 500. An unreadable body is the client's mistake to
+   *                 see; `{}` is the value that means "nothing to change".
    */
   it("answers a malformed body with 400", async () => {
     const response = await PATCH(
@@ -87,8 +85,8 @@ describe("PATCH /api/issues/:id", () => {
    * @target PATCH /api/issues/:id
    * @dependencies applyTriage
    * @scenario The body is an empty object
-   * @expectedOutput Accepted, since every patch field is optional. This is the
-   *                 behaviour the catch above must preserve.
+   * @expectedOutput Accepted, since every patch field is optional. A request with
+   *                 no body at all is a different case and is refused with 400.
    */
   it("accepts an empty patch body", async () => {
     const response = await PATCH(

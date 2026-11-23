@@ -35,9 +35,10 @@ function subscribe(key: string, listener: () => void): () => void {
   existing.add(listener);
   listeners.set(key, existing);
 
-  // Another tab writing the same key is a change this tab should see too.
+  // Another tab writing the same key is a change this tab should see too. A
+  // `localStorage.clear()` arrives with a null key, which concerns every key.
   const onStorage = (event: StorageEvent) => {
-    if (event.key === key) listener();
+    if (event.key === key || event.key === null) listener();
   };
   window.addEventListener("storage", onStorage);
 

@@ -24,6 +24,14 @@ export interface IssueTriage {
   priority: number | null;
   snoozedUntil: string | null;
   dismissed: boolean;
+  /**
+   * Whether this row has staged work for a batch push.
+   *
+   * The authoritative marker: `pendingChanges` defaults to `{}` for every
+   * ordinary triage row, so a truthy object there does not mean anything is
+   * waiting to be pushed.
+   */
+  batchPending?: boolean;
   pendingChanges?: PendingChanges | null;
 }
 

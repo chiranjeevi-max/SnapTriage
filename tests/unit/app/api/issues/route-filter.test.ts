@@ -102,4 +102,15 @@ describe("GET /api/issues repo filter", () => {
 
     expect(rows).toEqual([]);
   });
+
+  /**
+   * @target GET /api/issues
+   * @dependencies none
+   * @scenario The parameter is present but empty
+   * @expectedOutput No issues. Reading an empty value as "no filter" would widen
+   *                 an explicit filter to the entire queue.
+   */
+  it("returns nothing for an empty repoId", async () => {
+    expect(await listIssues("?repoId=")).toEqual([]);
+  });
 });

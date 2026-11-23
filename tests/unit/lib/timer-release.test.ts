@@ -48,7 +48,10 @@ describe("provider timer release on error paths", () => {
       .fetchIssues("group", "app", "glpat-token")
       .catch((error: unknown) => error);
 
-    expect(failure).toMatchObject({ status: 404 });
+    expect(failure).toMatchObject({
+      status: 404,
+      responseBody: expect.stringContaining("404 Project Not Found") as unknown as string,
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -73,7 +76,10 @@ describe("provider timer release on error paths", () => {
       "hello"
     ).catch((error: unknown) => error);
 
-    expect(failure).toMatchObject({ status: 403 });
+    expect(failure).toMatchObject({
+      status: 403,
+      responseBody: expect.stringContaining("403 Forbidden") as unknown as string,
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -95,7 +101,10 @@ describe("provider timer release on error paths", () => {
       .updateIssue("group", "app", 5, "glpat-token", { state: "closed" })
       .catch((error: unknown) => error);
 
-    expect(failure).toMatchObject({ status: 400 });
+    expect(failure).toMatchObject({
+      status: 400,
+      responseBody: expect.stringContaining("400 Bad Request") as unknown as string,
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 

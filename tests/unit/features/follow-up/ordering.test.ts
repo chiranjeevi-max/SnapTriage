@@ -15,7 +15,7 @@ import { unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { and, eq, or, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, or, isNull, lt } from "drizzle-orm";
 
 describe("follow-up scheduling order", () => {
   const dbPath = join(tmpdir(), `snaptriage-followup-order-${Date.now()}.db`);
@@ -112,6 +112,8 @@ describe("follow-up scheduling order", () => {
     const { typedDb } = await import("@/lib/db/query");
     const { followUps } = await import("@/lib/db/schema");
 
+    const { followUpOrder } = await import("@/features/follow-up/follow-up-service");
+
     const cutoff = new Date(Date.now() - 60 * 1000);
     const due = or(isNull(followUps.attemptedAt), lt(followUps.attemptedAt, cutoff));
 
@@ -119,7 +121,7 @@ describe("follow-up scheduling order", () => {
       .select({ id: followUps.id })
       .from(followUps)
       .where(and(eq(followUps.userId, "order-user"), eq(followUps.state, "waiting"), due))
-      .orderBy(sql`coalesce(${followUps.attemptedAt}, 0)`, followUps.checkedAt)
+      .orderBy(...followUpOrder())
       .limit(20);
 
     expect(rows).toHaveLength(20);
@@ -127,25 +129,46 @@ describe("follow-up scheduling order", () => {
   }, 30000);
 
   /**
-   * @target the same ordering without the coalesce
-   * @dependencies SQLite
-   * @scenario The bare column order on SQLite
-   * @expectedOutput The never-attempted row also leads here — which is why the
-   *                 bug could not reproduce on the default deployment, and why
-   *                 this ordering had to be made explicit rather than relying on
-   *                 each driver's default.
+   * @target the query plan of the scheduler's read
+   * @dependencies SQLite, follow_up_due_idx
+   * @scenario The pass asks for the twenty oldest attempts, NULLs leading
+   * @expectedOutput No temporary B-tree. Wrapping the column in `coalesce` to
+   *                 fix the NULL placement made the index unable to satisfy the
+   *                 sort, so every pass sorted all eligible rows first.
    */
-  it("leads with NULL on SQLite even without coalesce", async () => {
+  it("sorts with the index rather than a temporary B-tree", async () => {
     const { typedDb } = await import("@/lib/db/query");
+    const { followUpOrder } = await import("@/features/follow-up/follow-up-service");
+    const { sql } = await import("drizzle-orm");
     const { followUps } = await import("@/lib/db/schema");
 
-    const rows = await typedDb
+    const cutoff = new Date(Date.now() - 60 * 1000);
+    const due = or(isNull(followUps.attemptedAt), lt(followUps.attemptedAt, cutoff));
+
+    // Built from the service's own order clause and filters, then explained
+    // instead of run, so the assertion tracks the real query rather than a copy
+    // of it that could drift.
+    const planned = typedDb
       .select({ id: followUps.id })
       .from(followUps)
-      .where(eq(followUps.userId, "order-user"))
-      .orderBy(followUps.attemptedAt)
-      .limit(1);
+      .where(and(eq(followUps.userId, "order-user"), eq(followUps.state, "waiting"), due))
+      .orderBy(...followUpOrder())
+      .limit(20)
+      .toSQL();
 
-    expect(rows[0].id).toBe("fresh-follow");
+    // `toSQL()` leaves `?` placeholders; splice the values in so the statement
+    // can be explained without binding, since nothing here needs real parameter
+    // typing — only the shape of the plan.
+    let index = 0;
+    const explained = planned.sql.replace(/\?/g, () => {
+      const value = planned.params[index++];
+      return typeof value === "string" ? `'${value}'` : String(value);
+    });
+
+    const plan = await typedDb.all<{ detail: string }>(sql.raw(`explain query plan ${explained}`));
+
+    const details = plan.map((row) => row.detail).join("\n");
+    expect(details).toContain("follow_up_due_idx");
+    expect(details).not.toContain("TEMP B-TREE");
   }, 30000);
 });

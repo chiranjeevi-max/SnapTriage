@@ -15,7 +15,6 @@
  * label:bug         carries the bug label
  * author:nadia      reported by nadia
  * assignee:octocat  assigned to octocat
- * is:closed         closed
  * #123              issue number 123
  * ```
  *
@@ -34,8 +33,6 @@ export interface IssueQuery {
   authors: string[];
   /** Assignee login that must be present, lower-cased. */
   assignees: string[];
-  /** Required state, when the query names one. */
-  state: "open" | "closed" | null;
   /** Issue numbers that must match, when the query names any. */
   numbers: number[];
 }
@@ -46,7 +43,6 @@ export const EMPTY_QUERY: IssueQuery = {
   labels: [],
   authors: [],
   assignees: [],
-  state: null,
   numbers: [],
 };
 
@@ -92,7 +88,6 @@ export function parseQuery(input: string): IssueQuery {
     labels: [],
     authors: [],
     assignees: [],
-    state: null,
     numbers: [],
   };
 
@@ -122,10 +117,6 @@ export function parseQuery(input: string): IssueQuery {
         query.assignees.push(value);
         continue;
       }
-      if (prefix === "is" && (value === "open" || value === "closed")) {
-        query.state = value;
-        continue;
-      }
     }
 
     // Anything else is free text, including a `field:value` shape we do not
@@ -150,7 +141,6 @@ export function isEmptyQuery(query: IssueQuery): boolean {
     query.labels.length === 0 &&
     query.authors.length === 0 &&
     query.assignees.length === 0 &&
-    query.state === null &&
     query.numbers.length === 0
   );
 }
@@ -164,8 +154,6 @@ export function isEmptyQuery(query: IssueQuery): boolean {
  *          narrowing operation rather than a union.
  */
 export function matchesQuery(issue: IssueWithTriage, query: IssueQuery): boolean {
-  if (query.state && issue.state !== query.state) return false;
-
   // Every constraint is an AND, including repeated ones. `#1 #2` therefore
   // matches nothing, which is the honest answer for an issue that cannot be two
   // numbers — and it keeps the rule uniform, so adding a term always narrows.

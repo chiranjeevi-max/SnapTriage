@@ -174,15 +174,20 @@ async function readText(res: Response): Promise<string> {
 }
 
 /**
- * Release a response whose body will not be read.
+ * Release a response whose body will not be read, and drop that body.
  *
- * Call this on every `!res.ok` early return. Skipping it leaves the request's
- * timer armed for its full duration, which leaks one timer per failed call.
+ * Call this on every `!res.ok` early return and after a write whose response is
+ * not inspected. Skipping the timer leaves it armed for its full duration, which
+ * leaks one per call; leaving the body unconsumed holds the connection, so a
+ * burst of writes keeps sockets open that could have been reused.
  *
  * @param res - A response returned by {@link ghFetch} that will not be read.
  */
 function discard(res: Response): void {
   (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
+  // `body.cancel` is the cheapest way to release the stream; a response without a
+  // readable body, as in tests, has nothing to cancel.
+  void res.body?.cancel().catch(() => {});
 }
 
 /**

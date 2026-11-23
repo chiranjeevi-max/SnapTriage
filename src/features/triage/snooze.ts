@@ -70,6 +70,10 @@ export function parseCustomSnooze(value: string, now: Date): string | null {
  * @returns The minimum selectable value.
  */
 export function snoozeInputMin(now: Date): string {
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  // Rounded up to the next whole minute: the input's `min` is inclusive, and a
+  // minute that has already partly elapsed fails the future check, leaving the
+  // user with a value the picker offers and `parseCustomSnooze` refuses.
+  const nextMinute = Math.ceil(now.getTime() / 60_000) * 60_000;
+  const local = new Date(nextMinute - now.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
 }

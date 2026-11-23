@@ -62,11 +62,32 @@ describe("sortIssues", () => {
    * @target sortIssues
    * @dependencies none
    * @scenario The default ordering
-   * @expectedOutput The input array unchanged, since the API already returns
-   *                 newest-updated first
+   * @expectedOutput Newest-updated first, with equal instants broken by id so a
+   *                 refetch cannot reorder rows under the keyboard selection
    */
-  it("leaves the updated ordering alone", () => {
-    expect(sortIssues(THREE, "updated")).toBe(THREE);
+  it("orders newest-updated first without changing the input", () => {
+    const sorted = sortIssues(THREE, "updated");
+
+    expect(sorted.map((row) => row.id)).toEqual(["newest", "middle", "oldest"]);
+    expect(THREE.map((row) => row.id)).toEqual(["middle", "newest", "oldest"]);
+  });
+
+  /**
+   * @target sortIssues
+   * @dependencies none
+   * @scenario Two issues in different repositories share a number and an instant
+   * @expectedOutput One fixed order on every run. An issue number is unique only
+   *                 within a repository, so it cannot be the final tie-break.
+   */
+  it("breaks a shared number and timestamp by id", () => {
+    const same = "2026-01-05T00:00:00.000Z";
+    const rows = [
+      issue({ id: "zzz", number: 12, updatedAt: same }),
+      issue({ id: "aaa", number: 12, updatedAt: same }),
+    ];
+
+    expect(sortIssues(rows, "number").map((row) => row.id)).toEqual(["aaa", "zzz"]);
+    expect(sortIssues(rows, "updated").map((row) => row.id)).toEqual(["aaa", "zzz"]);
   });
 
   it("orders oldest-updated first", () => {
@@ -155,15 +176,16 @@ describe("sortIssues", () => {
    *                 would leave the entire array in an arbitrary order.
    */
   it("survives an unparseable timestamp", () => {
+    // `broken` is deliberately second in the input. If the comparator returned
+    // `NaN`, `Array.sort` leaves the array as it found it, so a membership-only
+    // assertion would still pass. The expected order is the assertion.
     const rows = [
-      issue({ id: "broken", number: 3, updatedAt: "not-a-date" }),
       issue({ id: "fine", number: 1, updatedAt: "2026-01-05T00:00:00.000Z" }),
+      issue({ id: "broken", number: 3, updatedAt: "not-a-date" }),
     ];
 
-    const sorted = sortIssues(rows, "oldest-untouched");
-
-    expect(sorted).toHaveLength(2);
-    expect(sorted.map((row) => row.id).sort()).toEqual(["broken", "fine"]);
+    // A bad timestamp reads as epoch 0, which is the oldest possible instant.
+    expect(sortIssues(rows, "oldest-untouched").map((row) => row.id)).toEqual(["broken", "fine"]);
   });
 
   it("never mutates the input", () => {

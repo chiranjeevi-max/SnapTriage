@@ -92,6 +92,9 @@ async function timedFetch(input: RequestInfo, init?: RequestInit): Promise<Respo
  */
 function discard(res: Response): void {
   (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
+  // Releasing the timer is not enough: an unread body keeps the connection open
+  // until the stream is cancelled or garbage collected.
+  void res.body?.cancel().catch(() => {});
 }
 
 /**

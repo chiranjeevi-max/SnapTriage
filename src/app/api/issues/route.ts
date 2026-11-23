@@ -39,7 +39,10 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
-  const repoId = searchParams.get("repoId");
+  // `has` rather than a truthiness test: `?repoId=` arrives as an empty string,
+  // and treating that as "no filter" would widen an explicit filter to the whole
+  // queue instead of matching nothing.
+  const repoId = searchParams.has("repoId") ? searchParams.get("repoId") : null;
   const state = searchParams.get("state") ?? "open";
   const hideDismissed = searchParams.get("hideDismissed") === "true";
 
@@ -61,11 +64,12 @@ export async function GET(req: Request) {
   // reads as the filter silently stopping — worst right after a disconnect,
   // where the client still holds the deleted id.
   const repoIdSet = new Set(repoIds);
-  const repoScope = repoId
-    ? repoIdSet.has(repoId)
-      ? eq(issues.repoId, repoId)
-      : sql`0 = 1`
-    : inArray(issues.repoId, repoIds);
+  const repoScope =
+    repoId === null
+      ? inArray(issues.repoId, repoIds)
+      : repoIdSet.has(repoId)
+        ? eq(issues.repoId, repoId)
+        : sql`0 = 1`;
   const conditions = and(eq(issues.state, state), repoScope)!;
 
   const issueRows = await typedDb

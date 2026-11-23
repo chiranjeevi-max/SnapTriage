@@ -9,7 +9,7 @@
  * provider is called before `triage_state` is touched, and a provider rejection
  * commits nothing at all.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PATCH } from "@/app/api/issues/[id]/route";
 import { auth } from "@/auth";
 import { getProviderToken } from "@/features/auth/get-provider-token";
@@ -63,6 +63,12 @@ async function patchIssue(body: unknown, issueId = ISSUE_ID) {
   await PATCH(req, { params: Promise.resolve({ id: issueId }) });
   return { status: lastStatus, body: lastBody };
 }
+
+afterEach(() => {
+  // Restored here rather than at the end of a test body: a failed assertion
+  // would otherwise leave `typedDb.update` throwing for every later test.
+  vi.restoreAllMocks();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -263,8 +269,6 @@ describe("PATCH /api/issues/:id", () => {
     });
     expect(updateIssue).toHaveBeenCalledTimes(1);
     expect(fakeDb.state.rows.issue[0].labels).toEqual(["bug"]);
-
-    vi.restoreAllMocks();
   });
 
   /**

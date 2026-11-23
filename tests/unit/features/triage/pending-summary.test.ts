@@ -34,7 +34,14 @@ function issue(pendingChanges: PendingChanges | null): IssueWithTriage {
     updatedAt: "2026-01-02T00:00:00.000Z",
     fetchedAt: "2026-01-02T00:00:00.000Z",
     triage: pendingChanges
-      ? { id: "triage", priority: null, snoozedUntil: null, dismissed: false, pendingChanges }
+      ? {
+          id: "triage",
+          priority: null,
+          snoozedUntil: null,
+          dismissed: false,
+          batchPending: true,
+          pendingChanges,
+        }
       : null,
   };
 }
@@ -50,6 +57,21 @@ describe("summarizePending", () => {
       stagedStates: 0,
       stagedPriorities: 0,
     });
+  });
+
+  /**
+   * @target summarizePending
+   * @dependencies none
+   * @scenario A live-triage row carries an empty `pendingChanges` object
+   * @expectedOutput Nothing counted. The column defaults to `{}`, so treating a
+   *                 present object as staged work would describe a push that
+   *                 touches none of those rows.
+   */
+  it("ignores a row that is not batch-pending", () => {
+    const liveRow = issue({});
+    liveRow.triage = { ...liveRow.triage!, batchPending: false, pendingChanges: {} };
+
+    expect(summarizePending([liveRow]).issues).toBe(0);
   });
 
   it("counts only issues that carry staged changes", () => {

@@ -54,6 +54,26 @@ describe("useLocalStorageValue", () => {
     expect(result.current[0]).toBe("fallback");
   });
 
+  /**
+   * @target useLocalStorageValue
+   * @dependencies storage events
+   * @scenario Another tab clears storage, which fires with a null key
+   * @expectedOutput The value falls back. Ignoring a null key left the control
+   *                 showing a preference that no longer exists anywhere.
+   */
+  it("notices a cross-tab clear", () => {
+    window.localStorage.setItem(KEY, "stored");
+    const { result } = renderHook(() => useLocalStorageValue<string>(KEY, "fallback"));
+    expect(result.current[0]).toBe("stored");
+
+    window.localStorage.clear();
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    });
+
+    expect(result.current[0]).toBe("fallback");
+  });
+
   it("persists an update and re-reads it", () => {
     const { result, rerender } = renderHook(() => useLocalStorageValue<string>(KEY, "first"));
 

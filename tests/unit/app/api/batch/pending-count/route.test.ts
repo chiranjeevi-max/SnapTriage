@@ -65,6 +65,9 @@ describe("GET /api/batch/pending-count", () => {
       { issueId: "count-issue-1", userId: "count-user", batchPending: true },
       // Not pending: triaged but already pushed.
       { issueId: "count-issue-2", userId: "count-user", batchPending: false },
+      // Another user's pending row. Without this the fixture cannot tell a
+      // user-scoped count from one that counts every row in the table.
+      { issueId: "count-issue-0", userId: "other-user", batchPending: true },
     ]);
   });
 

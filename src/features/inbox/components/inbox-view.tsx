@@ -331,7 +331,7 @@ export function InboxView() {
               <Input
                 type="search"
                 aria-label="Search issues"
-                placeholder="Search… (label:bug, author:me, #123)"
+                placeholder="Search… (label:bug, author:nadia, #123)"
                 value={queryText}
                 onChange={(event) => setQueryText(event.target.value)}
                 className="h-9 w-full min-w-0 max-w-[16rem] flex-1 text-sm sm:max-w-[20rem]"

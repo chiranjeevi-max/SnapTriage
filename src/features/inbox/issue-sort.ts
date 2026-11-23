@@ -55,9 +55,18 @@ function isUntriaged(issue: IssueWithTriage): boolean {
  *          it is the order the API already produced.
  */
 export function sortIssues(issues: IssueWithTriage[], sort: IssueSort): IssueWithTriage[] {
-  if (sort === "updated") return issues;
-
   const ordered = [...issues];
+
+  if (sort === "updated") {
+    // Still ordered newest-first, but with a tie-break of its own. The API sorts
+    // by `updated_at` alone, so two rows sharing an instant come back in whatever
+    // order the engine produced, and a refetch can move the row under the
+    // keyboard selection.
+    ordered.sort(
+      (left, right) => time(right.updatedAt) - time(left.updatedAt) || compareIds(left, right)
+    );
+    return ordered;
+  }
 
   if (sort === "untriaged") {
     // Untriaged rows lead, then the newest of those, so a fresh arrival still
@@ -66,13 +75,19 @@ export function sortIssues(issues: IssueWithTriage[], sort: IssueSort): IssueWit
       const leftUntriaged = isUntriaged(left) ? 0 : 1;
       const rightUntriaged = isUntriaged(right) ? 0 : 1;
       if (leftUntriaged !== rightUntriaged) return leftUntriaged - rightUntriaged;
-      return time(right.updatedAt) - time(left.updatedAt) || left.number - right.number;
+      return (
+        time(right.updatedAt) - time(left.updatedAt) ||
+        left.number - right.number ||
+        compareIds(left, right)
+      );
     });
     return ordered;
   }
 
   if (sort === "number") {
-    ordered.sort((left, right) => left.number - right.number);
+    // An issue number is only unique within one repository, so two connected
+    // repos can both have a #12. `id` settles it.
+    ordered.sort((left, right) => left.number - right.number || compareIds(left, right));
     return ordered;
   }
 
@@ -82,10 +97,15 @@ export function sortIssues(issues: IssueWithTriage[], sort: IssueSort): IssueWit
   ordered.sort((left, right) => {
     const delta = time(left[field]) - time(right[field]);
     if (delta !== 0) return ascending ? delta : -delta;
-    // Two rows on the same instant: a stable, meaningful order rather than
-    // whatever the engine happens to produce.
-    return left.number - right.number;
+    // Two rows on the same instant: order by number, then by id, so the result
+    // is the same list every time this runs.
+    return left.number - right.number || compareIds(left, right);
   });
 
   return ordered;
+}
+
+/** The final tie-break, so every comparator is total. */
+function compareIds(left: IssueWithTriage, right: IssueWithTriage): number {
+  return left.id.localeCompare(right.id);
 }

@@ -52,8 +52,9 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
   if (!issue) return null;
 
   const isSnoozed = !!issue.triage?.snoozedUntil;
-  // Read once per render so the presets, the input's floor, and the validation
-  // all judge against the same instant.
+  // Read once per render so the presets and the input's floor judge against the
+  // same instant. The submitted value is re-checked at click time instead, since
+  // a dialog left open drifts past whatever this render saw.
   const now = new Date();
   const options = getSnoozeOptions(now);
   const customTarget = parseCustomSnooze(customDate, now);
@@ -91,8 +92,11 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
 
   /** Submit the custom date-time value as a snooze target. */
   function handleCustomSubmit() {
-    if (!customTarget) return;
-    handleSnooze(customTarget);
+    // Re-parsed against the current clock: a dialog left open can drift past a
+    // target that was still in the future when it last rendered.
+    const target = parseCustomSnooze(customDate, new Date());
+    if (!target) return;
+    handleSnooze(target);
   }
 
   return (

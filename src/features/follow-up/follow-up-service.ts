@@ -265,6 +265,31 @@ async function passContextFor(userId: string, provider: ProviderName, cache: Pas
 }
 
 /**
+ * The order a check pass reads waiting rows in.
+ *
+ * Oldest attempt first, with never-attempted rows leading. A failed row moves to
+ * the back on its next pass because `attemptedAt` advanced.
+ *
+ * The NULL placement is stated rather than assumed: SQLite sorts NULL below
+ * every value, but Postgres sorts it *above* on an ascending order, so the two
+ * drivers disagree about a never-attempted row. On Neon that inverted the
+ * schedule — a freshly armed follow-up sorted behind twenty attempted rows, and
+ * the batch refilled with those every pass, so the new row was never reached.
+ *
+ * `coalesce` fixed the ordering but wrapped the column, which stopped
+ * `follow_up_due_idx` from satisfying the sort and forced a temporary B-tree over
+ * every eligible row on every pass. `NULLS FIRST` keeps the bare column, so the
+ * index serves the order. Exported so a test can check that against the real
+ * clause rather than a copy of it.
+ */
+export function followUpOrder() {
+  return [
+    sql`${followUps.attemptedAt} asc nulls first`,
+    sql`${followUps.checkedAt} asc nulls first`,
+  ];
+}
+
+/**
  * Run one bounded check pass over the user's waiting issues.
  *
  * Issues checked within the cooldown are skipped, which keeps a user who
@@ -301,17 +326,7 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
     .innerJoin(issues, eq(issues.id, followUps.issueId))
     .innerJoin(repos, eq(repos.id, issues.repoId))
     .where(and(eq(followUps.userId, userId), eq(followUps.state, "waiting"), due))
-    // Oldest attempt first, with never-attempted rows leading. A failed row
-    // moves to the back on its next pass because `attemptedAt` advanced.
-    //
-    // `coalesce` rather than a bare ascending order: SQLite sorts NULL below
-    // every value, but Postgres sorts it *above* on an ascending `ORDER BY`, so
-    // the two drivers disagree about a never-attempted row. On Neon that inverted
-    // the schedule — a freshly armed follow-up sorted behind twenty rows that had
-    // all been attempted, and the batch refilled with those every pass, so the
-    // new row was never reached. The column is epoch milliseconds, so 0 is below
-    // every real instant and both drivers agree.
-    .orderBy(sql`coalesce(${followUps.attemptedAt}, 0)`, followUps.checkedAt)
+    .orderBy(...followUpOrder())
     .limit(MAX_CHECKS_PER_PASS);
 
   const cache: PassContext = new Map();
