@@ -6,7 +6,7 @@ Branch `overnight-auto-improvements`, 29 commits, working tree clean. Nothing is
 nothing was reverted — no cycle was abandoned; each was fixed until the gate passed.
 
 **Final state:** lint clean, typecheck clean, `format:check` clean, `next build` succeeds,
-878 unit tests pass (753 at baseline, +125). All commits are GPG-signed with `-s`; no signing
+902 unit tests pass (753 at baseline, +149). All commits are GPG-signed with `-s`; no signing
 fallback was needed.
 
 **The five defects worth knowing about:**
@@ -41,10 +41,11 @@ push will send.
 a Zustand write during render in the bulk-selection feature, and a hydration mismatch in the
 storage hooks.
 
-Nothing was abandoned as a failed attempt. Two items were deliberately not pursued: the
-architecture doc's deferred items and the untested status of `githubProvider.fetchLabels` /
-`fetchCollaborators`, which are lower-value than the five defects above and would each have
-needed a larger test surface than one cycle allows.
+Nothing was abandoned as a failed attempt. One gap I first deferred —
+`fetchLabels` / `fetchCollaborators` and the two routes serving them — was closed in cycle 24
+once it was clear the reason for deferring was wrong: those reads back the label and assignee
+pickers that open on _every_ triage action, so they were among the most-travelled paths in the
+app, not a peripheral gap.
 
 Branch: `overnight-auto-improvements`
 Baseline: lint clean, typecheck clean, 753 unit tests passing.
