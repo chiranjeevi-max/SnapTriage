@@ -108,13 +108,17 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
       className="flex max-h-[calc(100dvh-2rem)] flex-col [&_[data-slot=command]]:min-h-0"
     >
       <CommandInput placeholder="Search collaborators..." className="min-w-0 pr-10" />
+      {/* Outside CommandEmpty: that element only renders when the list is empty,
+          and the merged issue values keep it non-empty even when the read
+          failed. The notice has to show beside them rather than instead. */}
+      {isError && (
+        <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+          Could not load the full collaborator list. Anyone already assigned is still listed.
+        </p>
+      )}
       <CommandList className="min-h-0 max-h-[min(20rem,60dvh)] flex-1">
         <CommandEmpty className="py-6 text-xs text-muted-foreground">
-          {isLoading
-            ? "Loading collaborators..."
-            : isError
-              ? "Could not load collaborators. Try again in a moment."
-              : "No collaborators found."}
+          {isLoading ? "Loading collaborators..." : "No collaborators found."}
         </CommandEmpty>
         <CommandGroup>
           {options.map((collab) => {

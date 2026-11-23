@@ -104,13 +104,17 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
       className="flex max-h-[calc(100dvh-2rem)] flex-col [&_[data-slot=command]]:min-h-0"
     >
       <CommandInput placeholder="Search labels..." className="min-w-0 pr-10" />
+      {/* Outside CommandEmpty: that element only renders when the list is empty,
+          and the merged issue labels keep it non-empty even when the read
+          failed. The notice has to show beside them rather than instead. */}
+      {isError && (
+        <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+          Could not load the full label list. The issue&apos;s own labels are still listed.
+        </p>
+      )}
       <CommandList className="min-h-0 max-h-[min(20rem,60dvh)] flex-1">
         <CommandEmpty className="py-6 text-xs text-muted-foreground">
-          {isLoading
-            ? "Loading labels..."
-            : isError
-              ? "Could not load labels. The issue's own labels are still available below."
-              : "No labels found."}
+          {isLoading ? "Loading labels..." : "No labels found."}
         </CommandEmpty>
         <CommandGroup>
           {options.map((label) => {
