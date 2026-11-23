@@ -52,3 +52,11 @@ interpolating a possibly-absent `login` into `/collaborators/undefined/permissio
 GitLab adapter had no `readText` at all and its six `!res.ok` paths called `res.text()`
 directly, leaking one 30s timer per failed call. Added `readText`, routed all six through
 it. Four tests fail without the change.
+
+### Cycle 7 — Make a failed sync always report itself
+The `started` sync-log insert sat outside the `try`, and the `failed` insert inside the
+`catch` was unguarded. When the database was the failing component, `syncRepo` rejected
+instead of returning a `SyncResult` — and `POST /api/sync` calls it directly for one repo,
+so the route answered a bare 500 with no outcome. The one path whose job is to record
+failures could not report its own. Both writes are now inside the guarded region, and
+`issuesFetched` counts post-dedup rows so the log line and the record agree.

@@ -78,14 +78,16 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
 
   syncLogger.info({ repoId, fullName: repo.fullName, provider: repo.provider }, "Sync started");
 
-  // Log sync start
-  await typedDb.insert(syncLog).values({
-    id: logId,
-    repoId,
-    status: "started",
-  });
-
   try {
+    // Inside the try: when the database itself is the failing component, this
+    // write throws too, and the call must still return a failed SyncResult
+    // rather than rejecting out of the route handler that awaited it.
+    await typedDb.insert(syncLog).values({
+      id: logId,
+      repoId,
+      status: "started",
+    });
+
     const token = await getProviderToken(userId, repo.provider as "github" | "gitlab");
     if (!token) throw new Error(`No ${repo.provider} token found`);
 
@@ -155,10 +157,12 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
       .set({ lastSyncedAt: new Date(syncStartedAt - WATERMARK_SKEW_MARGIN_MS) })
       .where(eq(repos.id, repoId));
 
-    // Log sync completion
+    // Log sync completion. Counts the rows actually written, which is also what
+    // the log line below reports; `fetched.length` counted pre-dedup, so one
+    // sync could report two different totals depending on where it was read.
     await typedDb
       .update(syncLog)
-      .set({ status: "completed", issuesFetched: fetched.length, completedAt: new Date() })
+      .set({ status: "completed", issuesFetched: uniqueFetched.length, completedAt: new Date() })
       .where(eq(syncLog.id, logId));
 
     syncLogger.info(
@@ -170,16 +174,27 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
       "Sync completed"
     );
 
-    return { repoId, status: "completed", issuesFetched: fetched.length };
+    return { repoId, status: "completed", issuesFetched: uniqueFetched.length };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
     syncLogger.error({ repoId, fullName: repo.fullName, error: errorMsg }, "Sync failed");
 
-    await typedDb
-      .update(syncLog)
-      .set({ status: "failed", error: errorMsg, completedAt: new Date() })
-      .where(eq(syncLog.id, logId));
+    // The failure record is written by the same database that may have just
+    // failed. Letting its error escape would replace a reportable failure with a
+    // rejected promise, so the single-repo route — which calls `syncRepo`
+    // directly — would answer a bare 500 with no sync outcome at all.
+    try {
+      await typedDb
+        .update(syncLog)
+        .set({ status: "failed", error: errorMsg, completedAt: new Date() })
+        .where(eq(syncLog.id, logId));
+    } catch (logError) {
+      syncLogger.error(
+        { repoId, error: logError instanceof Error ? logError.message : String(logError) },
+        "Could not record sync failure"
+      );
+    }
 
     return { repoId, status: "failed", issuesFetched: 0, error: errorMsg };
   }
