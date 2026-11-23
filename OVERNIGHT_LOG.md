@@ -69,3 +69,11 @@ already expired so the issue read as not snoozed the instant it was set. Extract
 date rules into `triage/snooze.ts` (the codebase's stated pattern for testable logic),
 added a `min` bound to the input, and refuse rather than convert anything that is not a
 future instant.
+
+### Cycle 9 — Bound the follow-up review baseline
+`PUT /api/issues/[id]/follow-up?action=review&commentAt=<any date>` validated only that the
+date parsed, then stored it as `lastSeenCommentAt`. Detection asks whether a comment is at
+or after that baseline, so a future instant matched nothing and the issue could never
+resurface — a review that silently disabled the watch for good, reachable by any signed-in
+user. Rejected beyond a 60s clock-skew allowance, which still accepts an honest review whose
+instant leads ours by a few seconds.

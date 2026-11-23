@@ -35,6 +35,17 @@ const ARM_LIMIT = 30;
 const ARM_WINDOW_MS = 15 * 60 * 1000;
 
 /**
+ * How far ahead of our clock a review baseline may sit.
+ *
+ * The review instant becomes `lastSeenCommentAt`, and detection asks whether a
+ * comment is at or after it. A baseline far in the future therefore matches
+ * nothing, and the issue can never resurface — a review that silently disables
+ * the watch. The provider's clock is the only legitimate reason to be ahead of
+ * ours, and that is seconds, not days.
+ */
+const REVIEW_CLOCK_SKEW_MS = 60 * 1000;
+
+/**
  * Applies one follow-up transition.
  *
  * `review` accepts the comment that prompted it as an optional pair of query
@@ -92,6 +103,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     if (commentAt !== null && Number.isNaN(commentAt.getTime())) {
       return NextResponse.json({ error: "commentAt is not a valid date" }, { status: 400 });
+    }
+
+    if (commentAt !== null && commentAt.getTime() > Date.now() + REVIEW_CLOCK_SKEW_MS) {
+      return NextResponse.json({ error: "commentAt is in the future" }, { status: 400 });
     }
 
     const reviewed = await reviewFollowUp(session.user.id, id, commentId, commentAt);
