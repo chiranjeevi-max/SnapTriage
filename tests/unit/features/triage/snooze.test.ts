@@ -161,19 +161,22 @@ describe("snoozeInputMin", () => {
   /**
    * @target snoozeInputMin
    * @dependencies none
-   * @scenario The clock sits inside the hour that repeats when clocks fall back
-   * @expectedOutput A value that `parseCustomSnooze` accepts. `datetime-local`
-   *                 carries no zone, so a wall clock in that hour resolves to the
-   *                 earlier occurrence and reads as already past; the bound steps
-   *                 past the ambiguity rather than offering a value Set refuses.
+   * @scenario Any clock, in whatever zone the suite happens to run
+   * @expectedOutput A value `parseCustomSnooze` accepts.
+   *
+   * This is an invariant, not a DST reproduction. The repeated hour exists only
+   * in some zones and CI runs in one without it, so these instants are ordinary
+   * local times there. The property that must hold everywhere is that the bound
+   * is always submittable, which is what this asserts; the DST behaviour was
+   * verified by hand against America/New_York, where the old code rendered a wall
+   * clock that parsed back an hour into the past.
    */
-  it("steps past a wall clock that resolves into the past", () => {
-    // Zone-independent: this asserts the invariant that the returned value is
-    // always submittable, whatever the local calendar does.
+  it("always returns a submittable bound", () => {
     for (const now of [
       new Date("2026-11-01T05:30:00Z"),
       new Date("2026-11-01T06:00:00Z"),
       new Date("2026-03-29T01:30:00Z"),
+      new Date("2026-06-15T12:00:00Z"),
     ]) {
       const value = snoozeInputMin(now);
       expect(

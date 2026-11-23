@@ -53,6 +53,45 @@ export function shouldRefetchAfterWrite(data: unknown): boolean {
  * @returns A TanStack `UseMutationResult` whose `mutate`/`mutateAsync` accept
  *          a {@link TriageMutationInput}.
  */
+/**
+ * The newest optimistic write started for each issue.
+ *
+ * A rollback restores a snapshot taken before its own write, which would also
+ * discard any write started after it. Comparing this counter lets a stale
+ * failure leave the newer state alone.
+ */
+const latestWrite = new Map<string, number>();
+let writeCounter = 0;
+
+/**
+ * Whether a failed write may still roll its own snapshot back.
+ *
+ * Only the newest write for an issue may: a snapshot is absolute, so restoring an
+ * older one also discards the optimistic state a later write installed. Two quick
+ * keystrokes would otherwise lose one of them from the pane.
+ *
+ * @param issueId - The issue the failed write targeted.
+ * @param sequence - The order stamp that write was given.
+ * @returns `true` when no later write for that issue has started.
+ */
+export function mayRollBack(issueId: string, sequence: number): boolean {
+  return latestWrite.get(issueId) === sequence;
+}
+
+/**
+ * Record that a write for an issue has started, and return its order stamp.
+ *
+ * Exported so the rollback rule can be exercised without rendering the hook.
+ *
+ * @param issueId - The issue the write targets.
+ * @returns The stamp to pass to {@link mayRollBack} if the write fails.
+ */
+export function beginWrite(issueId: string): number {
+  const sequence = ++writeCounter;
+  latestWrite.set(issueId, sequence);
+  return sequence;
+}
+
 export function useTriageMutation() {
   const queryClient = useQueryClient();
   const pushUndo = useUndoStore((s) => s.push);
@@ -110,11 +149,17 @@ export function useTriageMutation() {
         );
       }
 
-      return { snapshots };
+      const sequence = beginWrite(input.issueId);
+
+      return { snapshots, sequence, issueId: input.issueId };
     },
 
-    onError: (_err, _input, context) => {
-      // Rollback all queries
+    onError: (_err, input, context) => {
+      // Rollback all queries, but only if no later write for this issue has
+      // started. Restoring an absolute snapshot otherwise discards the newer
+      // write's optimistic state as well, so two quick keystrokes lose one.
+      if (context && !mayRollBack(context.issueId, context.sequence)) return;
+
       if (context?.snapshots) {
         for (const { queryKey, data } of context.snapshots) {
           queryClient.setQueryData(queryKey, data);

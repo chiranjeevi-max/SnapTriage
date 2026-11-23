@@ -75,6 +75,33 @@ export type ApplyTriageResult =
   | { ok: false; status: number; error: string };
 
 /**
+ * What to tell the user when the provider accepted a write that could not be
+ * recorded locally.
+ *
+ * The repair differs by field, so the message has to as well. A sync rewrites the
+ * issue row from the provider, so labels, assignees, and state do catch up.
+ * Personal settings live in `triage_state`, which no sync touches, so those are
+ * genuinely lost and saying otherwise would be a promise the app cannot keep.
+ *
+ * @param provider - The provider that accepted the write.
+ * @param payload - The change that was sent.
+ * @returns One sentence describing which half, if any, will reconcile.
+ */
+export function localRecordingFailureMessage(provider: string, payload: TriagePayload): string {
+  const providerFields = "labels" in payload || "assignees" in payload || "state" in payload;
+  const personalFields =
+    "priority" in payload || "snoozedUntil" in payload || "dismissed" in payload;
+
+  if (providerFields && personalFields) {
+    return `${provider} accepted the change, but it could not be recorded locally. The provider side will catch up on the next sync; the priority, snooze, and dismiss settings may need to be set again.`;
+  }
+  if (providerFields) {
+    return `${provider} accepted the change, but it could not be recorded locally. The next sync will catch up.`;
+  }
+  return "The change could not be saved. Please try again.";
+}
+
+/**
  * Decide how a write to one repository lands.
  *
  * The repository's `syncMode` wins over the request's `batch` flag, so a batch
@@ -408,12 +435,13 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
 
     // The provider accepted it, so the client must keep its optimistic state
     // rather than roll back to values upstream no longer holds.
+    //
     return {
       ok: true,
       mode,
       applied: payload,
       previous,
-      warning: `${repo.provider} accepted the change, but it could not be recorded locally. The next sync will catch up.`,
+      warning: localRecordingFailureMessage(repo.provider, payload),
     };
   }
 
