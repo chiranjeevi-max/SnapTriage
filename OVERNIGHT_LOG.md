@@ -139,3 +139,9 @@ list is already client-side, so this is a pure comparator plus one control.
 Justification: bulk triage works but selection is checkbox-only, which undercuts the
 "keyboard-driven inbox" premise — the one workflow that saves the most time is the one that
 needs a mouse. Two keys and a pure reducer, no schema or API change.
+
+### Feature 5 — Staged-push preview
+Justification: the batch bar says "3 pending changes" and offers Push but never says what
+will be pushed, so the app's most irreversible provider write is the one the user cannot
+inspect. The staged diffs already travel on the queue payload, so this is a pure fold plus a
+list.

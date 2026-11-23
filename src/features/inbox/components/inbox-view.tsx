@@ -507,7 +507,7 @@ export function InboxView() {
           up there is no queue row to hide, so the selection class is dropped and
           the list keeps the screen even though the detail pane still holds the
           last issue and its unsaved reply. */}
-      <BatchStatusBar />
+      <BatchStatusBar issues={issueList} />
 
       {/* Picker dialogs */}
       <LabelPicker open={labelPickerOpen} onOpenChange={setLabelPickerOpen} issue={queueIssue} />

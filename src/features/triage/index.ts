@@ -8,6 +8,13 @@
 // Types
 export type { TriagePayload, TriageAction, PendingChanges } from "./types";
 export { mergePendingChanges, payloadToIssueUpdate } from "./types";
+export type { PendingSummary, SummaryLine } from "./pending-summary";
+export {
+  summarizePending,
+  describePending,
+  hasProviderChanges,
+  EMPTY_PENDING_SUMMARY,
+} from "./pending-summary";
 
 // Action builders
 export {
