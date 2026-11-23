@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { useMemo } from "react";
 import Image from "next/image";
 import { Check } from "lucide-react";
 import {
@@ -45,8 +46,29 @@ interface AssigneePickerProps {
  * @returns The assignee picker dialog, or `null` if no issue is provided.
  */
 export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePickerProps) {
-  const { data: collaborators, isLoading } = useRepoCollaborators(issue?.repoId);
+  const { data: collaborators, isLoading, isError } = useRepoCollaborators(issue?.repoId);
   const triage = useTriageMutation();
+
+  /**
+   * The repository's collaborators, plus anyone already assigned.
+   *
+   * The listing can be unavailable, and the listing budget can stop before every
+   * collaborator. Somebody already on the issue must stay manageable, so those
+   * logins are merged in.
+   *
+   * Above the early return so the hook order is stable.
+   */
+  const options = useMemo(() => {
+    const listed = collaborators ?? [];
+    const issueAssignees = issue?.assignees ?? [];
+    const missing = issueAssignees.filter(
+      (login) => !listed.some((collab) => collab.username.toLowerCase() === login.toLowerCase())
+    );
+    return [
+      ...listed,
+      ...missing.map((username) => ({ username, avatar: null, permission: "read" as const })),
+    ];
+  }, [collaborators, issue?.assignees]);
 
   if (!issue) return null;
 
@@ -86,12 +108,20 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
       className="flex max-h-[calc(100dvh-2rem)] flex-col [&_[data-slot=command]]:min-h-0"
     >
       <CommandInput placeholder="Search collaborators..." className="min-w-0 pr-10" />
+      {/* Outside CommandEmpty: that element only renders when the list is empty,
+          and the merged issue values keep it non-empty even when the read
+          failed. The notice has to show beside them rather than instead. */}
+      {isError && (
+        <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+          Could not load the full collaborator list. Anyone already assigned is still listed.
+        </p>
+      )}
       <CommandList className="min-h-0 max-h-[min(20rem,60dvh)] flex-1">
         <CommandEmpty className="py-6 text-xs text-muted-foreground">
           {isLoading ? "Loading collaborators..." : "No collaborators found."}
         </CommandEmpty>
         <CommandGroup>
-          {(collaborators ?? []).map((collab) => {
+          {options.map((collab) => {
             const isAssigned = currentAssignees.has(collab.username);
             return (
               <CommandItem

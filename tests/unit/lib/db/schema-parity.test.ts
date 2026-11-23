@@ -85,3 +85,45 @@ describe("schema.pg", () => {
     expect(actual).toEqual(expected);
   });
 });
+
+describe("follow_up_due_idx ordering", () => {
+  /**
+   * @target schema.pg.ts follow_up index config
+   * @dependencies drizzle's index config
+   * @scenario The Postgres copy of the check pass's index
+   * @expectedOutput NULLS FIRST on the trailing columns. The pass orders
+   *                 `attemptedAt NULLS FIRST` so a never-attempted row leads;
+   *                 Postgres defaults to NULLS LAST and would sort the selected
+   *                 rows itself, which is the cost this index exists to avoid.
+   */
+  it("declares NULLS FIRST where Postgres needs it", () => {
+    const config = getPgConfig(pgSchema.followUps);
+    const index = config.indexes.find((entry) => entry.config.name === "follow_up_due_idx");
+
+    expect(index).toBeDefined();
+
+    const placements = index!.config.columns.map((column) => {
+      const extra = (column as unknown as { indexConfig?: { nulls?: string } }).indexConfig;
+      return extra?.nulls ?? null;
+    });
+
+    // The filter prefix carries Postgres's default placement; the two ordered
+    // columns are the ones the check pass sorts on, so those must be explicit.
+    expect(placements).toEqual(["last", "last", "first", "first"]);
+  });
+
+  /**
+   * @target schema.ts follow_up index
+   * @dependencies drizzle's index config
+   * @scenario The SQLite copy
+   * @expectedOutput A plain index. SQLite already sorts NULL first, so declaring
+   *                 the placement would describe an index the file does not have.
+   */
+  it("leaves the SQLite index plain", () => {
+    const config = getSqliteConfig(sqliteSchema.followUps);
+    const index = config.indexes.find((entry) => entry.config.name === "follow_up_due_idx");
+
+    expect(index).toBeDefined();
+    expect(index!.config.columns).toHaveLength(4);
+  });
+});

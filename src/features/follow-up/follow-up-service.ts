@@ -279,8 +279,9 @@ async function passContextFor(userId: string, provider: ProviderName, cache: Pas
  * `coalesce` fixed the ordering but wrapped the column, which stopped
  * `follow_up_due_idx` from satisfying the sort and forced a temporary B-tree over
  * every eligible row on every pass. `NULLS FIRST` keeps the bare column, so the
- * index serves the order. Exported so a test can check that against the real
- * clause rather than a copy of it.
+ * index serves the order — on SQLite from its plain index, and on Postgres from
+ * the copy in `schema.pg.ts` that declares the placement. Exported so a test can
+ * check the real clause rather than a copy of it.
  */
 export function followUpOrder() {
   return [

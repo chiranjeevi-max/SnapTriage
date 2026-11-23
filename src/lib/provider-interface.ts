@@ -82,6 +82,15 @@ export interface ProviderLabel {
   description: string | null;
 }
 
+/**
+ * Pages a label or collaborator listing may read.
+ *
+ * These listings are read on a keystroke to open a picker, so a repository with
+ * pathologically many entries must not turn one keypress into an unbounded number
+ * of provider calls. 20 pages is 2,000 entries, well past any real repository.
+ */
+export const LISTING_PAGE_LIMIT = 20;
+
 /** A collaborator on a repo */
 export interface ProviderCollaborator {
   username: string;
@@ -162,10 +171,21 @@ export interface IssueProvider {
    * Returns `null` when the token cannot see the repository at all. */
   getRepoPermission(owner: string, repo: string, token: string): Promise<RepoPermission | null>;
 
-  /** Fetch all labels for a repo */
+  /**
+   * Fetch the labels defined on a repo.
+   *
+   * Stops at {@link LISTING_PAGE_LIMIT} pages, so a repository with more entries
+   * than that returns a prefix. Also rejects when a page cannot be read, because
+   * an unreadable listing and an empty one lead to different UI.
+   */
   fetchLabels?(owner: string, repo: string, token: string): Promise<ProviderLabel[]>;
 
-  /** Fetch collaborators for a repo */
+  /**
+   * Fetch the collaborators assignable on a repo.
+   *
+   * Same contract as {@link fetchLabels}: a prefix at the page budget, and a
+   * rejection rather than an empty list when a page cannot be read.
+   */
   fetchCollaborators?(owner: string, repo: string, token: string): Promise<ProviderCollaborator[]>;
 
   /**

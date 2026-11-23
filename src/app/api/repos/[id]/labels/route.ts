@@ -16,6 +16,7 @@ import { typedDb } from "@/lib/db/query";
 import { repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
+import { apiLogger } from "@/lib/logger";
 
 /**
  * Retrieves all labels for the given repo from its provider API.
@@ -53,6 +54,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json([]);
   }
 
-  const labels = await provider.fetchLabels(repo.owner, repo.name, token);
-  return NextResponse.json(labels);
+  try {
+    const labels = await provider.fetchLabels(repo.owner, repo.name, token);
+    return NextResponse.json(labels);
+  } catch (error) {
+    // An empty list and an unreadable one mean different things to the picker:
+    // the first offers the issue's own labels, the second should say the provider
+    // could not be reached rather than pretending the repository has none.
+    //
+    // Logged because a 502 here is otherwise invisible: the user sees a message,
+    // and nobody sees the outage.
+    apiLogger.warn(
+      { repoId: repo.id, provider: repo.provider, error: String(error) },
+      "Label listing failed"
+    );
+    return NextResponse.json({ error: "Could not read labels" }, { status: 502 });
+  }
 }

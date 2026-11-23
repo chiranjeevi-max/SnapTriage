@@ -16,6 +16,7 @@ import type {
   ProviderIssue,
   ProviderLabel,
 } from "@/lib/provider-interface";
+import { LISTING_PAGE_LIMIT } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
 import { providerLogger } from "@/lib/logger";
 import { REQUEST_TIMEOUT_MS } from "@/lib/provider-timing";
@@ -445,8 +446,8 @@ export const githubProvider: IssueProvider = {
   },
 
   /**
-   * Fetches all labels defined on a GitHub repository.
-   * Paginates through all pages (100 per page).
+   * Fetches the labels defined on a GitHub repository, 100 per page up to
+   * `LISTING_PAGE_LIMIT` pages. Rejects when a page cannot be read.
    * @param owner - Repository owner.
    * @param repo - Repository name.
    * @param token - GitHub auth token.
@@ -456,12 +457,20 @@ export const githubProvider: IssueProvider = {
     const labels: ProviderLabel[] = [];
     let page = 1;
 
-    while (true) {
+    while (page <= LISTING_PAGE_LIMIT) {
       const params = new URLSearchParams({ per_page: "100", page: String(page) });
       const res = await ghFetch(`${GITHUB_API}/repos/${owner}/${repo}/labels?${params}`, token);
       if (!res.ok) {
-        discard(res);
-        break;
+        // Rejecting rather than breaking: the caller renders "no labels found"
+        // for an empty list, which would report an unreadable repository as an
+        // empty one. A failed page means the listing is unknown, not empty.
+        const body = await readText(res);
+        throw new ProviderApiError(res.status, body, {
+          provider: "github",
+          operation: "fetchLabels",
+          owner,
+          repo,
+        });
       }
 
       const data =
@@ -486,7 +495,7 @@ export const githubProvider: IssueProvider = {
   },
 
   /**
-   * Fetches all collaborators on a GitHub repository.
+   * Fetches the collaborators on a GitHub repository, bounded the same way.
    * Maps GitHub's `role_name` to the simplified "admin" | "write" | "read" scale.
    * @param owner - Repository owner.
    * @param repo - Repository name.
@@ -497,15 +506,21 @@ export const githubProvider: IssueProvider = {
     const collaborators: ProviderCollaborator[] = [];
     let page = 1;
 
-    while (true) {
+    while (page <= LISTING_PAGE_LIMIT) {
       const params = new URLSearchParams({ per_page: "100", page: String(page) });
       const res = await ghFetch(
         `${GITHUB_API}/repos/${owner}/${repo}/collaborators?${params}`,
         token
       );
       if (!res.ok) {
-        discard(res);
-        break;
+        // Same rule as the labels listing: a failed page is unknown, not empty.
+        const body = await readText(res);
+        throw new ProviderApiError(res.status, body, {
+          provider: "github",
+          operation: "fetchCollaborators",
+          owner,
+          repo,
+        });
       }
 
       const data =

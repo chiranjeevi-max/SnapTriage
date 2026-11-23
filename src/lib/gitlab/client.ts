@@ -21,6 +21,7 @@ import type {
   ProviderIssue,
   ProviderLabel,
 } from "@/lib/provider-interface";
+import { LISTING_PAGE_LIMIT } from "@/lib/provider-interface";
 import { ProviderApiError } from "@/lib/provider-error";
 import { providerLogger } from "@/lib/logger";
 import { REQUEST_TIMEOUT_MS } from "@/lib/provider-timing";
@@ -381,7 +382,8 @@ export const gitlabProvider: IssueProvider = {
   },
 
   /**
-   * Fetches all labels defined on a GitLab project.
+   * Fetches the labels defined on a GitLab project, bounded by
+   * `LISTING_PAGE_LIMIT` pages. Rejects when a page cannot be read.
    * Strips the leading `#` from color values for consistency with GitHub.
    * @param owner - Project namespace.
    * @param repo - Project name.
@@ -394,14 +396,21 @@ export const gitlabProvider: IssueProvider = {
     const labels: ProviderLabel[] = [];
     let page = 1;
 
-    while (true) {
+    while (page <= LISTING_PAGE_LIMIT) {
       const params = new URLSearchParams({ per_page: "100", page: String(page) });
       const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}/labels?${params}`, {
         headers: headers(token),
       });
       if (!res.ok) {
-        discard(res);
-        break;
+        // A failed page is unknown, not empty: breaking here made an expired
+        // token render as "no labels found".
+        const body = await readText(res);
+        throw new ProviderApiError(res.status, body, {
+          provider: "gitlab",
+          operation: "fetchLabels",
+          owner,
+          repo,
+        });
       }
 
       const data =
@@ -426,8 +435,8 @@ export const gitlabProvider: IssueProvider = {
   },
 
   /**
-   * Fetches all members (including inherited) of a GitLab project.
-   * Uses the `/members/all` endpoint to include group-inherited members.
+   * Fetches the members (including inherited) of a GitLab project, bounded the
+   * same way. Uses `/members/all` so a group-level member is assignable.
    * @param owner - Project namespace.
    * @param repo - Project name.
    * @param token - GitLab auth token.
@@ -439,14 +448,19 @@ export const gitlabProvider: IssueProvider = {
     const collaborators: ProviderCollaborator[] = [];
     let page = 1;
 
-    while (true) {
+    while (page <= LISTING_PAGE_LIMIT) {
       const params = new URLSearchParams({ per_page: "100", page: String(page) });
       const res = await timedFetch(`${baseUrl}/api/v4/projects/${project}/members/all?${params}`, {
         headers: headers(token),
       });
       if (!res.ok) {
-        discard(res);
-        break;
+        const body = await readText(res);
+        throw new ProviderApiError(res.status, body, {
+          provider: "gitlab",
+          operation: "fetchCollaborators",
+          owner,
+          repo,
+        });
       }
 
       const data =

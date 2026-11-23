@@ -16,6 +16,7 @@ import { typedDb } from "@/lib/db/query";
 import { repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
 import { getProviderToken } from "@/features/auth/get-provider-token";
+import { apiLogger } from "@/lib/logger";
 
 /**
  * Retrieves all collaborators for the given repo from its provider API.
@@ -53,6 +54,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json([]);
   }
 
-  const collaborators = await provider.fetchCollaborators(repo.owner, repo.name, token);
-  return NextResponse.json(collaborators);
+  try {
+    const collaborators = await provider.fetchCollaborators(repo.owner, repo.name, token);
+    return NextResponse.json(collaborators);
+  } catch (error) {
+    // Same distinction as the labels route: nobody assignable and an unreachable
+    // provider are not the same answer.
+    apiLogger.warn(
+      { repoId: repo.id, provider: repo.provider, error: String(error) },
+      "Collaborator listing failed"
+    );
+    return NextResponse.json({ error: "Could not read collaborators" }, { status: 502 });
+  }
 }

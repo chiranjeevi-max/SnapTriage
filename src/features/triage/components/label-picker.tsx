@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { useMemo } from "react";
 import { Check } from "lucide-react";
 import {
   CommandDialog,
@@ -44,8 +45,26 @@ interface LabelPickerProps {
  * @returns The label picker dialog, or `null` if no issue is provided.
  */
 export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerProps) {
-  const { data: labels, isLoading } = useRepoLabels(issue?.repoId);
+  const { data: labels, isLoading, isError } = useRepoLabels(issue?.repoId);
   const triage = useTriageMutation();
+
+  /**
+   * The repository's labels, plus any the issue already carries.
+   *
+   * The listing can be unavailable (an expired token, a provider outage) or stop
+   * at the listing budget. Those labels still need to be removable, so the issue's
+   * own set is merged in rather than relying on the listing to contain it.
+   *
+   * Above the early return so the hook order is stable.
+   */
+  const options = useMemo(() => {
+    const listed = labels ?? [];
+    const issueLabels = issue?.labels ?? [];
+    const missing = issueLabels.filter(
+      (name) => !listed.some((label) => label.name.toLowerCase() === name.toLowerCase())
+    );
+    return [...listed, ...missing.map((name) => ({ name, color: null, description: null }))];
+  }, [labels, issue?.labels]);
 
   if (!issue) return null;
 
@@ -85,12 +104,20 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
       className="flex max-h-[calc(100dvh-2rem)] flex-col [&_[data-slot=command]]:min-h-0"
     >
       <CommandInput placeholder="Search labels..." className="min-w-0 pr-10" />
+      {/* Outside CommandEmpty: that element only renders when the list is empty,
+          and the merged issue labels keep it non-empty even when the read
+          failed. The notice has to show beside them rather than instead. */}
+      {isError && (
+        <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+          Could not load the full label list. The issue&apos;s own labels are still listed.
+        </p>
+      )}
       <CommandList className="min-h-0 max-h-[min(20rem,60dvh)] flex-1">
         <CommandEmpty className="py-6 text-xs text-muted-foreground">
           {isLoading ? "Loading labels..." : "No labels found."}
         </CommandEmpty>
         <CommandGroup>
-          {(labels ?? []).map((label) => {
+          {options.map((label) => {
             const isApplied = currentLabels.has(label.name);
             return (
               <CommandItem
