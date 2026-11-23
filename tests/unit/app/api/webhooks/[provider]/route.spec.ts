@@ -91,14 +91,57 @@ async function postDelivery(
   return res;
 }
 
-/** Configures the select().from().where().orderBy().limit() chain to return the given rows. */
-function selectReturns(rows: unknown[]) {
-  const limitMock = vi.fn().mockResolvedValue(rows);
+/** Configures the subscriber read to answer with the given rows. */
+function selectReturns(rows: Array<Record<string, unknown> & { id: string }>) {
+  return selectReturnsAll(rows);
+}
+
+/**
+ * Configures the subscriber read to serve a whole subscriber set, paged the way
+ * the database would.
+ *
+ * The route reads subscribers one page at a time with a cursor, so the mock has
+ * to honour the cursor rather than hand back rows in call order: a mock that
+ * ignored it would pass even if the route never advanced, which is exactly the
+ * bug this covers.
+ */
+function selectReturnsAll(rows: Array<Record<string, unknown> & { id: string }>) {
+  let reads = 0;
+  const limitMock = vi.fn(async () => {
+    // A route that never advances its cursor would loop here. Failing fast on an
+    // implausible number of reads turns that into a clear assertion failure
+    // instead of a worker crash that reports nothing.
+    reads++;
+    if (reads > rows.length + 2) {
+      throw new Error("subscriber read did not advance its cursor");
+    }
+    // Read the cursor out of the condition the route built. The route filters to
+    // `id > cursor`, so anything at or below the cursor is already handled.
+    const condition = whereMock.mock.calls.at(-1)?.[0];
+    const cursor = cursorFrom(condition);
+    const remaining =
+      cursor === null ? rows : rows.filter((row) => String(row.id).localeCompare(cursor) > 0);
+    return remaining.slice(0, 50);
+  });
   const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
   const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock, limit: limitMock });
   const fromMock = vi.fn().mockReturnValue({ where: whereMock });
   mockSelect.mockReturnValue({ from: fromMock } as never);
   return whereMock;
+}
+
+/** Pull the cursor value out of the condition tree, if the route supplied one. */
+function cursorFrom(condition: unknown): string | null {
+  const found: string[] = [];
+  const walk = (node: unknown) => {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    const obj = node as Record<string, unknown>;
+    if (Array.isArray(obj.queryChunks)) return walk(obj.queryChunks);
+    if (typeof obj.value === "string" && obj.value.startsWith("repo-")) found.push(obj.value);
+  };
+  walk(condition);
+  return found[0] ?? null;
 }
 
 describe("POST /api/webhooks/:provider", () => {
@@ -328,30 +371,36 @@ describe("POST /api/webhooks/:provider", () => {
     /**
      * @target POST /api/webhooks/:provider
      * @dependencies syncRepo
-     * @scenario More repositories subscribe to the repo than one delivery may sync
-     * @expectedOutput 503 with the delivery kept retryable, and only the cap's
-     *                 worth of syncing attempted. The surplus used to be dropped
-     *                 silently behind an `{ ok: true }`, so the delivery looked
-     *                 complete while the last subscribers were never synced.
+     * @scenario More repositories subscribe to the repo than one page can hold
+     * @expectedOutput Every subscriber is synced and the delivery is completed.
+     *                 Stopping at a page and returning 503 left the rest
+     *                 unreachable: the retry re-read the same first page, so it
+     *                 could never progress past it.
      */
-    it("should refuse to report success when the subscriber cap is reached", async () => {
+    it("should sync every subscriber across pages", async () => {
       const body = { repository: { full_name: "owner/popular" } };
       const signature = hmac256("whsec_test_secret", JSON.stringify(body));
 
-      // 51 rows: one past the cap, which is what makes truncation detectable.
+      // One full page and a short second one, so the loop has to page. A single
+      // delivery can arrive for a repository with more subscribers than one
+      // statement should hold, and the subscribers past the first page must
+      // still be reached: nothing retries them, because a successful delivery is
+      // deleted and a retry would start from the same first page.
       const subscribers = Array.from({ length: 51 }, (_, index) => ({
-        id: `repo-${index}`,
-        userId: `USR-${String(index).padStart(3, "0")}`,
+        id: `repo-${String(index).padStart(4, "0")}`,
+        userId: `USR-${String(index).padStart(4, "0")}`,
       }));
-      selectReturns(subscribers);
+      selectReturnsAll(subscribers);
 
       const res = await postDelivery(body, signature, {
-        "x-github-delivery": "delivery-capped",
+        "x-github-delivery": "delivery-paged",
       });
 
-      expect(res.status).toBe(503);
-      expect(mockSyncRepo).toHaveBeenCalledTimes(50);
-      expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-capped");
+      expect(res.status).toBe(200);
+      expect(lastBody).toEqual({ ok: true, synced: 51 });
+      expect(mockSyncRepo).toHaveBeenCalledTimes(51);
+      // The delivery completed, so it must not be replayed.
+      expect(mockForgetDelivery).not.toHaveBeenCalledWith("github", "delivery-paged");
     });
   });
 

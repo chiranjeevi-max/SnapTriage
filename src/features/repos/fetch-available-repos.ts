@@ -173,8 +173,11 @@ export async function fetchGitLabRepos(token: string): Promise<AvailableRepo[]> 
 
       // `namespace` is absent on a project the token can no longer see in full,
       // which would make this loop throw and drop every page already read. The
-      // full path always carries the owner, so it is the honest fallback.
-      const owner = project.namespace?.path ?? project.path_with_namespace.split("/")[0] ?? "";
+      // full path always carries the owner, and everything before the last
+      // segment is it — taking only the first segment would turn `group/sub/app`
+      // into `group`, which is not a project the connect flow can resolve.
+      const owner =
+        project.namespace?.path ?? project.path_with_namespace.split("/").slice(0, -1).join("/");
 
       repos.push({
         provider: "gitlab",

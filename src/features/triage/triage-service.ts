@@ -59,7 +59,19 @@ export interface ReplacedValues {
 }
 
 export type ApplyTriageResult =
-  | { ok: true; mode: TriageMode; applied: TriagePayload; previous: ReplacedValues }
+  /**
+   * `warning` is present when the provider accepted the change but recording it
+   * locally failed. It stays `ok: true` because upstream really did change:
+   * rolling the optimistic update back would show values the provider no longer
+   * holds. The next sync repairs the local row.
+   */
+  | {
+      ok: true;
+      mode: TriageMode;
+      applied: TriagePayload;
+      previous: ReplacedValues;
+      warning?: string;
+    }
   | { ok: false; status: number; error: string };
 
 /**
@@ -379,11 +391,29 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    apiLogger.error({ issueId, mode, error: message }, "Triage write recorded nowhere");
+    apiLogger.error(
+      { issueId, mode, touchesProvider, error: message },
+      "Triage write not recorded"
+    );
+
+    // A personal-only write never reached the provider, so there is nothing
+    // upstream that succeeded and the message must not claim otherwise.
+    if (!touchesProvider) {
+      return {
+        ok: false,
+        status: 502,
+        error: "Could not record the change. Try again.",
+      };
+    }
+
+    // The provider accepted it, so the client must keep its optimistic state
+    // rather than roll back to values upstream no longer holds.
     return {
-      ok: false,
-      status: 502,
-      error: `${repo.provider} accepted the change, but recording it locally failed. Refresh to see the current state.`,
+      ok: true,
+      mode,
+      applied: payload,
+      previous,
+      warning: `${repo.provider} accepted the change, but it could not be recorded locally. The next sync will catch up.`,
     };
   }
 

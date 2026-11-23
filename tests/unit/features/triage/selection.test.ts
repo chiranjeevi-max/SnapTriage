@@ -58,10 +58,24 @@ describe("toggleSelectAll", () => {
    * Selecting all twice must not be a no-op: the second press is the only way to
    * undo a select-all without clearing the whole selection by hand.
    */
-  it("clears when every visible row is already selected", () => {
+  it("clears the visible rows when they are all already selected", () => {
     const result = toggleSelectAll(new Set(["a", "b"]), [issue("a"), issue("b")]);
 
     expect(result.size).toBe(0);
+  });
+
+  /**
+   * @target toggleSelectAll
+   * @dependencies none
+   * @scenario Every visible row is selected, and a hidden row is selected too
+   * @expectedOutput Only the visible rows are cleared. Wiping the whole set
+   *                 discarded a selection the user made before filtering, which
+   *                 is work they cannot see and did not ask to lose.
+   */
+  it("keeps hidden rows when clearing the visible ones", () => {
+    const result = toggleSelectAll(new Set(["hidden", "a"]), [issue("a")]);
+
+    expect([...result]).toEqual(["hidden"]);
   });
 
   /**

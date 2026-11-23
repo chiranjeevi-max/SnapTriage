@@ -14,20 +14,24 @@ describe("useRepoLabels", () => {
   it("calls useQuery with correct configuration when repoId is provided", () => {
     useRepoLabels("repo-123");
 
-    expect(useQuery).toHaveBeenCalledWith(expect.objectContaining({
-      queryKey: ["repo-labels", "repo-123"],
-      enabled: true,
-      staleTime: 600000,
-    }));
+    expect(useQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ["repo-labels", "repo-123"],
+        enabled: true,
+        staleTime: 600000,
+      })
+    );
   });
 
   it("calls useQuery with disabled configuration when repoId is undefined", () => {
     useRepoLabels(undefined);
 
-    expect(useQuery).toHaveBeenCalledWith(expect.objectContaining({
-      queryKey: ["repo-labels", undefined],
-      enabled: false,
-    }));
+    expect(useQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ["repo-labels", undefined],
+        enabled: false,
+      })
+    );
   });
 
   it("returns an empty array when repoId is missing inside queryFn", async () => {

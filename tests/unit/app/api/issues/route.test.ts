@@ -232,13 +232,13 @@ describe("PATCH /api/issues/:id", () => {
    * @target PATCH /api/issues/:id
    * @dependencies applyTriage
    * @scenario The provider accepts the write, then recording it locally fails
-   * @expectedOutput A 502 the client can distinguish, rather than a thrown 500.
-   *                 A 500 here is indistinguishable from "nothing happened", and
-   *                 the client's rollback would restore values upstream no longer
+   * @expectedOutput A 200 carrying a warning, not a 502. Upstream really did
+   *                 change, so a failure status makes the client roll its
+   *                 optimistic update back to values the provider no longer
    *                 holds. The cached issue row is written first, so it still
    *                 mirrors the provider after the personal write fails.
    */
-  it("should report a 502 when the local write fails after the provider accepted", async () => {
+  it("should keep the write successful when only local recording fails", async () => {
     fakeDb.state.rows.repo.push(repoRow({ syncMode: "live" }));
     fakeDb.state.rows.issue.push(issueRow());
     fakeDb.state.rows.triage_state.push(triageRow({ priority: 3 }));
@@ -256,8 +256,11 @@ describe("PATCH /api/issues/:id", () => {
 
     const res = await patchIssue({ priority: 0, labels: { add: ["bug"] } });
 
-    expect(res.status).toBe(502);
-    expect((res.body as { error: string }).error).toContain("accepted the change");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      ok: true,
+      warning: expect.stringContaining("accepted the change") as unknown as string,
+    });
     expect(updateIssue).toHaveBeenCalledTimes(1);
     expect(fakeDb.state.rows.issue[0].labels).toEqual(["bug"]);
 

@@ -175,8 +175,12 @@ export function InboxView() {
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   const selectAllVisible = useCallback(() => {
+    // The follow-up surface shows no queue rows, so there is nothing to select
+    // there. Allowing it would expose the bulk bar and let its actions mutate
+    // issues the user cannot see.
+    if (surface !== "queue") return;
     setSelectedIds((previous) => toggleSelectAll(previous, filteredIssues));
-  }, [filteredIssues]);
+  }, [surface, filteredIssues]);
 
   // Passed to the keyboard dispatcher rather than routed through the store: the
   // selection is view state, and this closes over the list that is on screen.
@@ -262,13 +266,18 @@ export function InboxView() {
    */
   const handleOpenFollowUp = useCallback(
     (entry: FollowUpEntry) => {
-      const idx = filterIssues(issueList, "all").findIndex((issue) => issue.id === entry.issueId);
+      // The index must come from the list the keyboard actually navigates, which
+      // is the searched and sorted one, and with the filter forced to `all` below.
+      // Searching the raw queue pointed at a different row whenever a query or a
+      // non-default sort was active, or found nothing at all.
+      const targetList = filterIssues(sortIssues(filterByQuery(issueList, query), sort), "all");
+      const idx = targetList.findIndex((issue) => issue.id === entry.issueId);
       setPinnedIssue(idx >= 0 ? null : entry);
       setSurface("queue");
       setFilter("all");
       setSelectedIndex(idx);
     },
-    [issueList, setFilter, setSelectedIndex]
+    [issueList, query, sort, setFilter, setSelectedIndex]
   );
 
   /** Saves the current filter as a named view and closes the name field. */

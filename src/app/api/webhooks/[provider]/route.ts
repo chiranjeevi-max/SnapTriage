@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  * resistant.
  */
 import { NextResponse } from "next/server";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, gt, sql } from "drizzle-orm";
 import { timingSafeEqual, createHmac } from "node:crypto";
 import pLimit from "p-limit";
 import { typedDb } from "@/lib/db/query";
@@ -29,7 +29,6 @@ import {
 } from "@/features/webhooks/delivery-store";
 import { checkPersistentRateLimit } from "@/lib/rate-limit";
 import { rateLimitKey } from "@/lib/request-context";
-import { apiLogger } from "@/lib/logger";
 
 /** Providers this endpoint accepts deliveries for. */
 const SUPPORTED_PROVIDERS: Record<string, true | undefined> = {
@@ -50,14 +49,14 @@ const WEBHOOK_RATE_LIMIT = 120;
 const WEBHOOK_RATE_WINDOW_MS = 60 * 1000;
 
 /**
- * Subscribers synced for one delivery.
+ * Repositories handled per subscriber page.
  *
  * One delivery fans out to every user tracking the repository, so this bounds
- * the work a single request can trigger. It is a cap, not a filter: a repository
- * popular enough to exceed it must say so rather than appear to have notified
- * everyone when it reached the first few.
+ * the work one statement or one burst of parallel syncs holds. It is a page
+ * size, not a cap: a repository with more subscribers is read page by page so
+ * nobody is left unsynced.
  */
-const MAX_SUBSCRIBERS_PER_DELIVERY = 50;
+const SUBSCRIBER_PAGE_SIZE = 50;
 
 function safeEqual(a: string, b: string): boolean {
   const ba = Buffer.from(a);
@@ -201,54 +200,67 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
   // The provider spells repository names in its own casing, while the name
   // the user typed when connecting the repo may differ, so the match is
   // case-insensitive. Repos the user switched off are left alone.
-  const connectedRepos = await typedDb
-    .select()
-    .from(repos)
-    .where(
-      and(
-        eq(repos.provider, provider),
-        eq(sql`lower(${repos.fullName})`, fullName.toLowerCase()),
-        eq(repos.syncEnabled, true)
-      )
-    )
-    .orderBy(repos.createdAt)
-    .limit(MAX_SUBSCRIBERS_PER_DELIVERY + 1);
+  const limit = pLimit(3);
+  const firstPage = await reposForDelivery(provider, fullName, null);
 
-  if (connectedRepos.length === 0) {
+  if (firstPage.length === 0) {
     await forgetDelivery(provider, deliveryId);
     return NextResponse.json({ ok: true, ignored: true });
   }
 
-  // One extra row is fetched purely to detect that the cap was reached. Dropping
-  // the surplus without saying so would report a complete fan-out while the
-  // last subscribers were never synced; the delivery is kept retryable and the
-  // log names the repository so the cap can be raised deliberately.
-  const truncated = connectedRepos.length > MAX_SUBSCRIBERS_PER_DELIVERY;
-  if (truncated) {
-    connectedRepos.length = MAX_SUBSCRIBERS_PER_DELIVERY;
-    apiLogger.warn(
-      { provider, fullName, cap: MAX_SUBSCRIBERS_PER_DELIVERY },
-      "Webhook delivery reached the subscriber cap; some repos were not synced"
+  // Every subscriber is synced, in pages. A single delivery can arrive for a
+  // repository with far more subscribers than one request should hold, and
+  // stopping at a cap would leave the rest unsynced with no way to reach them:
+  // the delivery record is deleted on success, so a retry starts from the same
+  // first page and never advances. Paging keeps the work bounded per statement
+  // without dropping anyone.
+  let synced = 0;
+  let failedCount = 0;
+  let page = firstPage;
+
+  for (;;) {
+    const results = await Promise.all(
+      page.map((repo) => limit(() => syncRepo(repo.id, repo.userId)))
     );
+    const failures = results.filter((result) => result?.status === "failed");
+    synced += results.length - failures.length;
+    failedCount += failures.length;
+
+    if (page.length < SUBSCRIBER_PAGE_SIZE) break;
+    const cursor = page[page.length - 1].id;
+    page = await reposForDelivery(provider, fullName, cursor);
+    if (page.length === 0) break;
   }
 
-  const limit = pLimit(3);
-  const results = await Promise.all(
-    connectedRepos.map((repo) => limit(() => syncRepo(repo.id, repo.userId)))
-  );
-
-  const failed = results.filter((result) => result?.status === "failed");
-  if (failed.length > 0 || truncated) {
+  if (failedCount > 0) {
     // The delivery did not complete its work, so it must stay retryable.
     await forgetDelivery(provider, deliveryId);
-    if (failed.length > 0) {
-      return NextResponse.json({ ok: false, error: "Sync failed" }, { status: 500 });
-    }
-    return NextResponse.json(
-      { ok: false, error: "Subscriber cap reached", synced: results.length },
-      { status: 503 }
-    );
+    return NextResponse.json({ ok: false, error: "Sync failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, synced: results.length });
+  return NextResponse.json({ ok: true, synced });
+}
+
+/**
+ * One page of the repositories tracking a given repository upstream, ordered by
+ * id so a cursor can resume past the last row seen.
+ *
+ * @param provider - The provider the delivery came from.
+ * @param fullName - The provider's spelling of the repository.
+ * @param after - The last id already handled, or `null` for the first page.
+ * @returns Up to {@link SUBSCRIBER_PAGE_SIZE} repositories.
+ */
+async function reposForDelivery(provider: string, fullName: string, after: string | null) {
+  const matching = and(
+    eq(repos.provider, provider),
+    eq(sql`lower(${repos.fullName})`, fullName.toLowerCase()),
+    eq(repos.syncEnabled, true)
+  );
+
+  return typedDb
+    .select()
+    .from(repos)
+    .where(after === null ? matching : and(matching, gt(repos.id, after)))
+    .orderBy(repos.id)
+    .limit(SUBSCRIBER_PAGE_SIZE);
 }

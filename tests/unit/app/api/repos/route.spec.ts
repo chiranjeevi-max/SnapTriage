@@ -16,10 +16,7 @@ import { POST } from "@/app/api/repos/route";
 import { auth } from "@/auth";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
-import {
-  connectRepo,
-  findConnectedRepo,
-} from "@/features/repos/repo-repository";
+import { connectRepo, findConnectedRepo } from "@/features/repos/repo-repository";
 import type { IssueProvider } from "@/lib/provider-interface";
 
 // ---------------------------------------------------------------------------
@@ -116,9 +113,7 @@ describe("POST /api/repos", () => {
       "test-repo",
       "github-token-123"
     );
-    expect(mockConnectRepo).toHaveBeenCalledWith(
-      expect.objectContaining({ permission: "write" })
-    );
+    expect(mockConnectRepo).toHaveBeenCalledWith(expect.objectContaining({ permission: "write" }));
   });
 
   /**

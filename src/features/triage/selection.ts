@@ -30,10 +30,13 @@ export function toggleSelected(selected: ReadonlySet<string>, issueId: string): 
 }
 
 /**
- * Select every currently visible row, or clear if they are all already selected.
+ * Select every currently visible row, or clear just those if they are all
+ * already selected.
  *
- * Toggling rather than only adding is what makes the key a single-key undo for
- * an accidental select-all, which is the more likely mistake.
+ * Clearing only the visible rows is what keeps the module's other rule: a row
+ * selected before a filter change is deliberate work, and it is off screen
+ * rather than deselected. Wiping the whole set here would discard it the moment
+ * the user pressed the key on a filtered list.
  *
  * @param selected - The current selection.
  * @param visible - The rows on screen, in queue order.
@@ -44,11 +47,13 @@ export function toggleSelectAll(
   visible: readonly IssueWithTriage[]
 ): Set<string> {
   const allSelected = visible.length > 0 && visible.every((issue) => selected.has(issue.id));
-  if (allSelected) return new Set();
 
-  // Keep rows that scrolled out of the visible set: the user selected them
-  // deliberately and clearing them here would discard work behind their back.
   const next = new Set(selected);
+  if (allSelected) {
+    for (const issue of visible) next.delete(issue.id);
+    return next;
+  }
+
   for (const issue of visible) next.add(issue.id);
   return next;
 }

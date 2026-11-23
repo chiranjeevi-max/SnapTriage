@@ -91,8 +91,14 @@ export function useTriageMutation() {
       toast.error("Failed to update issue");
     },
 
-    onSuccess: (_data, input) => {
+    onSuccess: (data, input) => {
       const { issueId, payload, previousPayload, description, batch } = input;
+
+      // The provider accepted the change but the server could not record it. Said
+      // plainly rather than hidden behind the usual toast, because the row will
+      // look right only after the next sync.
+      const warning = (data as { warning?: string } | null)?.warning;
+      if (warning) toast.warning(warning);
 
       if (batch) {
         // Batch mode: push to undo stack
@@ -123,6 +129,11 @@ export function useTriageMutation() {
 
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["issues"] });
+      // The detail pane reads `["issue", id]`, which the queue invalidation does
+      // not cover. Without this the pane keeps showing the pre-write state, so a
+      // closed issue keeps offering "Reopen" and the next click re-sends the
+      // same state instead of toggling.
+      queryClient.invalidateQueries({ queryKey: ["issue"] });
     },
   });
 }

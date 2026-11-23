@@ -110,6 +110,40 @@ describe("fetchAvailableRepos", () => {
   });
 
   /**
+   * @target fetchGitLabRepos
+   * @dependencies fetch
+   * @scenario A subgroup project has no namespace, on the page after a normal one
+   * @expectedOutput The owner keeps every leading segment, and the earlier page
+   *                 survives. Reading only the first segment turned
+   *                 `group/sub/app` into `group`, which the connect flow cannot
+   *                 resolve; a throw here would also drop the page already read.
+   */
+  it("keeps subgroup segments and earlier pages when a namespace is missing", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) =>
+      gitlabProject({ path: `p${index}`, path_with_namespace: `group/p${index}` })
+    );
+    const secondPage = [
+      gitlabProject({ path: "app", path_with_namespace: "group/sub/app", namespace: null }),
+    ];
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const page = Number(new URL(input).searchParams.get("page"));
+        return Response.json(page === 1 ? firstPage : secondPage);
+      })
+    );
+
+    const repos = await fetchGitLabRepos("glpat-token");
+
+    expect(repos).toHaveLength(101);
+    expect(repos.at(-1)).toEqual(
+      expect.objectContaining({ owner: "group/sub", name: "app", fullName: "group/sub/app" })
+    );
+    expect(repos[0]).toEqual(expect.objectContaining({ fullName: "group/p0" }));
+  });
+
+  /**
    * @target fetchGitHubRepos
    * @dependencies fetchWithTimeout
    * @scenario GitHub answers with an error status

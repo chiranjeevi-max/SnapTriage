@@ -65,9 +65,13 @@ describe("provider timer release on error paths", () => {
       vi.fn(async () => errorResponse(403, '{"message":"403 Forbidden"}'))
     );
 
-    const failure = await gitlabProvider
-      .createComment!("group", "app", 5, "glpat-token", "hello")
-      .catch((error: unknown) => error);
+    const failure = await gitlabProvider.createComment!(
+      "group",
+      "app",
+      5,
+      "glpat-token",
+      "hello"
+    ).catch((error: unknown) => error);
 
     expect(failure).toMatchObject({ status: 403 });
     expect(vi.getTimerCount()).toBe(0);

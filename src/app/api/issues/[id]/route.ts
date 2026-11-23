@@ -94,5 +94,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ ok: true });
+  // `warning` reports a write the provider accepted but the local cache could not
+  // record. It travels as a success so the client keeps its optimistic state
+  // instead of rolling back to values upstream no longer holds.
+  return NextResponse.json({ ok: true, warning: result.warning });
 }
