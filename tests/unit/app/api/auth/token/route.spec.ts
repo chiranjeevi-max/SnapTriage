@@ -4,12 +4,13 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "@/app/api/auth/token/route";
-import { validateToken } from "@/features/auth/validate-token";
+import { validateToken, InvalidTokenError } from "@/features/auth/validate-token";
 import { checkPersistentRateLimit } from "@/lib/rate-limit";
 
-vi.mock("@/features/auth/validate-token", () => ({
-  validateToken: vi.fn(),
-}));
+vi.mock("@/features/auth/validate-token", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/auth/validate-token")>();
+  return { validateToken: vi.fn(), InvalidTokenError: actual.InvalidTokenError };
+});
 
 vi.mock("@/lib/rate-limit", () => ({
   checkPersistentRateLimit: vi.fn().mockResolvedValue(false),
@@ -65,8 +66,16 @@ describe("POST /api/auth/token", () => {
     expect(data.error).toBe('provider: Invalid option: expected one of "github"|"gitlab"');
   });
 
-  it("should return 401 if validateToken fails", async () => {
-    vi.mocked(validateToken).mockRejectedValueOnce(new Error("Unauthorized"));
+  /**
+   * @target POST /api/auth/token
+   * @dependencies InvalidTokenError
+   * @scenario The provider rejects the credential itself
+   * @expectedOutput 401 naming the rejection. Only this case may answer 401:
+   *                 telling a user their token is bad when the provider is merely
+   *                 down sends them to reissue a credential that still works.
+   */
+  it("should return 401 when the provider rejects the token", async () => {
+    vi.mocked(validateToken).mockRejectedValueOnce(new InvalidTokenError("gitlab"));
 
     const req = new Request("http://localhost/api/auth/token", {
       method: "POST",
@@ -77,7 +86,30 @@ describe("POST /api/auth/token", () => {
     const data = await response.json();
 
     expect(response.status).toBe(401);
-    expect(data.error).toBe("Invalid token");
+    expect(data.error).toBe("Invalid GitLab token");
+  });
+
+  /**
+   * @target POST /api/auth/token
+   * @dependencies validateToken
+   * @scenario The validation fails for a reason other than a rejected credential
+   * @expectedOutput 502 rather than 401. A provider outage is not the user's
+   *                 mistake, and reporting it as one leaves an operator with no
+   *                 trace of the real fault.
+   */
+  it("should return 502 when validation fails for another reason", async () => {
+    vi.mocked(validateToken).mockRejectedValueOnce(new Error("provider is down"));
+
+    const req = new Request("http://localhost/api/auth/token", {
+      method: "POST",
+      body: JSON.stringify({ token: "some-token", provider: "github" }),
+    });
+
+    const response = await POST(req);
+    const data = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(data.error).toBe("Could not validate the token right now");
   });
 
   it("should return 400 if request body parsing fails", async () => {
@@ -95,7 +127,14 @@ describe("POST /api/auth/token", () => {
     );
   });
 
-  it("should return 401 when encountering an unexpected error in the route handler", async () => {
+  /**
+   * @target POST /api/auth/token
+   * @dependencies none
+   * @scenario The request object is malformed, as a fault inside the handler is
+   * @expectedOutput 502. It used to answer 401 "Invalid token", which reported a
+   *                 server-side fault as the user's bad credential.
+   */
+  it("should return 502 when encountering an unexpected error in the route handler", async () => {
     // This empty object missing the json() method simulates an internal error
     // within the POST handler, triggering the catch block.
     const req = {} as Request;
@@ -103,8 +142,8 @@ describe("POST /api/auth/token", () => {
     const response = await POST(req);
     const data = await response.json();
 
-    expect(response.status).toBe(401);
-    expect(data.error).toBe("Invalid token");
+    expect(response.status).toBe(502);
+    expect(data.error).toBe("Could not validate the token right now");
   });
 });
 
