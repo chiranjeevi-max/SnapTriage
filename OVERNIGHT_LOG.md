@@ -60,3 +60,12 @@ instead of returning a `SyncResult` — and `POST /api/sync` calls it directly f
 so the route answered a bare 500 with no outcome. The one path whose job is to record
 failures could not report its own. Both writes are now inside the guarded region, and
 `issuesFetched` counts post-dedup rows so the log line and the record agree.
+
+### Cycle 8 — Validate the custom snooze date
+The snooze picker called `new Date(customDate).toISOString()` on any non-empty
+`datetime-local` value. `toISOString()` throws `RangeError` on an invalid date, inside a
+React click handler; and a past date was accepted silently, storing a snooze that had
+already expired so the issue read as not snoozed the instant it was set. Extracted the
+date rules into `triage/snooze.ts` (the codebase's stated pattern for testable logic),
+added a `min` bound to the input, and refuse rather than convert anything that is not a
+future instant.
