@@ -129,3 +129,8 @@ issue without leaving the app.
 Justification: with a large queue the only way to reach a known issue is `j` one row at a
 time; there is no text search anywhere in the app. A tokenized query over the fields already
 on the queue payload is pure client logic and needs no schema or API change.
+
+### Feature 3 — Queue sort order
+Justification: the API hardcodes `updatedAt` descending, so the ordering a maintainer
+actually wants — oldest untouched first, or untriaged to the top — is unreachable. The whole
+list is already client-side, so this is a pure comparator plus one control.

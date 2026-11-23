@@ -31,6 +31,8 @@ import type { IssueWithTriage } from "@/features/inbox/use-issues";
 import { useIssueFilter } from "@/features/inbox/use-issue-filter";
 import { useIssueQuery } from "@/features/inbox/use-issue-query";
 import { filterByQuery } from "@/features/inbox/issue-query";
+import { useIssueSort } from "@/features/inbox/use-issue-sort";
+import { ISSUE_SORTS, sortIssues, type IssueSort } from "@/features/inbox/issue-sort";
 import { filterIssues, ISSUE_FILTERS } from "@/features/inbox/issue-filters";
 import { useSavedViews, useSaveCurrentView } from "@/features/inbox/use-saved-views";
 import { useBulkTriage } from "@/features/triage/use-bulk-triage";
@@ -99,6 +101,7 @@ export function InboxView() {
   const { data: issues, isLoading } = useIssues();
   const [filter, setFilter] = useIssueFilter();
   const [queryText, setQueryText, query] = useIssueQuery();
+  const [sort, setSort] = useIssueSort();
   const [surface, setSurface] = useState<InboxSurface>("queue");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   /**
@@ -119,10 +122,10 @@ export function InboxView() {
   // read the same visible list. Applying it after `filterIssues` would leave the
   // two disagreeing about what is on screen.
   const searchedIssues = useMemo(() => filterByQuery(issueList, query), [issueList, query]);
-  const filteredIssues = useMemo(
-    () => filterIssues(searchedIssues, filter),
-    [searchedIssues, filter]
-  );
+  // Sorting comes last so the visible order is the order the keyboard walks and
+  // the virtualizer renders.
+  const sortedIssues = useMemo(() => sortIssues(searchedIssues, sort), [searchedIssues, sort]);
+  const filteredIssues = useMemo(() => filterIssues(sortedIssues, filter), [sortedIssues, filter]);
 
   const {
     selectedIndex,
@@ -314,6 +317,17 @@ export function InboxView() {
                 onChange={(event) => setQueryText(event.target.value)}
                 className="h-9 w-full min-w-0 max-w-[16rem] flex-1 text-sm sm:max-w-[20rem]"
               />
+              <SelectField
+                aria-label="Sort issues"
+                value={sort}
+                onChange={(event) => setSort(event.target.value as IssueSort)}
+              >
+                {ISSUE_SORTS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </SelectField>
               <SelectField
                 aria-label="Filter issues"
                 value={filter}
