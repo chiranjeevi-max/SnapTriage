@@ -44,8 +44,22 @@ function createDb(): DbClient {
   // This is needed both on first run and during Next.js build-time static analysis.
   mkdirSync(resolve(dirname(sqlitePath)), { recursive: true });
   const sqlite = new Database(sqlitePath);
+  enableForeignKeys(sqlite);
   enableWal(sqlite);
   return drizzleSqlite(sqlite, { schema });
+}
+
+/**
+ * Turns on foreign-key enforcement, which SQLite leaves off by default.
+ *
+ * Every `onDelete: cascade` in the schema is inert without it: deleting a repo
+ * would leave its issues, triage state, drafts, presets and sync log behind,
+ * and those orphans resurface as phantom rows on a later reconnect. The pragma
+ * is per-connection and has no effect inside a transaction, so it runs here,
+ * before the client is handed out.
+ */
+function enableForeignKeys(sqlite: Database.Database) {
+  sqlite.pragma("foreign_keys = ON");
 }
 
 /**
