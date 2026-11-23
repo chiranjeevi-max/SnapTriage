@@ -37,17 +37,18 @@ export interface KeyboardActionOptions {
 }
 
 export function useKeyboardActions(issues: IssueWithTriage[], options?: KeyboardActionOptions) {
-  const {
-    selectedIndex,
-    moveSelection,
-    toggleOverlay,
-    setSelectedIndex,
-    setLabelPickerOpen,
-    setAssigneePickerOpen,
-    setSnoozePickerOpen,
-    setPresetPickerOpen,
-    setFollowUpArmRequested,
-  } = useKeyboardStore();
+  // Split selectors rather than one subscription: this hook lives in the inbox's
+  // tree, so a selectorless form re-rendered it — and re-created the dispatcher
+  // the keydown listener depends on — every time any store field moved.
+  const selectedIndex = useKeyboardStore((state) => state.selectedIndex);
+  const moveSelection = useKeyboardStore((state) => state.moveSelection);
+  const toggleOverlay = useKeyboardStore((state) => state.toggleOverlay);
+  const setSelectedIndex = useKeyboardStore((state) => state.setSelectedIndex);
+  const setLabelPickerOpen = useKeyboardStore((state) => state.setLabelPickerOpen);
+  const setAssigneePickerOpen = useKeyboardStore((state) => state.setAssigneePickerOpen);
+  const setSnoozePickerOpen = useKeyboardStore((state) => state.setSnoozePickerOpen);
+  const setPresetPickerOpen = useKeyboardStore((state) => state.setPresetPickerOpen);
+  const setFollowUpArmRequested = useKeyboardStore((state) => state.setFollowUpArmRequested);
   const triage = useTriageMutation();
   const sync = useSync();
   const batchPush = useBatchPush();

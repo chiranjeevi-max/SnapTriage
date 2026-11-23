@@ -132,19 +132,21 @@ export function InboxView() {
   const sortedIssues = useMemo(() => sortIssues(searchedIssues, sort), [searchedIssues, sort]);
   const filteredIssues = useMemo(() => filterIssues(sortedIssues, filter), [sortedIssues, filter]);
 
-  const {
-    selectedIndex,
-    setSelectedIndex,
-    setIssueCount,
-    labelPickerOpen,
-    setLabelPickerOpen,
-    assigneePickerOpen,
-    setAssigneePickerOpen,
-    snoozePickerOpen,
-    setSnoozePickerOpen,
-    presetPickerOpen,
-    setPresetPickerOpen,
-  } = useKeyboardStore();
+  // Individual selectors rather than the whole store. A selectorless subscription
+  // re-renders this component — which owns four list memos and the virtualizer —
+  // on every field, including the picker flags and the shortcut overlay, and none
+  // of those change what is on screen here.
+  const selectedIndex = useKeyboardStore((state) => state.selectedIndex);
+  const setSelectedIndex = useKeyboardStore((state) => state.setSelectedIndex);
+  const setIssueCount = useKeyboardStore((state) => state.setIssueCount);
+  const labelPickerOpen = useKeyboardStore((state) => state.labelPickerOpen);
+  const setLabelPickerOpen = useKeyboardStore((state) => state.setLabelPickerOpen);
+  const assigneePickerOpen = useKeyboardStore((state) => state.assigneePickerOpen);
+  const setAssigneePickerOpen = useKeyboardStore((state) => state.setAssigneePickerOpen);
+  const snoozePickerOpen = useKeyboardStore((state) => state.snoozePickerOpen);
+  const setSnoozePickerOpen = useKeyboardStore((state) => state.setSnoozePickerOpen);
+  const presetPickerOpen = useKeyboardStore((state) => state.presetPickerOpen);
+  const setPresetPickerOpen = useKeyboardStore((state) => state.setPresetPickerOpen);
 
   // The follow-up surface replaces the queue in the list pane, so the keyboard
   // must act on what is on screen and nothing else. An empty list makes every
