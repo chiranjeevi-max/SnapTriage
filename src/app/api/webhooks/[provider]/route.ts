@@ -29,6 +29,7 @@ import {
 } from "@/features/webhooks/delivery-store";
 import { checkPersistentRateLimit } from "@/lib/rate-limit";
 import { rateLimitKey } from "@/lib/request-context";
+import { apiLogger } from "@/lib/logger";
 
 /** Providers this endpoint accepts deliveries for. */
 const SUPPORTED_PROVIDERS: Record<string, true | undefined> = {
@@ -57,6 +58,16 @@ const WEBHOOK_RATE_WINDOW_MS = 60 * 1000;
  * nobody is left unsynced.
  */
 const SUBSCRIBER_PAGE_SIZE = 50;
+
+/**
+ * Pages one delivery may sync before it stops and asks to be retried.
+ *
+ * 20 pages is 1,000 subscribers in one request, well past any realistic
+ * repository and still bounded. A delivery that hits this is forgotten and
+ * answered 503, so the provider's retry re-reads from the start rather than the
+ * work being lost mid-flight.
+ */
+const MAX_SUBSCRIBER_PAGES = 20;
 
 function safeEqual(a: string, b: string): boolean {
   const ba = Buffer.from(a);
@@ -208,17 +219,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
     return NextResponse.json({ ok: true, ignored: true });
   }
 
-  // Every subscriber is synced, in pages. A single delivery can arrive for a
-  // repository with far more subscribers than one request should hold, and
-  // stopping at a cap would leave the rest unsynced with no way to reach them:
-  // the delivery record is deleted on success, so a retry starts from the same
-  // first page and never advances. Paging keeps the work bounded per statement
-  // without dropping anyone.
+  // Subscribers are synced page by page, up to a hard page budget.
+  //
+  // The budget matters as much as the paging. A repository popular enough to fill
+  // many pages would otherwise run thousands of syncs inside one request; if the
+  // worker is killed part-way the delivery record stays, so the provider's retry
+  // is treated as a replay and the rest is never reached. Stopping at the budget
+  // and reporting the remainder keeps one request bounded and leaves the delivery
+  // retryable.
+  //
+  // Every read is guarded. A database error on a later page would otherwise throw
+  // out of the handler after earlier pages had already synced, and the delivery
+  // record would stay behind, stranding the subscribers on the unread pages.
   let synced = 0;
   let failedCount = 0;
   let page = firstPage;
+  let exhausted = false;
 
-  for (;;) {
+  for (let pages = 0; ; pages++) {
+    if (pages >= MAX_SUBSCRIBER_PAGES) {
+      exhausted = true;
+      break;
+    }
+
     const results = await Promise.all(
       page.map((repo) => limit(() => syncRepo(repo.id, repo.userId)))
     );
@@ -227,9 +250,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
     failedCount += failures.length;
 
     if (page.length < SUBSCRIBER_PAGE_SIZE) break;
-    const cursor = page[page.length - 1].id;
-    page = await reposForDelivery(provider, fullName, cursor);
+
+    try {
+      page = await reposForDelivery(provider, fullName, page[page.length - 1].id);
+    } catch (error) {
+      apiLogger.error(
+        { provider, fullName, error: error instanceof Error ? error.message : String(error) },
+        "Webhook subscriber page could not be read"
+      );
+      // The remaining subscribers are unknown, so the delivery did not finish.
+      // Forgetting it is what lets the provider retry; without that the retry is
+      // treated as a replay and the rest is never synced.
+      await forgetDelivery(provider, deliveryId);
+      return NextResponse.json({ ok: false, error: "Could not read subscribers" }, { status: 500 });
+    }
+
     if (page.length === 0) break;
+  }
+
+  if (exhausted) {
+    apiLogger.warn(
+      { provider, fullName, synced, pageBudget: MAX_SUBSCRIBER_PAGES },
+      "Webhook delivery hit its page budget; remaining subscribers left for a retry"
+    );
+    await forgetDelivery(provider, deliveryId);
+    return NextResponse.json(
+      { ok: false, error: "Subscriber budget reached", synced },
+      { status: 503 }
+    );
   }
 
   if (failedCount > 0) {

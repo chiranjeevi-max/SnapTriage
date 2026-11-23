@@ -31,6 +31,21 @@ interface TriageMutationInput {
 }
 
 /**
+ * Whether a finished triage write should trigger a refetch.
+ *
+ * A warning response means the provider accepted the change but the local row
+ * could not be recorded. Refetching then reads that unchanged row and replaces
+ * the optimistic update with pre-write values, so the user watches their own
+ * successful action revert. Only the next sync can repair the row.
+ *
+ * @param data - The mutation's response body, if it resolved.
+ * @returns `true` when the caches should be invalidated.
+ */
+export function shouldRefetchAfterWrite(data: unknown): boolean {
+  return !(data as { warning?: string } | null)?.warning;
+}
+
+/**
  * React hook that returns a TanStack Query mutation for triaging issues.
  * Handles optimistic updates, error rollback, undo (both live and batch),
  * and cache invalidation.
@@ -104,7 +119,10 @@ export function useTriageMutation() {
         // Batch mode: push to undo stack
         pushUndo({ issueId, payload, previousPayload, description });
         toast("Change staged");
-        queryClient.invalidateQueries({ queryKey: ["batch-pending-count"] });
+        // One key covers the count and the preview now that both read the same
+        // query; without this the bar shows the new count beside a stale preview
+        // until the next poll.
+        queryClient.invalidateQueries({ queryKey: ["batch-pending-changes"] });
       } else {
         // Live mode: show undo toast
         showUndoToast(description, () => {
@@ -120,20 +138,27 @@ export function useTriageMutation() {
               return res.json();
             },
           });
-          reverseMutation.execute({}).then(() => {
+          reverseMutation.execute({}).finally(() => {
             queryClient.invalidateQueries({ queryKey: ["issues"] });
+            // The detail pane reads its own key, so undoing from the queue left it
+            // showing the state that was just reversed.
+            queryClient.invalidateQueries({ queryKey: ["issue", issueId] });
           });
         });
       }
     },
 
-    onSettled: () => {
+    onSettled: (data, _error, input) => {
+      // A warning means the provider accepted the change but the local row could
+      // not be recorded. Refetching now would read that unchanged row and replace
+      // the optimistic update with pre-write values, so the user would watch their
+      // own successful action revert. The next sync repairs the row instead.
+      if (!shouldRefetchAfterWrite(data)) return;
+
       queryClient.invalidateQueries({ queryKey: ["issues"] });
-      // The detail pane reads `["issue", id]`, which the queue invalidation does
-      // not cover. Without this the pane keeps showing the pre-write state, so a
-      // closed issue keeps offering "Reopen" and the next click re-sends the
-      // same state instead of toggling.
-      queryClient.invalidateQueries({ queryKey: ["issue"] });
+      // Only this issue's detail. The bare `["issue"]` prefix marked every cached
+      // detail stale, so unrelated panes refetched when reopened.
+      if (input) queryClient.invalidateQueries({ queryKey: ["issue", input.issueId] });
     },
   });
 }

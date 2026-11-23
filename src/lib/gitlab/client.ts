@@ -92,9 +92,16 @@ async function timedFetch(input: RequestInfo, init?: RequestInit): Promise<Respo
  */
 function discard(res: Response): void {
   (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
-  // Releasing the timer is not enough: an unread body keeps the connection open
-  // until the stream is cancelled or garbage collected.
-  void res.body?.cancel().catch(() => {});
+  // Releasing the timer is not enough: an unread body holds the connection.
+  // Draining it, rather than cancelling, is what returns it to the pool for reuse.
+  if (!res.body) return;
+  void (async () => {
+    try {
+      await res.arrayBuffer();
+    } catch {
+      // A body that cannot be read is already released; nothing to clean up.
+    }
+  })();
 }
 
 /**

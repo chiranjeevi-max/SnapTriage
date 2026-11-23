@@ -73,7 +73,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
  * @param req - Request with JSON body containing any combination of:
  *   `{ priority?, snoozedUntil?, dismissed?, labels?, assignees?, state?, batch? }`
  * @param params - Dynamic route params containing `id` (the issue's DB primary key)
- * @returns JSON `{ ok: true }` on success, or an error with 400/401/403/404/502 status
+ * @returns JSON `{ ok: true, warning? }` on success, or an error with
+ *          400/401/403/404/502 status. `warning` is present when the provider
+ *          accepted the change but recording it locally failed, so the caller
+ *          should not roll its optimistic state back.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();

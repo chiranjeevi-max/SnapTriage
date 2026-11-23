@@ -185,9 +185,17 @@ async function readText(res: Response): Promise<string> {
  */
 function discard(res: Response): void {
   (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
-  // `body.cancel` is the cheapest way to release the stream; a response without a
-  // readable body, as in tests, has nothing to cancel.
-  void res.body?.cancel().catch(() => {});
+  // Drained rather than simply dropped: reading to the end is what returns the
+  // connection to the pool, and these are small error or empty JSON bodies. A
+  // response with no readable body, as in tests, has nothing to drain.
+  if (!res.body) return;
+  void (async () => {
+    try {
+      await res.arrayBuffer();
+    } catch {
+      // A body that cannot be read is already released; nothing to clean up.
+    }
+  })();
 }
 
 /**

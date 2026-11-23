@@ -544,12 +544,20 @@ export const followUps = sqliteTable(
     uniqueIndex("follow_up_issue_user_unique").on(table.issueId, table.userId),
     index("follow_up_user_state_idx").on(table.userId, table.state),
     /**
-     * Serves the check pass, which filters on `(userId, state)` and orders by
-     * `(attemptedAt, checkedAt)` with a limit.
+     * Serves the check pass's filter, and on SQLite its order too.
      *
-     * Without it SQLite and Postgres both fall back to a temporary B-tree sort of
-     * every waiting row for that user, which measured ~23x slower on 5,000 rows.
-     * The columns continue the filter's own prefix, so one index serves both.
+     * The pass filters on `(userId, state)` and orders by `(attemptedAt,
+     * checkedAt)` with a limit. Without this index both drivers fall back to a
+     * scan of every waiting row for that user, which measured ~23x slower on
+     * 5,000 rows; the columns continue the filter's own prefix so one index
+     * covers the selectivity.
+     *
+     * The order itself is index-backed on SQLite only. Postgres cannot use a
+     * default-ascending index for `NULLS FIRST`, which the pass needs so a
+     * never-attempted row leads, so there it sorts the rows the index selected.
+     * That set is one user's waiting follow-ups bounded by the batch limit, so the
+     * cost is small; making it index-backed on Postgres needs a descending-era
+     * index expressed in raw SQL, which drizzle cannot declare from here.
      */
     index("follow_up_due_idx").on(table.userId, table.state, table.attemptedAt, table.checkedAt),
   ]

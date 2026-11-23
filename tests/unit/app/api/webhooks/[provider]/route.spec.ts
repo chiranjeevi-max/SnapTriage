@@ -130,18 +130,46 @@ function selectReturnsAll(rows: Array<Record<string, unknown> & { id: string }>)
   return whereMock;
 }
 
-/** Pull the cursor value out of the condition tree, if the route supplied one. */
+/**
+ * Pull the cursor value out of the condition tree, if the route supplied one.
+ *
+ * Structural rather than prefix-based: the real `repos.id` column holds UUIDs, so
+ * matching a `repo-` prefix would only work against the test's own fixture and
+ * could also pick up the repository-name parameter.
+ */
 function cursorFrom(condition: unknown): string | null {
-  const found: string[] = [];
+  const tokens: Array<{ column?: string; value?: unknown }> = [];
+
   const walk = (node: unknown) => {
-    if (node === null || typeof node !== "object") return;
+    if (node === null || node === undefined) return;
     if (Array.isArray(node)) return node.forEach(walk);
+    if (typeof node !== "object") return;
+
     const obj = node as Record<string, unknown>;
+    if (typeof obj.name === "string" && "table" in obj) {
+      tokens.push({ column: obj.name });
+      return;
+    }
     if (Array.isArray(obj.queryChunks)) return walk(obj.queryChunks);
-    if (typeof obj.value === "string" && obj.value.startsWith("repo-")) found.push(obj.value);
+    if ("value" in obj) {
+      const raw = obj.value;
+      tokens.push({ value: Array.isArray(raw) ? raw.join("") : raw });
+    }
   };
+
   walk(condition);
-  return found[0] ?? null;
+
+  // Find `id > <value>`: the cursor is bound immediately after that operator.
+  const idAt = tokens.findIndex((token) => token.column === "id");
+  if (idAt < 0) return null;
+
+  const operatorAt = tokens.findIndex(
+    (token, index) => index > idAt && typeof token.value === "string" && token.value.includes(">")
+  );
+  if (operatorAt < 0) return null;
+
+  const next = tokens[operatorAt + 1];
+  return typeof next?.value === "string" ? next.value : null;
 }
 
 describe("POST /api/webhooks/:provider", () => {
@@ -448,5 +476,92 @@ describe("POST /api/webhooks/:provider", () => {
       expect(res.status).toBe(400);
       expect(mockSyncRepo).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("POST /api/webhooks/:provider — failure recovery", () => {
+  const ORIGINAL_ENV = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    selectReturns([]);
+    mockRecordDelivery.mockResolvedValue(true);
+    mockRateLimit.mockResolvedValue(false);
+    mockSyncRepo.mockResolvedValue({ repoId: "repo-1", status: "completed", issuesFetched: 3 });
+    lastStatus = 0;
+    process.env = { ...ORIGINAL_ENV, WEBHOOK_SECRET: "whsec_test_secret" };
+  });
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  /**
+   * @target POST /api/webhooks/:provider
+   * @dependencies recordDelivery, reposForDelivery
+   * @scenario The subscriber read fails while paging to a later page
+   * @expectedOutput A retryable failure. Without forgetting the delivery the
+   *                 record stays, so the provider's retry is treated as a replay
+   *                 and the subscribers on the unread pages are never reached.
+   */
+  /**
+   * @target POST /api/webhooks/:provider
+   * @dependencies MAX_SUBSCRIBER_PAGES
+   * @scenario A repository has more subscribers than the page budget allows
+   * @expectedOutput 503 with the delivery forgotten, so a retry starts over. The
+   *                 loop is bounded so one request cannot run an unbounded number
+   *                 of provider syncs; a worker killed part-way would otherwise
+   *                 leave the delivery recorded and the rest unreachable.
+   */
+  it("stops at the page budget and keeps the delivery retryable", async () => {
+    const body = { repository: { full_name: "owner/huge" } };
+    const signature = hmac256("whsec_test_secret", JSON.stringify(body));
+
+    // Always a full page, so only the budget can end the loop.
+    let next = 0;
+    const limitMock = vi.fn(async () =>
+      Array.from({ length: 50 }, () => ({
+        id: `repo-${String(next++).padStart(6, "0")}`,
+        userId: "USR-000001",
+      }))
+    );
+    const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
+    const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock, limit: limitMock });
+    const fromMock = vi.fn().mockReturnValue({ where: whereMock });
+    mockSelect.mockReturnValue({ from: fromMock } as never);
+
+    const res = await postDelivery(body, signature, { "x-github-delivery": "delivery-huge" });
+
+    expect(res.status).toBe(503);
+    expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-huge");
+    // Bounded: 20 pages of 50, not an unbounded run.
+    expect(mockSyncRepo).toHaveBeenCalledTimes(1_000);
+  });
+
+  it("makes the delivery retryable when a page read fails", async () => {
+    const body = { repository: { full_name: "owner/repo" } };
+    const signature = hmac256("whsec_test_secret", JSON.stringify(body));
+
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      id: `repo-${String(index).padStart(4, "0")}`,
+      userId: `USR-${String(index).padStart(4, "0")}`,
+    }));
+
+    // First read succeeds, the continuation read throws.
+    let reads = 0;
+    const limitMock = vi.fn(async () => {
+      reads++;
+      if (reads === 1) return firstPage;
+      throw new Error("database is locked");
+    });
+    const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
+    const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock, limit: limitMock });
+    const fromMock = vi.fn().mockReturnValue({ where: whereMock });
+    mockSelect.mockReturnValue({ from: fromMock } as never);
+
+    const res = await postDelivery(body, signature, { "x-github-delivery": "delivery-dbfail" });
+
+    expect(res.status).toBe(500);
+    expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-dbfail");
   });
 });

@@ -18,7 +18,7 @@ import type { IssueWithTriage } from "@/features/inbox/use-issues";
 function issue(overrides: Partial<IssueWithTriage> = {}): IssueWithTriage {
   return {
     id: overrides.id ?? "issue",
-    repoId: "repo-1",
+    repoId: overrides.repoId ?? "repo-1",
     provider: "github",
     number: overrides.number ?? 1,
     title: "Title",
@@ -88,8 +88,8 @@ describe("sortIssues", () => {
   it("breaks a shared number and timestamp by id", () => {
     const same = "2026-01-05T00:00:00.000Z";
     const rows = [
-      issue({ id: "zzz", number: 12, updatedAt: same }),
-      issue({ id: "aaa", number: 12, updatedAt: same }),
+      issue({ id: "zzz", number: 12, repoId: "repo-b", updatedAt: same }),
+      issue({ id: "aaa", number: 12, repoId: "repo-a", updatedAt: same }),
     ];
 
     expect(sortIssues(rows, "number").map((row) => row.id)).toEqual(["aaa", "zzz"]);
@@ -234,7 +234,9 @@ describe("anchorSelection", () => {
     expect(anchorSelection([a, b], [a], 1)).toBeNull();
   });
 
-  it("reports nothing for an empty selection", () => {
-    expect(anchorSelection([a, b], [b, a], 5)).toBeNull();
+  it("reports nothing when the detail pane is closed", () => {
+    // -1 is the actual closed-pane value; a positive out-of-range index tests
+    // something the caller never sends.
+    expect(anchorSelection([a, b], [b, a], -1)).toBeNull();
   });
 });

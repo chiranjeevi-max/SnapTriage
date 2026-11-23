@@ -37,6 +37,12 @@ export interface ApplyPresetResult {
   noChange: boolean;
   /** The exact payload the server applied. */
   applied: TriagePayload;
+  /**
+   * Set when the provider accepted the change but the server could not record it.
+   *
+   * The user still needs to know: the issue looks right only after the next sync.
+   */
+  warning?: string;
   /** The preview lines the server computed with the same resolver the pane used. */
   changes: PreviewChange[];
   /** The values the write replaced, read inside the same operation. */
@@ -173,6 +179,11 @@ export function useApplyPreset() {
       // value the issue never carried.
       const inverse = invertToPayload(resolution, result.previous, result.staged);
 
+      // The provider accepted the change but the server could not record it, so
+      // the row reads correctly only after the next sync. Said plainly rather
+      // than hidden behind the usual success toast.
+      if (result.warning) toast.warning(result.warning);
+
       if (result.mode === "batch") {
         pushUndo({
           issueId: input.issueId,
@@ -181,7 +192,7 @@ export function useApplyPreset() {
           description,
         });
         toast(`Staged "${input.presetName}"`, { description: describeResolution(resolution) });
-        queryClient.invalidateQueries({ queryKey: ["batch-pending-count"] });
+        queryClient.invalidateQueries({ queryKey: ["batch-pending-changes"] });
         return;
       }
 

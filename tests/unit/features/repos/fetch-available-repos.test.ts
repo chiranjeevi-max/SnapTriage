@@ -119,8 +119,14 @@ describe("fetchAvailableRepos", () => {
    *                 resolve; a throw here would also drop the page already read.
    */
   it("keeps subgroup segments and earlier pages when a namespace is missing", async () => {
+    // `namespace` overridden to match the path, so the page is consistent
+    // provider data rather than a mixed fixture.
     const firstPage = Array.from({ length: 100 }, (_, index) =>
-      gitlabProject({ path: `p${index}`, path_with_namespace: `group/p${index}` })
+      gitlabProject({
+        path: `p${index}`,
+        path_with_namespace: `group/p${index}`,
+        namespace: { path: "group" },
+      })
     );
     const secondPage = [
       gitlabProject({ path: "app", path_with_namespace: "group/sub/app", namespace: null }),

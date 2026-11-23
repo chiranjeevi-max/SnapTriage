@@ -41,5 +41,10 @@ export async function GET() {
     .from(triageState)
     .where(and(eq(triageState.userId, session.user.id), eq(triageState.batchPending, true)));
 
-  return NextResponse.json({ count: rows.length, pending: rows.map((row) => row.pendingChanges) });
+  return NextResponse.json({
+    count: rows.length,
+    // A row written before the column existed can carry null. Normalized here so
+    // the preview never dereferences it.
+    pending: rows.map((row) => row.pendingChanges ?? {}),
+  });
 }

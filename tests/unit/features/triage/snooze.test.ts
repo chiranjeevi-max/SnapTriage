@@ -116,14 +116,6 @@ describe("snoozeInputMin", () => {
   /**
    * @target snoozeInputMin
    * @dependencies none
-   * @scenario A `datetime-local` input needs a floor
-   * @expectedOutput The current local time in the input's own shape, so the
-   *                 browser offers no past instant. Formatting in UTC would
-   *                 shift the floor by the zone offset.
-   */
-  /**
-   * @target snoozeInputMin
-   * @dependencies none
    * @scenario The clock is partway through a minute
    * @expectedOutput The next whole minute. The input's `min` is inclusive, so
    *                 the minute already in progress would be offered and then
@@ -138,14 +130,52 @@ describe("snoozeInputMin", () => {
     expect(parseCustomSnooze(snoozeInputMin(midMinute), midMinute)).not.toBeNull();
   });
 
-  it("formats the bound in local time", () => {
+  /**
+   * @target snoozeInputMin
+   * @dependencies none
+   * @scenario The clock sits exactly on a minute boundary
+   * @expectedOutput The next minute, not the current one. `Math.ceil` does not
+   *                 advance an exact value, so the inclusive `min` offered a
+   *                 minute that is not in the future.
+   */
+  it("advances past a clock sitting on an exact minute", () => {
+    const exact = new Date("2026-11-23T12:00:00.000Z");
+    const bound = new Date(snoozeInputMin(exact));
+
+    expect(bound.getTime()).toBe(exact.getTime() + 60_000);
+  });
+
+  /**
+   * @target snoozeInputMin
+   * @dependencies none
+   * @scenario Any clock inside a minute
+   * @expectedOutput Exactly the next whole minute, so the floor is never later
+   *                 than it has to be and never earlier than it may be.
+   */
+  it("lands on exactly the next whole minute", () => {
+    const midMinute = new Date("2026-11-23T12:00:30.000Z");
+
+    expect(new Date(snoozeInputMin(midMinute)).getTime()).toBe(midMinute.getTime() + 30_000);
+  });
+
+  /**
+   * @target snoozeInputMin
+   * @dependencies none
+   * @scenario The bound is rendered for a `datetime-local` input
+   * @expectedOutput The next minute in local time, in the input's own shape.
+   *                 Formatting in UTC would shift the floor by the zone offset,
+   *                 so the browser would offer an instant the check rejects.
+   */
+  it("formats the next minute in local time", () => {
     const value = snoozeInputMin(NOW);
 
     expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
-    expect(value).toBe(
-      new Date(NOW.getTime() - NOW.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
-    );
-    // Feeding it back as a local value must land on the same minute.
-    expect(new Date(value).getMinutes()).toBe(NOW.getMinutes());
+
+    // NOW is 12:00:00 exactly, so the bound is 12:01 local.
+    const nextMinute = new Date(NOW.getTime() + 60_000);
+    const expected = new Date(nextMinute.getTime() - nextMinute.getTimezoneOffset() * 60_000)
+      .toISOString()
+      .slice(0, 16);
+    expect(value).toBe(expected);
   });
 });
