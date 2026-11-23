@@ -33,6 +33,7 @@ import type { IssueWithTriage, IssueDetail } from "@/features/inbox/use-issues";
 import { useIssue } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { priorityOptions } from "@/features/triage/priority";
+import { toggleIssueState } from "@/features/triage/triage-actions";
 import { useKeyboardStore, Kbd } from "@/features/keyboard";
 import { Discussion, Composer } from "@/features/replies";
 import { FollowUpControl } from "@/features/follow-up";
@@ -110,6 +111,13 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
       payload: { dismissed: newDismissed },
       previousPayload: { dismissed: !newDismissed },
       description: newDismissed ? "Dismissed issue" : "Undismissed issue",
+    });
+  }
+
+  function handleToggleState() {
+    triage.mutate({
+      issueId: currentIssue.id,
+      ...toggleIssueState(currentIssue.state === "closed" ? "closed" : "open"),
     });
   }
 
@@ -221,6 +229,23 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
             <TooltipContent side="bottom" className="flex items-center gap-1.5">
               <span>Toggle dismiss</span>
               <Kbd>D</Kbd>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={resolvedIssue.state === "closed" ? "secondary" : "outline"}
+                size="sm"
+                onClick={handleToggleState}
+                className="h-8 gap-1.5 px-2.5 text-xs"
+              >
+                {resolvedIssue.state === "closed" ? "Reopen" : "Close"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="flex items-center gap-1.5">
+              <span>{resolvedIssue.state === "closed" ? "Reopen issue" : "Close issue"}</span>
+              <Kbd>C</Kbd>
             </TooltipContent>
           </Tooltip>
 

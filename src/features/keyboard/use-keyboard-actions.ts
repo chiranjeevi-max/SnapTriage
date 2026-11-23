@@ -18,6 +18,7 @@ import { useSync, type IssueWithTriage } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { useUndoStore } from "@/features/triage/use-undo";
 import { useBatchPush } from "@/features/triage/use-batch";
+import { toggleIssueState } from "@/features/triage/triage-actions";
 
 export function useKeyboardActions(issues: IssueWithTriage[]) {
   const {
@@ -95,6 +96,22 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
             payload: { dismissed: newDismissed },
             previousPayload: { dismissed: !newDismissed },
             description: newDismissed ? "Dismissed issue" : "Undismissed issue",
+          });
+          break;
+        }
+        case "toggle-state": {
+          if (!currentIssue) break;
+          // `state` is narrowed to the two values the schema accepts; any other
+          // stored string is treated as open, which is the only thing a provider
+          // can report besides closed.
+          const { payload, previousPayload, description } = toggleIssueState(
+            currentIssue.state === "closed" ? "closed" : "open"
+          );
+          triageRef.current.mutate({
+            issueId: currentIssue.id,
+            payload,
+            previousPayload,
+            description,
           });
           break;
         }

@@ -113,3 +113,14 @@ The webhook route synced at most 50 subscribers per delivery and then answered
 case multi-tenant tracking produces — the last subscribers were never synced and nothing
 said so. The cap stays (it bounds one request's fan-out) but now fetches one row past it to
 detect truncation, logs, and answers 503 with the delivery kept retryable.
+
+## Features
+
+The bug backlog is now down to lower-severity items. These five are additive, self-contained,
+and each is its own commit so it can be reverted with `git revert`.
+
+### Feature 1 — Close or reopen the issue from the keyboard
+Justification: the close/reopen path already exists end to end — the patch schema accepts
+`state`, `applyTriage` passes it to the provider, both clients implement it, and the
+optimistic updater applies it — but nothing ever sends it, so a maintainer cannot finish an
+issue without leaving the app.
