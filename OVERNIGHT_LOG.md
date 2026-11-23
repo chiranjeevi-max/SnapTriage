@@ -42,3 +42,13 @@ now match the established convention and return 400; three tests fail without th
 repo selector look like it had silently stopped working, and after a disconnect the client
 still holds the deleted id. A filter that cannot match now selects nothing; the test fails
 against the old code with both repos' issues returned.
+
+### Cycle 6 — Release provider request timers on every read path
+Two adapter defects, both from the same rule stated in the modules' own comments: every
+response body must be read through a helper that releases the request's abort timer.
+`githubProvider.getRepoPermission` read `/user` with bare `res.json()`, leaking a timer and
+interpolating a possibly-absent `login` into `/collaborators/undefined/permission` — whose
+404 surfaced as "repository not found or not accessible" for a repo the user can see. The
+GitLab adapter had no `readText` at all and its six `!res.ok` paths called `res.text()`
+directly, leaking one 30s timer per failed call. Added `readText`, routed all six through
+it. Four tests fail without the change.

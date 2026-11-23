@@ -82,6 +82,19 @@ async function timedFetch(input: RequestInfo, init?: RequestInit): Promise<Respo
 }
 
 /**
+ * Release a response whose body will not be read.
+ *
+ * Call this on every `!res.ok` early return that does not read the body.
+ * Skipping it leaves the request's timer armed for its full duration, which
+ * leaks one timer per failed call.
+ *
+ * @param res - A response returned by {@link timedFetch} that will not be read.
+ */
+function discard(res: Response): void {
+  (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
+}
+
+/**
  * Read a response body, then release the timer that guarded it.
  *
  * Every `timedFetch` response must go through this. Reading the body directly
@@ -91,22 +104,31 @@ async function timedFetch(input: RequestInfo, init?: RequestInit): Promise<Respo
  * @param res - A response returned by {@link timedFetch}.
  * @returns The parsed body.
  */
-/**
- * Release a response whose body will not be read.
- *
- * Call this on every `!res.ok` early return. Skipping it leaves the request's
- * timer armed for its full duration, which leaks one timer per failed call.
- *
- * @param res - A response returned by {@link timedFetch} that will not be read.
- */
-function discard(res: Response): void {
-  (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
-}
-
 async function readJson<T>(res: Response): Promise<T> {
   const release = (res as unknown as { releaseTimeout?: () => void }).releaseTimeout;
   try {
     return (await res.json()) as T;
+  } finally {
+    release?.();
+  }
+}
+
+/**
+ * Read a failed response's body as text, then release its timer.
+ *
+ * An error path reads the body to quote it in {@link ProviderApiError}, which is
+ * still a read: going through `res.text()` directly leaves one timer armed per
+ * failed call, up to {@link REQUEST_TIMEOUT_MS}.
+ *
+ * @param res - A response returned by {@link timedFetch}.
+ * @returns The body, or an empty string when it cannot be read.
+ */
+async function readText(res: Response): Promise<string> {
+  const release = (res as unknown as { releaseTimeout?: () => void }).releaseTimeout;
+  try {
+    return await res.text();
+  } catch {
+    return "";
   } finally {
     release?.();
   }
@@ -175,7 +197,7 @@ export const gitlabProvider: IssueProvider = {
       });
 
       if (!res.ok) {
-        const body = await res.text().catch(() => "");
+        const body = await readText(res);
         providerLogger.warn(
           { status: res.status, owner, repo, page },
           "GitLab fetchIssues page failed"
@@ -265,7 +287,7 @@ export const gitlabProvider: IssueProvider = {
     if (assignees && (assignees.add?.length || assignees.remove?.length)) {
       const issueRes = await timedFetch(issueUrl, { headers: headers(token) });
       if (!issueRes.ok) {
-        const body = await issueRes.text().catch(() => "");
+        const body = await readText(issueRes);
         throw new ProviderApiError(issueRes.status, body, context);
       }
       const current = issueAssigneesSchema.safeParse(await readJson<unknown>(issueRes));
@@ -282,7 +304,7 @@ export const gitlabProvider: IssueProvider = {
           { headers: headers(token) }
         );
         if (!userRes.ok) {
-          const body = await userRes.text().catch(() => "");
+          const body = await readText(userRes);
           throw new ProviderApiError(userRes.status, body, context);
         }
         const found = z.array(gitlabUserSchema).safeParse(await readJson<unknown>(userRes));
@@ -304,7 +326,7 @@ export const gitlabProvider: IssueProvider = {
         body: JSON.stringify(params),
       });
       if (!updateRes.ok) {
-        const body = await updateRes.text().catch(() => "");
+        const body = await readText(updateRes);
         throw new ProviderApiError(updateRes.status, body, context);
       }
     }
@@ -498,7 +520,7 @@ export const gitlabProvider: IssueProvider = {
     );
 
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
+      const body = await readText(res);
       throw new ProviderApiError(res.status, body, {
         provider: "gitlab",
         operation: "fetchComments",
@@ -551,7 +573,7 @@ export const gitlabProvider: IssueProvider = {
     );
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
+      const text = await readText(res);
       throw new ProviderApiError(res.status, text, {
         provider: "gitlab",
         operation: "createComment",

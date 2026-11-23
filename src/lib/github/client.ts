@@ -390,7 +390,12 @@ export const githubProvider: IssueProvider = {
       discard(userRes);
       return null;
     }
-    const user = await userRes.json();
+    // Through `readBody` so the response's timer is released, and guarded
+    // because interpolating an absent login would request a permission for
+    // `/collaborators/undefined/...`, whose 404 reads as "repository not
+    // found" for a repository the user can see.
+    const user = await readBody<{ login?: string }>(userRes);
+    if (!user?.login) return null;
 
     const res = await ghFetch(
       `${GITHUB_API}/repos/${owner}/${repo}/collaborators/${user.login}/permission`,
