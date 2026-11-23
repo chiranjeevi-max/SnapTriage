@@ -281,21 +281,18 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
   // Two rules decide which rows this pass examines, and both belong in the query.
   //
   // The cooldown filters, because applying it after `.limit()` lets recently
-  // checked rows consume the batch and starve the due ones.
+  // attempted rows consume the batch and starve the due ones.
   //
   // The ordering uses `attemptedAt`, not `checkedAt`. `checkedAt` only moves when
   // a check completes, so a row whose provider read keeps failing would stay the
   // oldest forever and be retried on every pass while healthy rows behind it
   // wait. Ordering by the last attempt rotates those rows to the back once they
-  // have had their turn, and `checkedAt` keeps its meaning for the UI.
-  // A row is due when neither its last attempt nor its last completed check is
-  // inside the cooldown. Written as two disjunctions rather than a `coalesce`
-  // so the predicate stays plain column comparisons, which both drivers index
-  // and which any reader can check against the schema.
-  // Due means "not attempted recently". `checkedAt` only decides the order for
-  // rows that have never been attempted, so it does not appear here: including
-  // it would permanently exclude a row whose attempts keep failing, which is the
-  // starvation this column exists to prevent.
+  // have had their turn, and `checkedAt` keeps its meaning for the UI — it orders
+  // two never-attempted rows, and nothing else.
+  //
+  // Due means "not attempted recently": one disjunction over `attemptedAt` alone.
+  // Adding `checkedAt` to it would permanently exclude a row whose attempts keep
+  // failing, which is the starvation this column exists to prevent.
   const due = or(isNull(followUps.attemptedAt), lt(followUps.attemptedAt, cutoff));
 
   const waiting = await typedDb
