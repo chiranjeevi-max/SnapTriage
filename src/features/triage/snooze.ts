@@ -70,11 +70,30 @@ export function parseCustomSnooze(value: string, now: Date): string | null {
  * @returns The minimum selectable value.
  */
 export function snoozeInputMin(now: Date): string {
-  // Strictly after `now`, not merely rounded up. The input's `min` is inclusive,
-  // so a clock sitting exactly on a minute boundary would otherwise offer that
-  // minute, which is not in the future and which `parseCustomSnooze` rejects —
-  // leaving the user with a value the picker shows and Set refuses.
-  const nextMinute = (Math.floor(now.getTime() / 60_000) + 1) * 60_000;
-  const local = new Date(nextMinute - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  // Formatted from the generated instant's own local fields rather than by
+  // applying `now`'s offset to it: during the repeated hour when clocks fall back
+  // the two offsets differ, and reusing `now`'s rendered a wall clock an hour away
+  // from the instant it meant.
+  const format = (at: Date) => {
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return (
+      `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}` +
+      `T${pad(at.getHours())}:${pad(at.getMinutes())}`
+    );
+  };
+
+  // Walk forward a minute at a time until the value round-trips to an instant in
+  // the future. `datetime-local` carries no zone, so a wall clock inside the
+  // repeated hour resolves to the earlier occurrence and reads as already past;
+  // no string can disambiguate it, so the bound steps past the ambiguity instead
+  // of offering a value the submit check then refuses.
+  let candidate = (Math.floor(now.getTime() / 60_000) + 1) * 60_000;
+  for (let step = 0; step < 120; step++) {
+    const value = format(new Date(candidate));
+    if (parseCustomSnooze(value, now)) return value;
+    candidate += 60_000;
+  }
+
+  // Two hours of steps always clears a one-hour transition.
+  return format(new Date(candidate));
 }

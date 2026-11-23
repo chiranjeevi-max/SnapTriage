@@ -538,6 +538,33 @@ describe("POST /api/webhooks/:provider — failure recovery", () => {
    *                 record stays, so the provider's retry is treated as a replay
    *                 and the subscribers on the unread pages are never reached.
    */
+  /**
+   * @target POST /api/webhooks/:provider
+   * @dependencies recordDelivery, reposForDelivery
+   * @scenario The very first subscriber read fails
+   * @expectedOutput A retryable failure. `recordDelivery` already stored the
+   *                 delivery, so an escaping error leaves it recorded and the
+   *                 provider's retry is taken for a replay with nothing synced.
+   */
+  it("makes the delivery retryable when the first read fails", async () => {
+    const body = { repository: { full_name: "owner/repo" } };
+    const signature = hmac256("whsec_test_secret", JSON.stringify(body));
+
+    const limitMock = vi.fn(async () => {
+      throw new Error("database is locked");
+    });
+    const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
+    const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock, limit: limitMock });
+    const fromMock = vi.fn().mockReturnValue({ where: whereMock });
+    mockSelect.mockReturnValue({ from: fromMock } as never);
+
+    const res = await postDelivery(body, signature, { "x-github-delivery": "delivery-firstfail" });
+
+    expect(res.status).toBe(500);
+    expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-firstfail");
+    expect(mockSyncRepo).not.toHaveBeenCalled();
+  });
+
   it("makes the delivery retryable when a page read fails", async () => {
     const body = { repository: { full_name: "owner/repo" } };
     const signature = hmac256("whsec_test_secret", JSON.stringify(body));

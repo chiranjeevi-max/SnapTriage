@@ -161,6 +161,31 @@ describe("snoozeInputMin", () => {
   /**
    * @target snoozeInputMin
    * @dependencies none
+   * @scenario The clock sits inside the hour that repeats when clocks fall back
+   * @expectedOutput A value that `parseCustomSnooze` accepts. `datetime-local`
+   *                 carries no zone, so a wall clock in that hour resolves to the
+   *                 earlier occurrence and reads as already past; the bound steps
+   *                 past the ambiguity rather than offering a value Set refuses.
+   */
+  it("steps past a wall clock that resolves into the past", () => {
+    // Zone-independent: this asserts the invariant that the returned value is
+    // always submittable, whatever the local calendar does.
+    for (const now of [
+      new Date("2026-11-01T05:30:00Z"),
+      new Date("2026-11-01T06:00:00Z"),
+      new Date("2026-03-29T01:30:00Z"),
+    ]) {
+      const value = snoozeInputMin(now);
+      expect(
+        parseCustomSnooze(value, now),
+        `bound ${value} at ${now.toISOString()}`
+      ).not.toBeNull();
+    }
+  });
+
+  /**
+   * @target snoozeInputMin
+   * @dependencies none
    * @scenario The bound is rendered for a `datetime-local` input
    * @expectedOutput The next minute in local time, in the input's own shape.
    *                 Formatting in UTC would shift the floor by the zone offset,

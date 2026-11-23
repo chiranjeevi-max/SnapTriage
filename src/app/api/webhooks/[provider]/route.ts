@@ -212,7 +212,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
   // the user typed when connecting the repo may differ, so the match is
   // case-insensitive. Repos the user switched off are left alone.
   const limit = pLimit(3);
-  const firstPage = await reposForDelivery(provider, fullName, null);
+  let firstPage;
+  try {
+    firstPage = await reposForDelivery(provider, fullName, null);
+  } catch (error) {
+    // `recordDelivery` already stored this delivery, so an escaping error would
+    // leave it recorded and the provider's retry would be taken for a replay
+    // without a single subscriber synced.
+    apiLogger.error(
+      { provider, fullName, error: error instanceof Error ? error.message : String(error) },
+      "Webhook subscriber read failed"
+    );
+    await forgetDelivery(provider, deliveryId);
+    return NextResponse.json({ ok: false, error: "Could not read subscribers" }, { status: 500 });
+  }
 
   if (firstPage.length === 0) {
     await forgetDelivery(provider, deliveryId);

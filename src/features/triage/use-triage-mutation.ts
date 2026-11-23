@@ -155,12 +155,29 @@ export function useTriageMutation() {
               return res.json();
             },
           });
-          reverseMutation.execute({}).finally(() => {
-            queryClient.invalidateQueries({ queryKey: ["issues"] });
-            // The detail pane reads its own key, so undoing from the queue left it
-            // showing the state that was just reversed.
-            queryClient.invalidateQueries({ queryKey: ["issue", issueId] });
-          });
+          reverseMutation.execute({}).then(
+            (undoResult) => {
+              // The provider accepted the undo but the server could not record it.
+              // Refetching would read the pre-undo row and show the state the
+              // provider just reversed, so the optimistic result stays put.
+              const undoWarning = (undoResult as { warning?: string } | null)?.warning;
+              if (undoWarning) {
+                toast.warning(undoWarning);
+                return;
+              }
+              queryClient.invalidateQueries({ queryKey: ["issues"] });
+              // The detail pane reads its own key, so undoing from the queue left
+              // it showing the state that was just reversed.
+              queryClient.invalidateQueries({ queryKey: ["issue", issueId] });
+            },
+            () => {
+              // A failed undo may still have reached the provider, so refresh
+              // both: showing the applied values would be a claim the app cannot
+              // support.
+              queryClient.invalidateQueries({ queryKey: ["issues"] });
+              queryClient.invalidateQueries({ queryKey: ["issue", issueId] });
+            }
+          );
         });
       }
     },
