@@ -91,13 +91,85 @@ async function postDelivery(
   return res;
 }
 
-/** Configures the select().from().where().limit() chain to return the given rows. */
-function selectReturns(rows: unknown[]) {
-  const limitMock = vi.fn().mockResolvedValue(rows);
-  const whereMock = vi.fn().mockReturnValue({ limit: limitMock });
+/** Configures the subscriber read to answer with the given rows. */
+function selectReturns(rows: Array<Record<string, unknown> & { id: string }>) {
+  return selectReturnsAll(rows);
+}
+
+/**
+ * Configures the subscriber read to serve a whole subscriber set, paged the way
+ * the database would.
+ *
+ * The route reads subscribers one page at a time with a cursor, so the mock has
+ * to honour the cursor rather than hand back rows in call order: a mock that
+ * ignored it would pass even if the route never advanced, which is exactly the
+ * bug this covers.
+ */
+function selectReturnsAll(rows: Array<Record<string, unknown> & { id: string }>) {
+  let reads = 0;
+  const limitMock = vi.fn(async () => {
+    // A route that never advances its cursor would loop here. Failing fast on an
+    // implausible number of reads turns that into a clear assertion failure
+    // instead of a worker crash that reports nothing.
+    reads++;
+    if (reads > rows.length + 2) {
+      throw new Error("subscriber read did not advance its cursor");
+    }
+    // Read the cursor out of the condition the route built. The route filters to
+    // `id > cursor`, so anything at or below the cursor is already handled.
+    const condition = whereMock.mock.calls.at(-1)?.[0];
+    const cursor = cursorFrom(condition);
+    const remaining =
+      cursor === null ? rows : rows.filter((row) => String(row.id).localeCompare(cursor) > 0);
+    return remaining.slice(0, 50);
+  });
+  const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
+  const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock, limit: limitMock });
   const fromMock = vi.fn().mockReturnValue({ where: whereMock });
   mockSelect.mockReturnValue({ from: fromMock } as never);
   return whereMock;
+}
+
+/**
+ * Pull the cursor value out of the condition tree, if the route supplied one.
+ *
+ * Structural rather than prefix-based: the real `repos.id` column holds UUIDs, so
+ * matching a `repo-` prefix would only work against the test's own fixture and
+ * could also pick up the repository-name parameter.
+ */
+function cursorFrom(condition: unknown): string | null {
+  const tokens: Array<{ column?: string; value?: unknown }> = [];
+
+  const walk = (node: unknown) => {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (typeof node !== "object") return;
+
+    const obj = node as Record<string, unknown>;
+    if (typeof obj.name === "string" && "table" in obj) {
+      tokens.push({ column: obj.name });
+      return;
+    }
+    if (Array.isArray(obj.queryChunks)) return walk(obj.queryChunks);
+    if ("value" in obj) {
+      const raw = obj.value;
+      tokens.push({ value: Array.isArray(raw) ? raw.join("") : raw });
+    }
+  };
+
+  walk(condition);
+
+  // Find `id > <value>`: the cursor is bound immediately after that operator.
+  const idAt = tokens.findIndex((token) => token.column === "id");
+  if (idAt < 0) return null;
+
+  const operatorAt = tokens.findIndex(
+    (token, index) => index > idAt && typeof token.value === "string" && token.value.includes(">")
+  );
+  if (operatorAt < 0) return null;
+
+  const next = tokens[operatorAt + 1];
+  return typeof next?.value === "string" ? next.value : null;
 }
 
 describe("POST /api/webhooks/:provider", () => {
@@ -128,11 +200,9 @@ describe("POST /api/webhooks/:provider", () => {
     it("should return 503 when the webhook secret is not configured", async () => {
       delete process.env.WEBHOOK_SECRET;
 
-      const res = await postDelivery(
-        { repository: { full_name: "o/r" } },
-        hmac256("x", "{}"),
-        { "x-github-delivery": "delivery-503" }
-      );
+      const res = await postDelivery({ repository: { full_name: "o/r" } }, hmac256("x", "{}"), {
+        "x-github-delivery": "delivery-503",
+      });
 
       expect(res.status).toBe(503);
       expect(mockSyncRepo).not.toHaveBeenCalled();
@@ -325,6 +395,41 @@ describe("POST /api/webhooks/:provider", () => {
       expect(res.status).toBe(500);
       expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-fail");
     });
+
+    /**
+     * @target POST /api/webhooks/:provider
+     * @dependencies syncRepo
+     * @scenario More repositories subscribe to the repo than one page can hold
+     * @expectedOutput Every subscriber is synced and the delivery is completed.
+     *                 Stopping at a page and returning 503 left the rest
+     *                 unreachable: the retry re-read the same first page, so it
+     *                 could never progress past it.
+     */
+    it("should sync every subscriber across pages", async () => {
+      const body = { repository: { full_name: "owner/popular" } };
+      const signature = hmac256("whsec_test_secret", JSON.stringify(body));
+
+      // One full page and a short second one, so the loop has to page. A single
+      // delivery can arrive for a repository with more subscribers than one
+      // statement should hold, and the subscribers past the first page must
+      // still be reached: nothing retries them, because a successful delivery is
+      // deleted and a retry would start from the same first page.
+      const subscribers = Array.from({ length: 51 }, (_, index) => ({
+        id: `repo-${String(index).padStart(4, "0")}`,
+        userId: `USR-${String(index).padStart(4, "0")}`,
+      }));
+      selectReturnsAll(subscribers);
+
+      const res = await postDelivery(body, signature, {
+        "x-github-delivery": "delivery-paged",
+      });
+
+      expect(res.status).toBe(200);
+      expect(lastBody).toEqual({ ok: true, synced: 51 });
+      expect(mockSyncRepo).toHaveBeenCalledTimes(51);
+      // The delivery completed, so it must not be replayed.
+      expect(mockForgetDelivery).not.toHaveBeenCalledWith("github", "delivery-paged");
+    });
   });
 
   describe("rate limiting and cost bounds", () => {
@@ -371,5 +476,119 @@ describe("POST /api/webhooks/:provider", () => {
       expect(res.status).toBe(400);
       expect(mockSyncRepo).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("POST /api/webhooks/:provider — failure recovery", () => {
+  const ORIGINAL_ENV = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    selectReturns([]);
+    mockRecordDelivery.mockResolvedValue(true);
+    mockRateLimit.mockResolvedValue(false);
+    mockSyncRepo.mockResolvedValue({ repoId: "repo-1", status: "completed", issuesFetched: 3 });
+    lastStatus = 0;
+    process.env = { ...ORIGINAL_ENV, WEBHOOK_SECRET: "whsec_test_secret" };
+  });
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  /**
+   * @target POST /api/webhooks/:provider
+   * @dependencies MAX_SUBSCRIBER_PAGES
+   * @scenario A repository has more subscribers than the page budget allows
+   * @expectedOutput 503 with the delivery forgotten, so a retry starts over. The
+   *                 loop is bounded so one request cannot run an unbounded number
+   *                 of provider syncs; a worker killed part-way would otherwise
+   *                 leave the delivery recorded and the rest unreachable.
+   */
+  it("stops at the page budget and keeps the delivery retryable", async () => {
+    const body = { repository: { full_name: "owner/huge" } };
+    const signature = hmac256("whsec_test_secret", JSON.stringify(body));
+
+    // Always a full page, so only the budget can end the loop.
+    let next = 0;
+    const limitMock = vi.fn(async () =>
+      Array.from({ length: 50 }, () => ({
+        id: `repo-${String(next++).padStart(6, "0")}`,
+        userId: "USR-000001",
+      }))
+    );
+    const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
+    const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock, limit: limitMock });
+    const fromMock = vi.fn().mockReturnValue({ where: whereMock });
+    mockSelect.mockReturnValue({ from: fromMock } as never);
+
+    const res = await postDelivery(body, signature, { "x-github-delivery": "delivery-huge" });
+
+    expect(res.status).toBe(503);
+    expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-huge");
+    // Bounded: 20 pages of 50, not an unbounded run.
+    expect(mockSyncRepo).toHaveBeenCalledTimes(1_000);
+  });
+
+  /**
+   * @target POST /api/webhooks/:provider
+   * @dependencies recordDelivery, reposForDelivery
+   * @scenario The subscriber read fails while paging to a later page
+   * @expectedOutput A retryable failure. Without forgetting the delivery the
+   *                 record stays, so the provider's retry is treated as a replay
+   *                 and the subscribers on the unread pages are never reached.
+   */
+  /**
+   * @target POST /api/webhooks/:provider
+   * @dependencies recordDelivery, reposForDelivery
+   * @scenario The very first subscriber read fails
+   * @expectedOutput A retryable failure. `recordDelivery` already stored the
+   *                 delivery, so an escaping error leaves it recorded and the
+   *                 provider's retry is taken for a replay with nothing synced.
+   */
+  it("makes the delivery retryable when the first read fails", async () => {
+    const body = { repository: { full_name: "owner/repo" } };
+    const signature = hmac256("whsec_test_secret", JSON.stringify(body));
+
+    const limitMock = vi.fn(async () => {
+      throw new Error("database is locked");
+    });
+    const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
+    const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock, limit: limitMock });
+    const fromMock = vi.fn().mockReturnValue({ where: whereMock });
+    mockSelect.mockReturnValue({ from: fromMock } as never);
+
+    const res = await postDelivery(body, signature, { "x-github-delivery": "delivery-firstfail" });
+
+    expect(res.status).toBe(500);
+    expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-firstfail");
+    expect(mockSyncRepo).not.toHaveBeenCalled();
+  });
+
+  it("makes the delivery retryable when a page read fails", async () => {
+    const body = { repository: { full_name: "owner/repo" } };
+    const signature = hmac256("whsec_test_secret", JSON.stringify(body));
+
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      id: `repo-${String(index).padStart(4, "0")}`,
+      userId: `USR-${String(index).padStart(4, "0")}`,
+    }));
+
+    // First read succeeds, the continuation read throws.
+    let reads = 0;
+    const limitMock = vi.fn(async () => {
+      reads++;
+      if (reads === 1) return firstPage;
+      throw new Error("database is locked");
+    });
+    const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
+    const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock, limit: limitMock });
+    const fromMock = vi.fn().mockReturnValue({ where: whereMock });
+    mockSelect.mockReturnValue({ from: fromMock } as never);
+
+    const res = await postDelivery(body, signature, { "x-github-delivery": "delivery-dbfail" });
+
+    expect(res.status).toBe(500);
+    expect(mockForgetDelivery).toHaveBeenCalledWith("github", "delivery-dbfail");
   });
 });

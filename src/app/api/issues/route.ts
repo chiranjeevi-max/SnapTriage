@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  *   - `hideDismissed` (optional): hide dismissed issues when `"true"`
  */
 import { NextResponse } from "next/server";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { typedDb } from "@/lib/db/query";
 import { issues, repos, triageState } from "@/lib/db/schema";
@@ -39,7 +39,10 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
-  const repoId = searchParams.get("repoId");
+  // `has` rather than a truthiness test: `?repoId=` arrives as an empty string,
+  // and treating that as "no filter" would widen an explicit filter to the whole
+  // queue instead of matching nothing.
+  const repoId = searchParams.has("repoId") ? searchParams.get("repoId") : null;
   const state = searchParams.get("state") ?? "open";
   const hideDismissed = searchParams.get("hideDismissed") === "true";
 
@@ -54,12 +57,20 @@ export async function GET(req: Request) {
     return NextResponse.json([]);
   }
 
-  // Build conditions; always filter by state and user's repos
+  // Build conditions; always filter by state and user's repos.
+  //
+  // A `repoId` the user does not own selects nothing. Falling back to every
+  // repo would turn a stale or mistyped filter into the whole queue, which
+  // reads as the filter silently stopping — worst right after a disconnect,
+  // where the client still holds the deleted id.
   const repoIdSet = new Set(repoIds);
-  const conditions = and(
-    eq(issues.state, state),
-    repoId && repoIdSet.has(repoId) ? eq(issues.repoId, repoId) : inArray(issues.repoId, repoIds)
-  )!;
+  const repoScope =
+    repoId === null
+      ? inArray(issues.repoId, repoIds)
+      : repoIdSet.has(repoId)
+        ? eq(issues.repoId, repoId)
+        : sql`0 = 1`;
+  const conditions = and(eq(issues.state, state), repoScope)!;
 
   const issueRows = await typedDb
     .select({

@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  * resistant.
  */
 import { NextResponse } from "next/server";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, gt, sql } from "drizzle-orm";
 import { timingSafeEqual, createHmac } from "node:crypto";
 import pLimit from "p-limit";
 import { typedDb } from "@/lib/db/query";
@@ -29,6 +29,7 @@ import {
 } from "@/features/webhooks/delivery-store";
 import { checkPersistentRateLimit } from "@/lib/rate-limit";
 import { rateLimitKey } from "@/lib/request-context";
+import { apiLogger } from "@/lib/logger";
 
 /** Providers this endpoint accepts deliveries for. */
 const SUPPORTED_PROVIDERS: Record<string, true | undefined> = {
@@ -47,6 +48,26 @@ const MAX_BODY_BYTES = 4 * 1024 * 1024;
  */
 const WEBHOOK_RATE_LIMIT = 120;
 const WEBHOOK_RATE_WINDOW_MS = 60 * 1000;
+
+/**
+ * Repositories handled per subscriber page.
+ *
+ * One delivery fans out to every user tracking the repository, so this bounds
+ * the work one statement or one burst of parallel syncs holds. It is a page
+ * size, not a cap: a repository with more subscribers is read page by page so
+ * nobody is left unsynced.
+ */
+const SUBSCRIBER_PAGE_SIZE = 50;
+
+/**
+ * Pages one delivery may sync before it stops and asks to be retried.
+ *
+ * 20 pages is 1,000 subscribers in one request, well past any realistic
+ * repository and still bounded. A delivery that hits this is forgotten and
+ * answered 503, so the provider's retry re-reads from the start rather than the
+ * work being lost mid-flight.
+ */
+const MAX_SUBSCRIBER_PAGES = 20;
 
 function safeEqual(a: string, b: string): boolean {
   const ba = Buffer.from(a);
@@ -190,34 +211,121 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
   // The provider spells repository names in its own casing, while the name
   // the user typed when connecting the repo may differ, so the match is
   // case-insensitive. Repos the user switched off are left alone.
-  const connectedRepos = await typedDb
-    .select()
-    .from(repos)
-    .where(
-      and(
-        eq(repos.provider, provider),
-        eq(sql`lower(${repos.fullName})`, fullName.toLowerCase()),
-        eq(repos.syncEnabled, true)
-      )
-    )
-    .limit(50);
+  const limit = pLimit(3);
+  let firstPage;
+  try {
+    firstPage = await reposForDelivery(provider, fullName, null);
+  } catch (error) {
+    // `recordDelivery` already stored this delivery, so an escaping error would
+    // leave it recorded and the provider's retry would be taken for a replay
+    // without a single subscriber synced.
+    apiLogger.error(
+      { provider, fullName, error: error instanceof Error ? error.message : String(error) },
+      "Webhook subscriber read failed"
+    );
+    await forgetDelivery(provider, deliveryId);
+    return NextResponse.json({ ok: false, error: "Could not read subscribers" }, { status: 500 });
+  }
 
-  if (connectedRepos.length === 0) {
+  if (firstPage.length === 0) {
     await forgetDelivery(provider, deliveryId);
     return NextResponse.json({ ok: true, ignored: true });
   }
 
-  const limit = pLimit(3);
-  const results = await Promise.all(
-    connectedRepos.map((repo) => limit(() => syncRepo(repo.id, repo.userId)))
-  );
+  // Subscribers are synced page by page, up to a hard page budget.
+  //
+  // The budget matters as much as the paging. A repository popular enough to fill
+  // many pages would otherwise run thousands of syncs inside one request, which a
+  // worker will not survive. Stopping at the budget and forgetting the delivery
+  // keeps one request bounded and leaves it retryable.
+  //
+  // A successful delivery keeps its record: that is what makes a re-sent delivery
+  // a no-op. So any incomplete run must delete the record before returning, or the
+  // provider's retry is taken for a replay and the remaining subscribers are never
+  // reached. That is why the budget branch and the error branches all call
+  // `forgetDelivery` first.
+  //
+  // Every page read is guarded for the same reason. A database error on a later
+  // page would otherwise throw out of the handler after earlier pages had already
+  // synced, leaving the record in place and the unread pages unreachable.
+  let synced = 0;
+  let failedCount = 0;
+  let page = firstPage;
+  let exhausted = false;
 
-  const failed = results.filter((result) => result?.status === "failed");
-  if (failed.length > 0) {
+  for (let pages = 0; ; pages++) {
+    if (pages >= MAX_SUBSCRIBER_PAGES) {
+      exhausted = true;
+      break;
+    }
+
+    const results = await Promise.all(
+      page.map((repo) => limit(() => syncRepo(repo.id, repo.userId)))
+    );
+    const failures = results.filter((result) => result?.status === "failed");
+    synced += results.length - failures.length;
+    failedCount += failures.length;
+
+    if (page.length < SUBSCRIBER_PAGE_SIZE) break;
+
+    try {
+      page = await reposForDelivery(provider, fullName, page[page.length - 1].id);
+    } catch (error) {
+      apiLogger.error(
+        { provider, fullName, error: error instanceof Error ? error.message : String(error) },
+        "Webhook subscriber page could not be read"
+      );
+      // The remaining subscribers are unknown, so the delivery did not finish.
+      // Forgetting it is what lets the provider retry; without that the retry is
+      // treated as a replay and the rest is never synced.
+      await forgetDelivery(provider, deliveryId);
+      return NextResponse.json({ ok: false, error: "Could not read subscribers" }, { status: 500 });
+    }
+
+    if (page.length === 0) break;
+  }
+
+  if (exhausted) {
+    apiLogger.warn(
+      { provider, fullName, synced, pageBudget: MAX_SUBSCRIBER_PAGES },
+      "Webhook delivery hit its page budget; remaining subscribers left for a retry"
+    );
+    await forgetDelivery(provider, deliveryId);
+    return NextResponse.json(
+      { ok: false, error: "Subscriber budget reached", synced },
+      { status: 503 }
+    );
+  }
+
+  if (failedCount > 0) {
     // The delivery did not complete its work, so it must stay retryable.
     await forgetDelivery(provider, deliveryId);
     return NextResponse.json({ ok: false, error: "Sync failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, synced: results.length });
+  return NextResponse.json({ ok: true, synced });
+}
+
+/**
+ * One page of the repositories tracking a given repository upstream, ordered by
+ * id so a cursor can resume past the last row seen.
+ *
+ * @param provider - The provider the delivery came from.
+ * @param fullName - The provider's spelling of the repository.
+ * @param after - The last id already handled, or `null` for the first page.
+ * @returns Up to {@link SUBSCRIBER_PAGE_SIZE} repositories.
+ */
+async function reposForDelivery(provider: string, fullName: string, after: string | null) {
+  const matching = and(
+    eq(repos.provider, provider),
+    eq(sql`lower(${repos.fullName})`, fullName.toLowerCase()),
+    eq(repos.syncEnabled, true)
+  );
+
+  return typedDb
+    .select()
+    .from(repos)
+    .where(after === null ? matching : and(matching, gt(repos.id, after)))
+    .orderBy(repos.id)
+    .limit(SUBSCRIBER_PAGE_SIZE);
 }

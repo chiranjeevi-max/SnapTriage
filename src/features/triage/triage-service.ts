@@ -59,8 +59,54 @@ export interface ReplacedValues {
 }
 
 export type ApplyTriageResult =
-  | { ok: true; mode: TriageMode; applied: TriagePayload; previous: ReplacedValues }
+  /**
+   * `warning` is present when the provider accepted the change but recording it
+   * locally failed. It stays `ok: true` because upstream really did change:
+   * rolling the optimistic update back would show values the provider no longer
+   * holds. The next sync repairs the local row.
+   */
+  | {
+      ok: true;
+      mode: TriageMode;
+      applied: TriagePayload;
+      previous: ReplacedValues;
+      warning?: string;
+    }
   | { ok: false; status: number; error: string };
+
+/**
+ * What to tell the user when the provider accepted a write that could not be
+ * recorded locally.
+ *
+ * The repair differs by field, so the message has to as well. A sync rewrites the
+ * issue row from the provider, so labels, assignees, and state do catch up.
+ * Personal settings live in `triage_state`, which no sync touches, so those are
+ * genuinely lost and saying otherwise would be a promise the app cannot keep.
+ *
+ * @param provider - The provider that accepted the write.
+ * @param payload - The change that was sent.
+ * @returns One sentence describing which half, if any, will reconcile.
+ */
+export function localRecordingFailureMessage(provider: string, payload: TriagePayload): string {
+  // A pair whose values all cancelled out sends nothing to the provider, which is
+  // the same rule `payloadToIssueUpdate` applies. Counting it here would promise a
+  // sync for a no-op.
+  const hasValues = (set?: { add?: string[]; remove?: string[] }) =>
+    (set?.add?.length ?? 0) > 0 || (set?.remove?.length ?? 0) > 0;
+
+  const providerFields =
+    hasValues(payload.labels) || hasValues(payload.assignees) || payload.state !== undefined;
+  const personalFields =
+    "priority" in payload || "snoozedUntil" in payload || "dismissed" in payload;
+
+  if (providerFields && personalFields) {
+    return `${provider} accepted the change, but it could not be recorded locally. The provider side will catch up on the next sync; the priority, snooze, and dismiss settings may need to be set again.`;
+  }
+  if (providerFields) {
+    return `${provider} accepted the change, but it could not be recorded locally. The next sync will catch up.`;
+  }
+  return "The change could not be saved. Please try again.";
+}
 
 /**
  * Decide how a write to one repository lands.
@@ -357,17 +403,53 @@ export async function applyTriage(input: ApplyTriageInput): Promise<ApplyTriageR
     }
   }
 
-  if (personal) {
-    const triageId = await ensureTriageRow();
-    await typedDb
-      .update(triageState)
-      .set({ ...personal, updatedAt: new Date() })
-      .where(eq(triageState.id, triageId));
-  }
+  // Everything below runs after the provider has already accepted the write, so
+  // it cannot be rolled back: a throw here would reach the route as a 500 and the
+  // client would roll its optimistic update back to values upstream no longer
+  // holds. The cached issue row is written first because it mirrors what the
+  // provider just did — a failure in the personal write after this cannot leave
+  // the cache disagreeing with upstream, and a sync would otherwise silently
+  // revert the change the user just saw succeed.
+  try {
+    if (touchesProvider) {
+      const cacheUpdate = providerFields(issue, payload);
+      if (cacheUpdate) await typedDb.update(issues).set(cacheUpdate).where(eq(issues.id, issueId));
+    }
 
-  if (touchesProvider) {
-    const cacheUpdate = providerFields(issue, payload);
-    if (cacheUpdate) await typedDb.update(issues).set(cacheUpdate).where(eq(issues.id, issueId));
+    if (personal) {
+      const triageId = await ensureTriageRow();
+      await typedDb
+        .update(triageState)
+        .set({ ...personal, updatedAt: new Date() })
+        .where(eq(triageState.id, triageId));
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    apiLogger.error(
+      { issueId, mode, touchesProvider, error: message },
+      "Triage write not recorded"
+    );
+
+    // A personal-only write never reached the provider, so there is nothing
+    // upstream that succeeded and the message must not claim otherwise.
+    if (!touchesProvider) {
+      return {
+        ok: false,
+        status: 502,
+        error: "Could not record the change. Try again.",
+      };
+    }
+
+    // The provider accepted it, so the client must keep its optimistic state
+    // rather than roll back to values upstream no longer holds.
+    //
+    return {
+      ok: true,
+      mode,
+      applied: payload,
+      previous,
+      warning: localRecordingFailureMessage(repo.provider, payload),
+    };
   }
 
   apiLogger.info(

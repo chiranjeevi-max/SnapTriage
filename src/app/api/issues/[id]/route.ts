@@ -73,7 +73,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
  * @param req - Request with JSON body containing any combination of:
  *   `{ priority?, snoozedUntil?, dismissed?, labels?, assignees?, state?, batch? }`
  * @param params - Dynamic route params containing `id` (the issue's DB primary key)
- * @returns JSON `{ ok: true }` on success, or an error with 400/401/403/404/502 status
+ * @returns JSON `{ ok: true, warning? }` on success, or an error with
+ *          400/401/403/404/409/502 status. `warning` is present when the provider
+ *          accepted the change but recording it locally failed, so the caller
+ *          should not roll its optimistic state back.
+ *
+ *          409 means a batch write lost the compare-and-set: another change was
+ *          staged between the read and the write, so the merge was refused rather
+ *          than overwriting it. The caller retries against the newer state.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -82,7 +89,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const { id } = await params;
-  const rawBody = await req.json();
+  const rawBody = await req.json().catch(() => null);
   const parsed = parseBody(triagePatchSchema, rawBody);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
@@ -94,5 +101,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ ok: true });
+  // `warning` reports a write the provider accepted but the local cache could not
+  // record. It travels as a success so the client keeps its optimistic state
+  // instead of rolling back to values upstream no longer holds.
+  return NextResponse.json({ ok: true, warning: result.warning });
 }

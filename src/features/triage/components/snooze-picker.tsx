@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
+import { getSnoozeOptions, parseCustomSnooze, snoozeInputMin } from "@/features/triage/snooze";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
@@ -36,32 +37,6 @@ interface SnoozePickerProps {
 }
 
 /**
- * Compute the preset snooze options relative to the current time.
- *
- * @returns An array of `{ label, value }` objects where `value` is an ISO 8601 string.
- */
-function getSnoozeOptions() {
-  const now = new Date();
-
-  const oneHour = new Date(now.getTime() + 60 * 60 * 1000);
-
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(9, 0, 0, 0);
-
-  const nextMonday = new Date(now);
-  const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
-  nextMonday.setDate(nextMonday.getDate() + daysUntilMonday);
-  nextMonday.setHours(9, 0, 0, 0);
-
-  return [
-    { label: "1 hour", value: oneHour.toISOString() },
-    { label: "Tomorrow 9am", value: tomorrow.toISOString() },
-    { label: "Next Monday 9am", value: nextMonday.toISOString() },
-  ];
-}
-
-/**
  * Dialog component for snoozing or unsnoozing an issue.
  * Presents preset duration buttons and an optional custom date-time input.
  * Uses {@link useTriageMutation} to apply the snooze payload.
@@ -77,7 +52,12 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
   if (!issue) return null;
 
   const isSnoozed = !!issue.triage?.snoozedUntil;
-  const options = getSnoozeOptions();
+  // Read once per render so the presets and the input's floor judge against the
+  // same instant. The submitted value is re-checked at click time instead, since
+  // a dialog left open drifts past whatever this render saw.
+  const now = new Date();
+  const options = getSnoozeOptions(now);
+  const customTarget = parseCustomSnooze(customDate, now);
 
   /**
    * Apply a snooze with the given ISO timestamp and close the dialog.
@@ -112,8 +92,11 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
 
   /** Submit the custom date-time value as a snooze target. */
   function handleCustomSubmit() {
-    if (!customDate) return;
-    handleSnooze(new Date(customDate).toISOString());
+    // Re-parsed against the current clock: a dialog left open can drift past a
+    // target that was still in the future when it last rendered.
+    const target = parseCustomSnooze(customDate, new Date());
+    if (!target) return;
+    handleSnooze(target);
   }
 
   return (
@@ -174,6 +157,7 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
               <Input
                 type="datetime-local"
                 value={customDate}
+                min={snoozeInputMin(now)}
                 onChange={(e) => setCustomDate(e.target.value)}
                 className="h-10 min-w-0 w-full flex-1"
               />
@@ -181,7 +165,7 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
                 size="sm"
                 className="h-10 shrink-0"
                 onClick={handleCustomSubmit}
-                disabled={!customDate}
+                disabled={!customTarget}
               >
                 Set
               </Button>

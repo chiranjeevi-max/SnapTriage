@@ -116,7 +116,10 @@ describe("runFollowUpCheck provider budget", () => {
    * @dependencies getProviderToken
    * @scenario No provider token for the account
    * @expectedOutput Nothing is checked and no comment read is attempted, rather
-   *                 than twenty failures
+   *                 than twenty failures. Each row still records its turn:
+   *                 without that the same rows are selected first on every pass
+   *                 and the queue behind them is never reached, so a token that
+   *                 cannot be decrypted silently disables follow-up for good.
    */
   it("should skip the pass without a token", async () => {
     mockGetProviderToken.mockResolvedValue(null);
@@ -125,6 +128,10 @@ describe("runFollowUpCheck provider budget", () => {
 
     expect(summary.checked).toBe(0);
     expect(provider.fetchComments).not.toHaveBeenCalled();
+    expect(fakeDb.state.rows.follow_up.map((row) => row.attemptedAt)).toEqual([
+      expect.any(Date),
+      expect.any(Date),
+    ]);
   });
 
   /**

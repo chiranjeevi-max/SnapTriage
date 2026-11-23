@@ -64,6 +64,7 @@ export const shortcuts: Shortcut[] = [
   { id: "priority-2", key: "3", category: "triage", description: "Set P2 Medium" },
   { id: "priority-3", key: "4", category: "triage", description: "Set P3 Low" },
   { id: "dismiss", key: "d", category: "triage", description: "Toggle dismiss" },
+  { id: "toggle-state", key: "c", category: "triage", description: "Close or reopen issue" },
   { id: "labels", key: "l", category: "triage", description: "Edit labels" },
   { id: "assignees", key: "a", category: "triage", description: "Edit assignees" },
   { id: "snooze", key: "s", category: "triage", description: "Snooze issue" },
@@ -75,6 +76,14 @@ export const shortcuts: Shortcut[] = [
     description: "Wait for a reply",
   },
   { id: "undo", key: "z", category: "triage", description: "Undo last action" },
+  { id: "select-toggle", key: "x", category: "triage", description: "Select issue" },
+  {
+    id: "select-all",
+    key: "X",
+    shift: true,
+    category: "triage",
+    description: "Select all visible",
+  },
   {
     id: "batch-push",
     key: "P",
@@ -121,6 +130,11 @@ export function formatKey(shortcut: Shortcut): string {
  * @returns The matched shortcut, or `null` if no match.
  */
 export function matchShortcut(event: KeyboardEvent): Shortcut | null {
+  // A modified keystroke belongs to the browser or the OS, never to a bare
+  // shortcut. Without this, Cmd+C on selected issue text matched `c` and closed
+  // the issue instead of copying.
+  if (event.ctrlKey || event.metaKey || event.altKey) return null;
+
   for (const shortcut of shortcuts) {
     if (shortcut.shift && !event.shiftKey) continue;
     if (!shortcut.shift && event.shiftKey) continue;

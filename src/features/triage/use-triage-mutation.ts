@@ -11,7 +11,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { TriagePayload } from "./types";
 import { showUndoToast, useUndoStore } from "./use-undo";
-import type { IssueWithTriage } from "@/features/inbox/use-issues";
+import type { IssueDetail, IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
  * Input shape for the triage mutation.
@@ -31,6 +31,21 @@ interface TriageMutationInput {
 }
 
 /**
+ * Whether a finished triage write should trigger a refetch.
+ *
+ * A warning response means the provider accepted the change but the local row
+ * could not be recorded. Refetching then reads that unchanged row and replaces
+ * the optimistic update with pre-write values, so the user watches their own
+ * successful action revert. Only the next sync can repair the row.
+ *
+ * @param data - The mutation's response body, if it resolved.
+ * @returns `true` when the caches should be invalidated.
+ */
+export function shouldRefetchAfterWrite(data: unknown): boolean {
+  return !(data as { warning?: string } | null)?.warning;
+}
+
+/**
  * React hook that returns a TanStack Query mutation for triaging issues.
  * Handles optimistic updates, error rollback, undo (both live and batch),
  * and cache invalidation.
@@ -38,6 +53,59 @@ interface TriageMutationInput {
  * @returns A TanStack `UseMutationResult` whose `mutate`/`mutateAsync` accept
  *          a {@link TriageMutationInput}.
  */
+/**
+ * The newest optimistic write started for each issue.
+ *
+ * A rollback restores a snapshot taken before its own write, which would also
+ * discard any write started after it. Comparing this counter lets a stale
+ * failure leave the newer state alone.
+ */
+const latestWrite = new Map<string, number>();
+let writeCounter = 0;
+
+/**
+ * Whether a failed write may still roll its own snapshot back.
+ *
+ * Only the newest write for an issue may: a snapshot is absolute, so restoring an
+ * older one also discards the optimistic state a later write installed. Two quick
+ * keystrokes would otherwise lose one of them from the pane.
+ *
+ * @param issueId - The issue the failed write targeted.
+ * @param sequence - The order stamp that write was given.
+ * @returns `true` when no later write for that issue has started.
+ */
+export function mayRollBack(issueId: string, sequence: number): boolean {
+  return latestWrite.get(issueId) === sequence;
+}
+
+/**
+ * Record that a write for an issue has started, and return its order stamp.
+ *
+ * Exported so the rollback rule can be exercised without rendering the hook.
+ *
+ * @param issueId - The issue the write targets.
+ * @returns The stamp to pass to {@link mayRollBack} if the write fails.
+ */
+export function beginWrite(issueId: string): number {
+  const sequence = ++writeCounter;
+  latestWrite.set(issueId, sequence);
+  return sequence;
+}
+
+/**
+ * Release an issue's order stamp once its write has settled.
+ *
+ * Without this the map grows with every issue ever written. The check is
+ * conditional so a settled write cannot drop the stamp a newer overlapping write
+ * installed, which would let the older one roll back over it.
+ *
+ * @param issueId - The issue the settled write targeted.
+ * @param sequence - The stamp that write was given.
+ */
+export function endWrite(issueId: string, sequence: number): void {
+  if (latestWrite.get(issueId) === sequence) latestWrite.delete(issueId);
+}
+
 export function useTriageMutation() {
   const queryClient = useQueryClient();
   const pushUndo = useUndoStore((s) => s.push);
@@ -57,6 +125,7 @@ export function useTriageMutation() {
     onMutate: async (input) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["issues"] });
+      await queryClient.cancelQueries({ queryKey: ["issue", input.issueId] });
 
       // Snapshot current data from all matching queries
       const queryCache = queryClient.getQueryCache();
@@ -78,11 +147,33 @@ export function useTriageMutation() {
         });
       }
 
-      return { snapshots };
+      // The detail pane reads its own key. Without an optimistic write it keeps
+      // showing the pre-write state, so the next toggle is computed from stale
+      // data — and a provider-accepted write that cannot be refetched would never
+      // correct it.
+      const detailKey = ["issue", input.issueId] as const;
+      const detail = queryClient.getQueryData<IssueDetail | null>(detailKey);
+      if (detail) {
+        snapshots.push({ queryKey: detailKey, data: detail });
+        // The merge only touches fields both shapes carry, so the update is
+        // wider than `IssueDetail` and is narrowed back on assignment.
+        queryClient.setQueryData<IssueDetail>(
+          detailKey,
+          applyPayloadToIssue(detail, input.payload) as IssueDetail
+        );
+      }
+
+      const sequence = beginWrite(input.issueId);
+
+      return { snapshots, sequence, issueId: input.issueId };
     },
 
-    onError: (_err, _input, context) => {
-      // Rollback all queries
+    onError: (_err, input, context) => {
+      // Rollback all queries, but only if no later write for this issue has
+      // started. Restoring an absolute snapshot otherwise discards the newer
+      // write's optimistic state as well, so two quick keystrokes lose one.
+      if (context && !mayRollBack(context.issueId, context.sequence)) return;
+
       if (context?.snapshots) {
         for (const { queryKey, data } of context.snapshots) {
           queryClient.setQueryData(queryKey, data);
@@ -91,14 +182,23 @@ export function useTriageMutation() {
       toast.error("Failed to update issue");
     },
 
-    onSuccess: (_data, input) => {
+    onSuccess: (data, input) => {
       const { issueId, payload, previousPayload, description, batch } = input;
+
+      // The provider accepted the change but the server could not record it. Said
+      // plainly rather than hidden behind the usual toast, because the row will
+      // look right only after the next sync.
+      const warning = (data as { warning?: string } | null)?.warning;
+      if (warning) toast.warning(warning);
 
       if (batch) {
         // Batch mode: push to undo stack
         pushUndo({ issueId, payload, previousPayload, description });
         toast("Change staged");
-        queryClient.invalidateQueries({ queryKey: ["batch-pending-count"] });
+        // One key covers the count and the preview now that both read the same
+        // query; without this the bar shows the new count beside a stale preview
+        // until the next poll.
+        queryClient.invalidateQueries({ queryKey: ["batch-pending-changes"] });
       } else {
         // Live mode: show undo toast
         showUndoToast(description, () => {
@@ -114,15 +214,46 @@ export function useTriageMutation() {
               return res.json();
             },
           });
-          reverseMutation.execute({}).then(() => {
-            queryClient.invalidateQueries({ queryKey: ["issues"] });
-          });
+          reverseMutation.execute({}).then(
+            (undoResult) => {
+              // The provider accepted the undo but the server could not record it.
+              // Refetching would read the pre-undo row and show the state the
+              // provider just reversed, so the optimistic result stays put.
+              const undoWarning = (undoResult as { warning?: string } | null)?.warning;
+              if (undoWarning) {
+                toast.warning(undoWarning);
+                return;
+              }
+              queryClient.invalidateQueries({ queryKey: ["issues"] });
+              // The detail pane reads its own key, so undoing from the queue left
+              // it showing the state that was just reversed.
+              queryClient.invalidateQueries({ queryKey: ["issue", issueId] });
+            },
+            () => {
+              // A failed undo may still have reached the provider, so refresh
+              // both: showing the applied values would be a claim the app cannot
+              // support.
+              queryClient.invalidateQueries({ queryKey: ["issues"] });
+              queryClient.invalidateQueries({ queryKey: ["issue", issueId] });
+            }
+          );
         });
       }
     },
 
-    onSettled: () => {
+    onSettled: (data, _error, input, context) => {
+      if (context) endWrite(context.issueId, context.sequence);
+
+      // A warning means the provider accepted the change but the local row could
+      // not be recorded. Refetching now would read that unchanged row and replace
+      // the optimistic update with pre-write values, so the user would watch their
+      // own successful action revert. The next sync repairs the row instead.
+      if (!shouldRefetchAfterWrite(data)) return;
+
       queryClient.invalidateQueries({ queryKey: ["issues"] });
+      // Only this issue's detail. The bare `["issue"]` prefix marked every cached
+      // detail stale, so unrelated panes refetched when reopened.
+      if (input) queryClient.invalidateQueries({ queryKey: ["issue", input.issueId] });
     },
   });
 }

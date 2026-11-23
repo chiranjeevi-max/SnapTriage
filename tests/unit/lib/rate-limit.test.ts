@@ -43,9 +43,9 @@ describe("RateLimiter", () => {
 
     // If we hit 127.0.0.1 again, it should start from count 1 because it was evicted.
     // So the first hit will return false (1 > 1 is false).
-    expect(rateLimiter.isRateLimited("127.0.0.1", 1)).toBe(false); 
-    
+    expect(rateLimiter.isRateLimited("127.0.0.1", 1)).toBe(false);
+
     // We expect it to be blocked now since count will be 2 (2 > 1 is true).
-    expect(rateLimiter.isRateLimited("127.0.0.1", 1)).toBe(true); 
+    expect(rateLimiter.isRateLimited("127.0.0.1", 1)).toBe(true);
   });
 });

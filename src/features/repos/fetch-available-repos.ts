@@ -7,16 +7,45 @@
  * Each provider-specific function paginates through all accessible repos
  * and normalizes them into the {@link AvailableRepo} shape.
  */
+import { REQUEST_TIMEOUT_MS } from "@/lib/provider-timing";
 
-/** Abort slow provider requests. */
+/**
+ * Bound a provider read, including its body.
+ *
+ * The timer is cleared once the body is read, not when the headers arrive: a
+ * provider that sends headers and then stalls would otherwise leave `res.json()`
+ * with no deadline at all, holding the request open indefinitely.
+ *
+ * @param input - Request URL.
+ * @param init - Optional request options.
+ * @returns The response, with its timeout still armed.
+ */
 async function fetchWithTimeout(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
-  } finally {
+    const res = await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
+    (timeout as unknown as { unref?: () => void }).unref?.();
+    return Object.assign(res, { releaseTimeout: () => clearTimeout(timeout) });
+  } catch (error) {
     clearTimeout(timeout);
+    throw error;
   }
+}
+
+/** Read a response body, then release the timer that guarded it. */
+async function readJson<T>(res: Response): Promise<T> {
+  const release = (res as unknown as { releaseTimeout?: () => void }).releaseTimeout;
+  try {
+    return (await res.json()) as T;
+  } finally {
+    release?.();
+  }
+}
+
+/** Release a response whose body will not be read, such as an error response. */
+function discard(res: Response): void {
+  (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
 }
 
 /** Normalized repository data returned by the provider-specific fetch functions. */
@@ -28,6 +57,29 @@ export interface AvailableRepo {
   description: string | null;
   permission: "admin" | "write" | "read";
   isPrivate: boolean;
+}
+
+/** The part of a GitHub repository this module reads. */
+interface GitHubRepoPayload {
+  name: string;
+  full_name: string;
+  description: string | null;
+  private: boolean;
+  permissions?: { admin?: boolean; push?: boolean } | null;
+  owner: { login: string };
+}
+
+/** The part of a GitLab project this module reads. */
+interface GitLabProjectPayload {
+  path: string;
+  path_with_namespace: string;
+  description: string | null;
+  visibility?: string;
+  namespace: { path: string } | null;
+  permissions?: {
+    project_access?: { access_level?: number } | null;
+    group_access?: { access_level?: number } | null;
+  } | null;
 }
 
 /**
@@ -51,9 +103,12 @@ export async function fetchGitHubRepos(token: string): Promise<AvailableRepo[]> 
       }
     );
 
-    if (!res.ok) throw new Error(`Failed to fetch repositories (HTTP ${res.status})`);
+    if (!res.ok) {
+      discard(res);
+      throw new Error(`Failed to fetch repositories (HTTP ${res.status})`);
+    }
 
-    const data = await res.json();
+    const data = await readJson<GitHubRepoPayload[]>(res);
     if (data.length === 0) break;
 
     for (const repo of data) {
@@ -98,9 +153,12 @@ export async function fetchGitLabRepos(token: string): Promise<AvailableRepo[]> 
       }
     );
 
-    if (!res.ok) throw new Error(`Failed to fetch repositories (HTTP ${res.status})`);
+    if (!res.ok) {
+      discard(res);
+      throw new Error(`Failed to fetch repositories (HTTP ${res.status})`);
+    }
 
-    const data = await res.json();
+    const data = await readJson<GitLabProjectPayload[]>(res);
     if (data.length === 0) break;
 
     for (const project of data) {
@@ -113,9 +171,17 @@ export async function fetchGitLabRepos(token: string): Promise<AvailableRepo[]> 
       if (maxLevel >= 40) permission = "admin";
       else if (maxLevel >= 30) permission = "write";
 
+      // `namespace` is absent on a project the token can no longer see in full,
+      // which would make this loop throw and drop every page already read. The
+      // full path always carries the owner, and everything before the last
+      // segment is it — taking only the first segment would turn `group/sub/app`
+      // into `group`, which is not a project the connect flow can resolve.
+      const owner =
+        project.namespace?.path ?? project.path_with_namespace.split("/").slice(0, -1).join("/");
+
       repos.push({
         provider: "gitlab",
-        owner: project.namespace.path,
+        owner,
         name: project.path,
         fullName: project.path_with_namespace,
         description: project.description,

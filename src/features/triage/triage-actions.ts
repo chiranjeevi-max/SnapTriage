@@ -84,3 +84,32 @@ export function unsnoozeIssue(): TriagePayload {
 export function dismissIssue(dismissed: boolean): TriagePayload {
   return { dismissed };
 }
+
+/** The issue states a triage write can set. */
+export type IssueState = "open" | "closed";
+
+/**
+ * Resolve what one keystroke should do to an issue's open/closed state.
+ *
+ * Closing is the direction a triage session usually wants and reopening is the
+ * correction, so one key covers both rather than spending two. The inverse is
+ * returned alongside the payload because that is what undo replays, and
+ * deriving it here keeps the two from drifting apart.
+ *
+ * @param current - The issue's state as last read from the server.
+ * @returns The forward payload, the payload that reverses it, and a description
+ *          naming the direction so the toast is not ambiguous.
+ */
+export function toggleIssueState(current: IssueState): {
+  payload: TriagePayload;
+  previousPayload: TriagePayload;
+  description: string;
+} {
+  const next: IssueState = current === "open" ? "closed" : "open";
+
+  return {
+    payload: { state: next },
+    previousPayload: { state: current },
+    description: next === "closed" ? "Closed issue" : "Reopened issue",
+  };
+}

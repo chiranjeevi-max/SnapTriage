@@ -123,6 +123,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     mode: result.mode,
     noChange: false,
     applied: result.applied,
+    // Present when the provider accepted the change but the local row could not
+    // be recorded. Forwarded rather than dropped, so the caller can say so
+    // instead of reporting a clean write.
+    warning: result.warning,
     changes: resolution.changes,
     // The values the write itself replaced, not a snapshot read before it. An
     // inverse built from an earlier read can name a priority another request has

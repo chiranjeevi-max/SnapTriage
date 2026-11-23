@@ -19,6 +19,11 @@ import { triageState } from "@/lib/db/schema";
 /**
  * Counts triage rows where `batchPending` is true for the current user.
  *
+ * Counting in the database rather than reading the rows and taking their length:
+ * the client polls this every 30 seconds, and every row carries its whole
+ * `pendingChanges` JSON blob, so the old version transferred a user's entire
+ * staged diff to display one integer.
+ *
  * @returns JSON `{ count: number }` representing the number of pending batch items
  */
 export async function GET() {
@@ -27,10 +32,19 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // The staged diffs travel with the count so the bar can describe exactly what
+  // the push will send. Deriving that from the loaded queue instead left closed
+  // issues out: the push covers every batch-pending row regardless of state, so
+  // a staged change on a closed issue was sent without appearing in the preview.
   const rows = await typedDb
-    .select()
+    .select({ pendingChanges: triageState.pendingChanges })
     .from(triageState)
     .where(and(eq(triageState.userId, session.user.id), eq(triageState.batchPending, true)));
 
-  return NextResponse.json({ count: rows.length });
+  return NextResponse.json({
+    count: rows.length,
+    // A row written before the column existed can carry null. Normalized here so
+    // the preview never dereferences it.
+    pending: rows.map((row) => row.pendingChanges ?? {}),
+  });
 }

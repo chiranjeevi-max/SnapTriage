@@ -16,12 +16,18 @@ import { matchShortcut, formatKey, shortcuts } from "@/features/keyboard/shortcu
  * Creates a minimal mock KeyboardEvent for testing shortcut matching
  * without requiring a full DOM environment.
  */
-function makeKeyboardEvent(key: string, options: { shiftKey?: boolean } = {}): KeyboardEvent {
+function makeKeyboardEvent(
+  key: string,
+  options: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean } = {}
+): KeyboardEvent {
   // Create a minimal object matching the KeyboardEvent interface
   // to avoid needing jsdom in the test environment
   return {
     key,
     shiftKey: options.shiftKey ?? false,
+    ctrlKey: options.ctrlKey ?? false,
+    metaKey: options.metaKey ?? false,
+    altKey: options.altKey ?? false,
   } as KeyboardEvent;
 }
 
@@ -93,7 +99,34 @@ describe("shortcut-registry", () => {
     it("returns null for unbound keys", () => {
       expect(matchShortcut(makeKeyboardEvent("5"))).toBeNull();
       expect(matchShortcut(makeKeyboardEvent("Tab"))).toBeNull();
-      expect(matchShortcut(makeKeyboardEvent("x"))).toBeNull();
+      expect(matchShortcut(makeKeyboardEvent("q"))).toBeNull();
+    });
+
+    it("matches x to select-toggle", () => {
+      expect(matchShortcut(makeKeyboardEvent("x"))?.id).toBe("select-toggle");
+    });
+
+    it("matches shift+x to select-all", () => {
+      expect(matchShortcut(makeKeyboardEvent("X", { shiftKey: true }))?.id).toBe("select-all");
+    });
+
+    it("matches c to toggle-state", () => {
+      expect(matchShortcut(makeKeyboardEvent("c"))?.id).toBe("toggle-state");
+    });
+
+    /**
+     * @target matchShortcut
+     * @dependencies none
+     * @scenario A letter key pressed with a command modifier
+     * @expectedOutput No match. Cmd+C on selected issue text matched `c` and
+     *                 closed the issue instead of copying, and the listener calls
+     *                 `preventDefault` on a match.
+     */
+    it("ignores a shortcut pressed with a command modifier", () => {
+      expect(matchShortcut(makeKeyboardEvent("c", { metaKey: true }))).toBeNull();
+      expect(matchShortcut(makeKeyboardEvent("c", { ctrlKey: true }))).toBeNull();
+      expect(matchShortcut(makeKeyboardEvent("c", { altKey: true }))).toBeNull();
+      expect(matchShortcut(makeKeyboardEvent("d", { metaKey: true }))).toBeNull();
     });
 
     it("does not match ? without shift", () => {

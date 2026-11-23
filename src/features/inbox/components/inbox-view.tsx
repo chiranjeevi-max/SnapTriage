@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { BellRing, BookmarkPlus, List } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/segmented-control";
 import { SelectField } from "@/components/select-field";
 import { cn } from "@/lib/utils";
@@ -28,9 +29,23 @@ import { IssueDetail, type IssueDetailTarget } from "@/features/inbox/components
 import { useIssues } from "@/features/inbox/use-issues";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 import { useIssueFilter } from "@/features/inbox/use-issue-filter";
+import { useIssueQuery } from "@/features/inbox/use-issue-query";
+import { filterByQuery } from "@/features/inbox/issue-query";
+import { useIssueSort } from "@/features/inbox/use-issue-sort";
+import {
+  anchorSelection,
+  ISSUE_SORTS,
+  sortIssues,
+  type IssueSort,
+} from "@/features/inbox/issue-sort";
 import { filterIssues, ISSUE_FILTERS } from "@/features/inbox/issue-filters";
 import { useSavedViews, useSaveCurrentView } from "@/features/inbox/use-saved-views";
 import { useBulkTriage } from "@/features/triage/use-bulk-triage";
+import {
+  toggleSelected as toggleSelectedId,
+  toggleSelectAll,
+  visibleSelection,
+} from "@/features/triage/selection";
 import { priorityOptions } from "@/features/triage/priority";
 import { useKeyboardStore, useKeyboardShortcuts, ShortcutOverlay } from "@/features/keyboard";
 import {
@@ -95,6 +110,8 @@ export function resolveDetailTarget(
 export function InboxView() {
   const { data: issues, isLoading } = useIssues();
   const [filter, setFilter] = useIssueFilter();
+  const [queryText, setQueryText, query] = useIssueQuery();
+  const [sort, setSort] = useIssueSort();
   const [surface, setSurface] = useState<InboxSurface>("queue");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   /**
@@ -111,21 +128,30 @@ export function InboxView() {
   const saveCurrentView = useSaveCurrentView();
 
   const issueList = useMemo(() => issues ?? [], [issues]);
-  const filteredIssues = useMemo(() => filterIssues(issueList, filter), [issueList, filter]);
+  // The query narrows first, so the count, the virtualizer, and the keyboard all
+  // read the same visible list. Applying it after `filterIssues` would leave the
+  // two disagreeing about what is on screen.
+  const searchedIssues = useMemo(() => filterByQuery(issueList, query), [issueList, query]);
+  // Sorting comes last so the visible order is the order the keyboard walks and
+  // the virtualizer renders.
+  const sortedIssues = useMemo(() => sortIssues(searchedIssues, sort), [searchedIssues, sort]);
+  const filteredIssues = useMemo(() => filterIssues(sortedIssues, filter), [sortedIssues, filter]);
 
-  const {
-    selectedIndex,
-    setSelectedIndex,
-    setIssueCount,
-    labelPickerOpen,
-    setLabelPickerOpen,
-    assigneePickerOpen,
-    setAssigneePickerOpen,
-    snoozePickerOpen,
-    setSnoozePickerOpen,
-    presetPickerOpen,
-    setPresetPickerOpen,
-  } = useKeyboardStore();
+  // Individual selectors rather than the whole store. A selectorless subscription
+  // re-renders this component — which owns four list memos and the virtualizer —
+  // on every field, including the picker flags and the shortcut overlay, and none
+  // of those change what is on screen here.
+  const selectedIndex = useKeyboardStore((state) => state.selectedIndex);
+  const setSelectedIndex = useKeyboardStore((state) => state.setSelectedIndex);
+  const setIssueCount = useKeyboardStore((state) => state.setIssueCount);
+  const labelPickerOpen = useKeyboardStore((state) => state.labelPickerOpen);
+  const setLabelPickerOpen = useKeyboardStore((state) => state.setLabelPickerOpen);
+  const assigneePickerOpen = useKeyboardStore((state) => state.assigneePickerOpen);
+  const setAssigneePickerOpen = useKeyboardStore((state) => state.setAssigneePickerOpen);
+  const snoozePickerOpen = useKeyboardStore((state) => state.snoozePickerOpen);
+  const setSnoozePickerOpen = useKeyboardStore((state) => state.setSnoozePickerOpen);
+  const presetPickerOpen = useKeyboardStore((state) => state.presetPickerOpen);
+  const setPresetPickerOpen = useKeyboardStore((state) => state.setPresetPickerOpen);
 
   // The follow-up surface replaces the queue in the list pane, so the keyboard
   // must act on what is on screen and nothing else. An empty list makes every
@@ -148,21 +174,28 @@ export function InboxView() {
   }, [surface, filteredIssues.length, setIssueCount]);
 
   const toggleSelected = useCallback((issueId: string) => {
-    setSelectedIds((previous) => {
-      const next = new Set(previous);
-      if (next.has(issueId)) {
-        next.delete(issueId);
-      } else {
-        next.add(issueId);
-      }
-      return next;
-    });
+    setSelectedIds((previous) => toggleSelectedId(previous, issueId));
   }, []);
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
+  const selectAllVisible = useCallback(() => {
+    // The follow-up surface shows no queue rows, so there is nothing to select
+    // there. Allowing it would expose the bulk bar and let its actions mutate
+    // issues the user cannot see.
+    if (surface !== "queue") return;
+    setSelectedIds((previous) => toggleSelectAll(previous, filteredIssues));
+  }, [surface, filteredIssues]);
+
+  // Passed to the keyboard dispatcher rather than routed through the store: the
+  // selection is view state, and this closes over the list that is on screen.
+  const keyboardOptions = useMemo(
+    () => ({ toggleSelection: toggleSelected, selectAllVisible }),
+    [toggleSelected, selectAllVisible]
+  );
+
   const visibleSelectedIds = useMemo(
-    () => [...selectedIds].filter((id) => filteredIssues.some((issue) => issue.id === id)),
+    () => visibleSelection(selectedIds, filteredIssues),
     [selectedIds, filteredIssues]
   );
 
@@ -193,20 +226,23 @@ export function InboxView() {
     [pinnedIssue, queueIssue]
   );
 
-  // Stabilize selection after data refresh
-  const selectedIdRef = useRef<string | null>(null);
+  // Keep the selection on the same issue when the list is reordered or narrowed.
+  //
+  // The anchor has to come from the *previous* list. Reading it from the current
+  // one after the swap would read whatever now sits at that index, so a search or
+  // sort change silently moved the selection to a different issue and the next
+  // keystroke acted on it.
+  const previousListRef = useRef<IssueWithTriage[]>(filteredIssues);
   useEffect(() => {
-    if (currentIssue) selectedIdRef.current = currentIssue.id;
-  }, [currentIssue]);
+    const previous = previousListRef.current;
+    previousListRef.current = filteredIssues;
+    if (previous === filteredIssues) return;
 
-  useEffect(() => {
-    if (selectedIdRef.current && filteredIssues.length > 0) {
-      const idx = filteredIssues.findIndex((i) => i.id === selectedIdRef.current);
-      if (idx >= 0) setSelectedIndex(idx);
-    }
-  }, [filteredIssues, setSelectedIndex]);
+    const nextIndex = anchorSelection(previous, filteredIssues, selectedIndex);
+    if (nextIndex !== null && nextIndex !== selectedIndex) setSelectedIndex(nextIndex);
+  }, [filteredIssues, selectedIndex, setSelectedIndex]);
 
-  useKeyboardShortcuts(shownIssues);
+  useKeyboardShortcuts(shownIssues, keyboardOptions);
 
   const handleSelect = useCallback(
     (issue: { id: string }) => {
@@ -238,13 +274,18 @@ export function InboxView() {
    */
   const handleOpenFollowUp = useCallback(
     (entry: FollowUpEntry) => {
-      const idx = filterIssues(issueList, "all").findIndex((issue) => issue.id === entry.issueId);
+      // The index must come from the list the keyboard actually navigates, which
+      // is the searched and sorted one, and with the filter forced to `all` below.
+      // Searching the raw queue pointed at a different row whenever a query or a
+      // non-default sort was active, or found nothing at all.
+      const targetList = filterIssues(sortIssues(filterByQuery(issueList, query), sort), "all");
+      const idx = targetList.findIndex((issue) => issue.id === entry.issueId);
       setPinnedIssue(idx >= 0 ? null : entry);
       setSurface("queue");
       setFilter("all");
       setSelectedIndex(idx);
     },
-    [issueList, setFilter, setSelectedIndex]
+    [issueList, query, sort, setFilter, setSelectedIndex]
   );
 
   /** Saves the current filter as a named view and closes the name field. */
@@ -295,6 +336,25 @@ export function InboxView() {
               exists to surface. The controls hide rather than sit inert. */}
           {surface === "queue" ? (
             <>
+              <Input
+                type="search"
+                aria-label="Search issues"
+                placeholder="Search… (label:bug, author:nadia, #123)"
+                value={queryText}
+                onChange={(event) => setQueryText(event.target.value)}
+                className="h-9 w-full min-w-0 max-w-[16rem] flex-1 text-sm sm:max-w-[20rem]"
+              />
+              <SelectField
+                aria-label="Sort issues"
+                value={sort}
+                onChange={(event) => setSort(event.target.value as IssueSort)}
+              >
+                {ISSUE_SORTS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </SelectField>
               <SelectField
                 aria-label="Filter issues"
                 value={filter}
@@ -445,6 +505,9 @@ export function InboxView() {
         <ResizablePanel defaultSize="58%" minSize="32%">
           <IssueDetail
             issue={currentIssue}
+            // A pinned follow-up is not a queue row, so the keyboard dispatcher
+            // has no current issue and `c` cannot fire for it.
+            shortcutTarget={currentIssue !== null && currentIssue === queueIssue}
             onClose={() => {
               // The pin outlives the selection, so closing has to clear it too.
               // Without this, Escape closes a pinned follow-up and the pane

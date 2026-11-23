@@ -174,15 +174,28 @@ async function readText(res: Response): Promise<string> {
 }
 
 /**
- * Release a response whose body will not be read.
+ * Release a response whose body will not be read, and drop that body.
  *
- * Call this on every `!res.ok` early return. Skipping it leaves the request's
- * timer armed for its full duration, which leaks one timer per failed call.
+ * Call this on every `!res.ok` early return and after a write whose response is
+ * not inspected. Skipping the timer leaves it armed for its full duration, which
+ * leaks one per call; leaving the body unconsumed holds the connection, so a
+ * burst of writes keeps sockets open that could have been reused.
  *
  * @param res - A response returned by {@link ghFetch} that will not be read.
  */
 function discard(res: Response): void {
   (res as unknown as { releaseTimeout?: () => void }).releaseTimeout?.();
+  // Drained rather than simply dropped: reading to the end is what returns the
+  // connection to the pool, and these are small error or empty JSON bodies. A
+  // response with no readable body, as in tests, has nothing to drain.
+  if (!res.body) return;
+  void (async () => {
+    try {
+      await res.arrayBuffer();
+    } catch {
+      // A body that cannot be read is already released; nothing to clean up.
+    }
+  })();
 }
 
 /**
@@ -320,10 +333,25 @@ export const githubProvider: IssueProvider = {
    * @param changes - The set of changes to apply.
    */
   async updateIssue(owner, repo, issueNumber, token, changes) {
-    const checked = async (url: string, tok: string, init?: RequestInit): Promise<Response> => {
-      const response = await ghFetch(url, tok, init);
+    // Every response is released here, success or failure. `readText` and
+    // `discard` are what clear the request's abort timer, and a write that leaks
+    // one arms an abort against a signal nobody holds for the full 30s.
+    //
+    // The content type is explicit because `fetch` otherwise stamps
+    // `text/plain` on a body. GitHub parses a request body as JSON only when the
+    // header says so; without it the update is rejected, and the `DELETE
+    // /assignees` body is ignored outright — which removes every assignee rather
+    // than the named one.
+    const checked = async (url: string, tok: string, init: RequestInit = {}): Promise<void> => {
+      const response = await ghFetch(url, tok, {
+        ...init,
+        headers: {
+          ...(init.body ? { "Content-Type": "application/json" } : {}),
+          ...init.headers,
+        },
+      });
       if (!response.ok) {
-        const body = await response.text().catch(() => "");
+        const body = await readText(response);
         throw new ProviderApiError(response.status, body, {
           provider: "github",
           operation: "updateIssue",
@@ -331,7 +359,7 @@ export const githubProvider: IssueProvider = {
           repo,
         });
       }
-      return response;
+      discard(response);
     };
 
     // Build the update payload
@@ -390,7 +418,12 @@ export const githubProvider: IssueProvider = {
       discard(userRes);
       return null;
     }
-    const user = await userRes.json();
+    // Through `readBody` so the response's timer is released, and guarded
+    // because interpolating an absent login would request a permission for
+    // `/collaborators/undefined/...`, whose 404 reads as "repository not
+    // found" for a repository the user can see.
+    const user = await readBody<{ login?: string }>(userRes);
+    if (!user?.login) return null;
 
     const res = await ghFetch(
       `${GITHUB_API}/repos/${owner}/${repo}/collaborators/${user.login}/permission`,

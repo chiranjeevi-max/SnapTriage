@@ -186,8 +186,16 @@ export function mergePendingChanges(
  */
 export function payloadToIssueUpdate(payload: TriagePayload): IssueUpdate {
   const update: IssueUpdate = {};
-  if (payload.labels) update.labels = payload.labels;
-  if (payload.assignees) update.assignees = payload.assignees;
+
+  // A pair whose both sides cancelled out is not a change. Keeping it would make
+  // `Object.keys(update).length` non-zero, so a push with nothing to send still
+  // called the provider, and the batch preview could not distinguish a real diff
+  // from an emptied one.
+  const hasValues = (set?: { add?: string[]; remove?: string[] }) =>
+    (set?.add?.length ?? 0) > 0 || (set?.remove?.length ?? 0) > 0;
+
+  if (payload.labels && hasValues(payload.labels)) update.labels = payload.labels;
+  if (payload.assignees && hasValues(payload.assignees)) update.assignees = payload.assignees;
   if (payload.state) update.state = payload.state;
   return update;
 }

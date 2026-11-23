@@ -33,6 +33,7 @@ import type { IssueWithTriage, IssueDetail } from "@/features/inbox/use-issues";
 import { useIssue } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { priorityOptions } from "@/features/triage/priority";
+import { toggleIssueState } from "@/features/triage/triage-actions";
 import { useKeyboardStore, Kbd } from "@/features/keyboard";
 import { Discussion, Composer } from "@/features/replies";
 import { FollowUpControl } from "@/features/follow-up";
@@ -50,6 +51,14 @@ export type IssueDetailTarget = Pick<IssueWithTriage, "id"> &
 interface IssueDetailProps {
   issue: IssueDetailTarget | null;
   onClose: () => void;
+  /**
+   * Whether the queue row for this issue is on screen.
+   *
+   * The detail pane also renders a pinned follow-up, which is not a queue row:
+   * the keyboard dispatcher has no current issue then, so a shortcut hint would
+   * promise something that cannot fire.
+   */
+  shortcutTarget?: boolean;
 }
 
 /**
@@ -71,7 +80,11 @@ function snoozeTimeLeft(isoStr: string): string {
  * Renders the full detail view for a single issue including triage controls.
  * Shows an empty-state prompt when no issue is selected.
  */
-export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) {
+export function IssueDetail({
+  issue: issueSummary,
+  onClose,
+  shortcutTarget = true,
+}: IssueDetailProps) {
   const { data: issue } = useIssue(issueSummary?.id);
   const triage = useTriageMutation();
   const resolvedIssue = (issue ?? issueSummary) as IssueDetail;
@@ -110,6 +123,13 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
       payload: { dismissed: newDismissed },
       previousPayload: { dismissed: !newDismissed },
       description: newDismissed ? "Dismissed issue" : "Undismissed issue",
+    });
+  }
+
+  function handleToggleState() {
+    triage.mutate({
+      issueId: currentIssue.id,
+      ...toggleIssueState(currentIssue.state === "closed" ? "closed" : "open"),
     });
   }
 
@@ -221,6 +241,26 @@ export function IssueDetail({ issue: issueSummary, onClose }: IssueDetailProps) 
             <TooltipContent side="bottom" className="flex items-center gap-1.5">
               <span>Toggle dismiss</span>
               <Kbd>D</Kbd>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={resolvedIssue.state === "closed" ? "secondary" : "outline"}
+                size="sm"
+                onClick={handleToggleState}
+                className="h-8 gap-1.5 px-2.5 text-xs"
+              >
+                {resolvedIssue.state === "closed" ? "Reopen" : "Close"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="flex items-center gap-1.5">
+              <span>{resolvedIssue.state === "closed" ? "Reopen issue" : "Close issue"}</span>
+              {/* A pinned follow-up has no queue row, so the keyboard dispatcher
+                  has no current issue and `c` does nothing there. Showing the
+                  hint would promise a shortcut that cannot fire. */}
+              {shortcutTarget && <Kbd>C</Kbd>}
             </TooltipContent>
           </Tooltip>
 

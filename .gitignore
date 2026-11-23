@@ -60,3 +60,9 @@ next-env.d.ts
 
 # local planning notes (not committed)
 /PLAN.md
+
+# session notes, not part of the repo
+/OVERNIGHT_LOG.md
+
+# tool-managed (never committed)
+/.commandcode/

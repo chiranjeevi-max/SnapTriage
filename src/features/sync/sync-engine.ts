@@ -16,6 +16,19 @@ import { syncLogger } from "@/lib/logger";
 const SYNC_CONCURRENCY = 3;
 
 /**
+ * Slack subtracted from a sync's start instant before it is stored as the
+ * watermark.
+ *
+ * Both providers filter `since` / `updated_after` strictly, and they stamp
+ * `updated_at` with their own clocks. Storing the exact start instant assumes
+ * those clocks agree with ours; where the provider's runs behind, an issue
+ * updated in the window carries an `updated_at` earlier than the watermark and
+ * is skipped forever. The overlap costs one re-read of a minute's worth of
+ * issues, which the upsert absorbs, and removes that assumption.
+ */
+const WATERMARK_SKEW_MARGIN_MS = 60_000;
+
+/**
  * Issues written per upsert statement: as many as fit in SQLite's limit of
  * 32,766 bound parameters, since each row binds one parameter per column.
  */
@@ -54,29 +67,44 @@ function excluded(column: { name: string }) {
  */
 export async function syncRepo(repoId: string, userId: string): Promise<SyncResult> {
   const logId = crypto.randomUUID();
-
-  const repoRows = await typedDb
-    .select()
-    .from(repos)
-    .where(and(eq(repos.id, repoId), eq(repos.userId, userId)));
-
-  const repo = repoRows[0];
-  if (!repo) return { repoId, status: "failed", issuesFetched: 0, error: "Repo not found" };
-
-  syncLogger.info({ repoId, fullName: repo.fullName, provider: repo.provider }, "Sync started");
-
-  // Log sync start
-  await typedDb.insert(syncLog).values({
-    id: logId,
-    repoId,
-    status: "started",
-  });
+  // Named for the catch block: the repository may never have been read.
+  let repoName: string | undefined;
 
   try {
+    // The repository read is inside the guard too. When the database is the
+    // failing component this is the *first* thing that fails, and a plain read
+    // here would reject out of the single-repo route as a bare 500 instead of
+    // the failed `SyncResult` the caller is promised.
+    const repoRows = await typedDb
+      .select()
+      .from(repos)
+      .where(and(eq(repos.id, repoId), eq(repos.userId, userId)));
+
+    const repo = repoRows[0];
+    if (!repo) return { repoId, status: "failed", issuesFetched: 0, error: "Repo not found" };
+    repoName = repo.fullName;
+
+    syncLogger.info({ repoId, fullName: repo.fullName, provider: repo.provider }, "Sync started");
+
+    // Inside the try: when the database itself is the failing component, this
+    // write throws too, and the call must still return a failed SyncResult
+    // rather than rejecting out of the route handler that awaited it.
+    await typedDb.insert(syncLog).values({
+      id: logId,
+      repoId,
+      status: "started",
+    });
+
     const token = await getProviderToken(userId, repo.provider as "github" | "gitlab");
     if (!token) throw new Error(`No ${repo.provider} token found`);
 
     const provider = getProvider(repo.provider as "github" | "gitlab");
+    // The watermark is the instant the read *started*, not the instant the
+    // write finished. An issue updated while the pages are still coming in has
+    // an `updated_at` earlier than a finish-time stamp, and the next sync's
+    // strict `since` would step over it — losing the change permanently rather
+    // than delaying it.
+    const syncStartedAt = Date.now();
     const since = repo.lastSyncedAt ? new Date(repo.lastSyncedAt) : undefined;
     const fetched = await provider.fetchIssues(repo.owner, repo.name, token, since);
 
@@ -131,12 +159,17 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
     }
 
     // Update repo lastSyncedAt
-    await typedDb.update(repos).set({ lastSyncedAt: new Date() }).where(eq(repos.id, repoId));
+    await typedDb
+      .update(repos)
+      .set({ lastSyncedAt: new Date(syncStartedAt - WATERMARK_SKEW_MARGIN_MS) })
+      .where(eq(repos.id, repoId));
 
-    // Log sync completion
+    // Log sync completion. Counts the rows actually written, which is also what
+    // the log line below reports; `fetched.length` counted pre-dedup, so one
+    // sync could report two different totals depending on where it was read.
     await typedDb
       .update(syncLog)
-      .set({ status: "completed", issuesFetched: fetched.length, completedAt: new Date() })
+      .set({ status: "completed", issuesFetched: uniqueFetched.length, completedAt: new Date() })
       .where(eq(syncLog.id, logId));
 
     syncLogger.info(
@@ -148,16 +181,27 @@ export async function syncRepo(repoId: string, userId: string): Promise<SyncResu
       "Sync completed"
     );
 
-    return { repoId, status: "completed", issuesFetched: fetched.length };
+    return { repoId, status: "completed", issuesFetched: uniqueFetched.length };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
-    syncLogger.error({ repoId, fullName: repo.fullName, error: errorMsg }, "Sync failed");
+    syncLogger.error({ repoId, fullName: repoName, error: errorMsg }, "Sync failed");
 
-    await typedDb
-      .update(syncLog)
-      .set({ status: "failed", error: errorMsg, completedAt: new Date() })
-      .where(eq(syncLog.id, logId));
+    // The failure record is written by the same database that may have just
+    // failed. Letting its error escape would replace a reportable failure with a
+    // rejected promise, so the single-repo route — which calls `syncRepo`
+    // directly — would answer a bare 500 with no sync outcome at all.
+    try {
+      await typedDb
+        .update(syncLog)
+        .set({ status: "failed", error: errorMsg, completedAt: new Date() })
+        .where(eq(syncLog.id, logId));
+    } catch (logError) {
+      syncLogger.error(
+        { repoId, error: logError instanceof Error ? logError.message : String(logError) },
+        "Could not record sync failure"
+      );
+    }
 
     return { repoId, status: "failed", issuesFetched: 0, error: errorMsg };
   }
@@ -238,8 +282,9 @@ export async function pushBatchChanges(
 
       // Skip if no provider changes to push
       if (Object.keys(issueUpdate).length === 0) {
-        // Just clear the batch pending flag
-        await clearBatchPendingQuery(row.id, userId);
+        // Just clear the batch pending flag. Conditional on the revision read at
+        // the start of the pass, so a personal change staged since then survives.
+        await clearBatchPendingQuery(row.id, userId, row.revision);
         pushed++;
         continue;
       }
@@ -289,10 +334,12 @@ export async function pushBatchChanges(
         localUpdate.state = changes.state;
       }
       // localUpdate covers the same fields as issueUpdate, so it is never empty
-      // here. It commits together with the cleared flag.
+      // here. It commits together with the cleared flag. The issue row mirrors
+      // what the provider now holds, so it is written even when the clear is
+      // refused — the newer staged values stay pending for the next push.
       await runTransaction([
         typedDb.update(issues).set(localUpdate).where(eq(issues.id, row.issueId)),
-        clearBatchPendingQuery(row.id, userId),
+        clearBatchPendingQuery(row.id, userId, row.revision),
       ]);
 
       pushed++;
@@ -311,10 +358,21 @@ export async function pushBatchChanges(
 /**
  * Builds, without running, the write that marks a user's triage row as pushed.
  *
+ * Conditional on `revision`, which the caller read before it sent anything to the
+ * provider: a push can spend up to the request timeout on the network call, and
+ * anything the user stages in that window bumps the revision. Clearing
+ * unconditionally would wipe those newer values to `{}` — they were never sent,
+ * and with the flag cleared nothing would ever retry them.
+ *
+ * A row that changed hands is left alone entirely: `batchPending` stays set and
+ * the next push sends what is now staged. Re-sending the values this push already
+ * delivered is harmless, since the update is a set rather than an increment.
+ *
  * @param triageId - The triage state row whose staged changes were sent.
  * @param userId - The user the row belongs to.
+ * @param revision - The revision the staged changes were read at.
  */
-function clearBatchPendingQuery(triageId: string, userId: string) {
+function clearBatchPendingQuery(triageId: string, userId: string, revision: number) {
   return typedDb
     .update(triageState)
     .set({
@@ -326,5 +384,11 @@ function clearBatchPendingQuery(triageId: string, userId: string) {
       revision: sql`${triageState.revision} + 1`,
       updatedAt: new Date(),
     })
-    .where(and(eq(triageState.id, triageId), eq(triageState.userId, userId)));
+    .where(
+      and(
+        eq(triageState.id, triageId),
+        eq(triageState.userId, userId),
+        eq(triageState.revision, revision)
+      )
+    );
 }

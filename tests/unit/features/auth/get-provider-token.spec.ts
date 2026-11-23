@@ -69,9 +69,9 @@ describe("getProviderToken", () => {
       const futureExpiry = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
 
       // First select call → accounts table
-      const whereSpy1 = vi.fn().mockResolvedValue([
-        { access_token: "oauth_token_hex", expires_at: futureExpiry },
-      ]);
+      const whereSpy1 = vi
+        .fn()
+        .mockResolvedValue([{ access_token: "oauth_token_hex", expires_at: futureExpiry }]);
       const fromSpy1 = vi.fn().mockReturnValue({ where: whereSpy1 });
       vi.mocked(typedDb.select).mockReturnValueOnce({ from: fromSpy1 } as never);
 
@@ -91,9 +91,9 @@ describe("getProviderToken", () => {
       const pastExpiry = Math.floor(Date.now() / 1000) - 60; // expired 1 min ago
 
       // First select call → accounts (expired token)
-      const whereSpy1 = vi.fn().mockResolvedValue([
-        { access_token: "expired_token", expires_at: pastExpiry },
-      ]);
+      const whereSpy1 = vi
+        .fn()
+        .mockResolvedValue([{ access_token: "expired_token", expires_at: pastExpiry }]);
       const fromSpy1 = vi.fn().mockReturnValue({ where: whereSpy1 });
 
       // Second select call → accessTokens (PAT found)
@@ -198,9 +198,7 @@ describe("getProviderToken", () => {
         return { from: fromSpy } as never;
       };
 
-      vi.mocked(typedDb.select)
-        .mockReturnValueOnce(makeEmpty())
-        .mockReturnValueOnce(makeEmpty());
+      vi.mocked(typedDb.select).mockReturnValueOnce(makeEmpty()).mockReturnValueOnce(makeEmpty());
 
       const result = await getProviderToken("USR-001", "github");
 

@@ -39,9 +39,15 @@ export async function connectRepo(data: {
  * Removes a tracked repo, scoped to the owning user.
  * @param id - Repo record ID.
  * @param userId - The user's ID (ownership guard).
+ * @returns `true` when a repo was removed, `false` when the id matched nothing.
  */
 export async function disconnectRepo(id: string, userId: string) {
-  await typedDb.delete(repos).where(and(eq(repos.id, id), eq(repos.userId, userId)));
+  const removed = await typedDb
+    .delete(repos)
+    .where(and(eq(repos.id, id), eq(repos.userId, userId)))
+    .returning({ id: repos.id });
+
+  return removed.length > 0;
 }
 
 /**
@@ -67,14 +73,18 @@ export async function findConnectedRepo(userId: string, provider: string, fullNa
  * @param id - Repo record ID.
  * @param userId - The user's ID (ownership guard).
  * @param data - Fields to update.
+ * @returns `true` when a repo was updated, `false` when the id matched nothing.
  */
 export async function updateRepo(
   id: string,
   userId: string,
   data: { syncMode?: string; syncEnabled?: boolean }
 ) {
-  await typedDb
+  const updated = await typedDb
     .update(repos)
     .set(data)
-    .where(and(eq(repos.id, id), eq(repos.userId, userId)));
+    .where(and(eq(repos.id, id), eq(repos.userId, userId)))
+    .returning({ id: repos.id });
+
+  return updated.length > 0;
 }

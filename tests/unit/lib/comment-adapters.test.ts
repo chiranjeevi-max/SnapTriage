@@ -504,7 +504,6 @@ describe("githubProvider.createComment", () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
-
 });
 
 describe("gitlabProvider.fetchComments", () => {
@@ -685,16 +684,14 @@ describe("gitlabProvider.createComment", () => {
       });
 
       let settled: "resolved" | "rejected" | null = null;
-      void gitlabProvider
-        .createComment?.("octo", "repo", 7, "token-abc", "Thanks!")
-        .then(
-          () => {
-            settled = "resolved";
-          },
-          () => {
-            settled = "rejected";
-          }
-        );
+      void gitlabProvider.createComment?.("octo", "repo", 7, "token-abc", "Thanks!").then(
+        () => {
+          settled = "resolved";
+        },
+        () => {
+          settled = "rejected";
+        }
+      );
 
       // Let the request reach the body read, then run past the deadline.
       await vi.advanceTimersByTimeAsync(31_000);
@@ -706,7 +703,6 @@ describe("gitlabProvider.createComment", () => {
       vi.useRealTimers();
     }
   });
-
 });
 
 describe("gitlabProvider.getAuthenticatedUser", () => {

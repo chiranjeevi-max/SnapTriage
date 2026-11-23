@@ -19,7 +19,7 @@ import { updateRepoSchema, parseBody } from "@/lib/validations";
  *
  * @param _req - Incoming request (unused)
  * @param params - Dynamic route params containing `id` (the repo's DB primary key)
- * @returns JSON `{ ok: true }` on success
+ * @returns JSON `{ ok: true }` on success, or 404 when the repo is not the caller's
  */
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -28,7 +28,13 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
-  await disconnectRepo(id, session.user.id);
+  // A disconnect cascades to every issue, draft and preset under the repo, so
+  // reporting success for an id that matched nothing hides a client holding a
+  // stale id behind what looks like a completed removal.
+  if (!(await disconnectRepo(id, session.user.id))) {
+    return NextResponse.json({ error: "Repo not found" }, { status: 404 });
+  }
+
   return NextResponse.json({ ok: true });
 }
 
@@ -37,7 +43,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
  *
  * @param req - Request with JSON body containing `{ syncMode?, syncEnabled? }`
  * @param params - Dynamic route params containing `id` (the repo's DB primary key)
- * @returns JSON `{ ok: true }` on success, or an error with 400 status if no fields provided
+ * @returns JSON `{ ok: true }` on success, or 400/404 on a bad or unknown id
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -56,6 +62,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (parsed.data.syncMode !== undefined) data.syncMode = parsed.data.syncMode;
   if (parsed.data.syncEnabled !== undefined) data.syncEnabled = parsed.data.syncEnabled;
 
-  await updateRepo(id, session.user.id, data);
+  if (!(await updateRepo(id, session.user.id, data))) {
+    return NextResponse.json({ error: "Repo not found" }, { status: 404 });
+  }
+
   return NextResponse.json({ ok: true });
 }

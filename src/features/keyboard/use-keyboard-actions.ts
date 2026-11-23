@@ -18,19 +18,37 @@ import { useSync, type IssueWithTriage } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { useUndoStore } from "@/features/triage/use-undo";
 import { useBatchPush } from "@/features/triage/use-batch";
+import { toggleIssueState } from "@/features/triage/triage-actions";
 
-export function useKeyboardActions(issues: IssueWithTriage[]) {
-  const {
-    selectedIndex,
-    moveSelection,
-    toggleOverlay,
-    setSelectedIndex,
-    setLabelPickerOpen,
-    setAssigneePickerOpen,
-    setSnoozePickerOpen,
-    setPresetPickerOpen,
-    setFollowUpArmRequested,
-  } = useKeyboardStore();
+/**
+ * Handlers for actions that belong to the view rather than the dispatcher.
+ *
+ * Bulk selection is the case: the dispatcher knows the keystroke, but only the
+ * inbox view knows which rows are visible, so it hands the work back through a
+ * callback instead of routing it through the shared store. A store round trip
+ * would have to be consumed during render — writing to an external store there
+ * is not the same as a React state update, and React rejects it.
+ */
+export interface KeyboardActionOptions {
+  /** Add or remove one issue from the bulk selection. */
+  toggleSelection?: (issueId: string) => void;
+  /** Select every visible issue, or clear if they are all selected. */
+  selectAllVisible?: () => void;
+}
+
+export function useKeyboardActions(issues: IssueWithTriage[], options?: KeyboardActionOptions) {
+  // Split selectors rather than one subscription: this hook lives in the inbox's
+  // tree, so a selectorless form re-rendered it — and re-created the dispatcher
+  // the keydown listener depends on — every time any store field moved.
+  const selectedIndex = useKeyboardStore((state) => state.selectedIndex);
+  const moveSelection = useKeyboardStore((state) => state.moveSelection);
+  const toggleOverlay = useKeyboardStore((state) => state.toggleOverlay);
+  const setSelectedIndex = useKeyboardStore((state) => state.setSelectedIndex);
+  const setLabelPickerOpen = useKeyboardStore((state) => state.setLabelPickerOpen);
+  const setAssigneePickerOpen = useKeyboardStore((state) => state.setAssigneePickerOpen);
+  const setSnoozePickerOpen = useKeyboardStore((state) => state.setSnoozePickerOpen);
+  const setPresetPickerOpen = useKeyboardStore((state) => state.setPresetPickerOpen);
+  const setFollowUpArmRequested = useKeyboardStore((state) => state.setFollowUpArmRequested);
   const triage = useTriageMutation();
   const sync = useSync();
   const batchPush = useBatchPush();
@@ -98,6 +116,22 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           });
           break;
         }
+        case "toggle-state": {
+          if (!currentIssue) break;
+          // `state` is narrowed to the two values the schema accepts; any other
+          // stored string is treated as open, which is the only thing a provider
+          // can report besides closed.
+          const { payload, previousPayload, description } = toggleIssueState(
+            currentIssue.state === "closed" ? "closed" : "open"
+          );
+          triageRef.current.mutate({
+            issueId: currentIssue.id,
+            payload,
+            previousPayload,
+            description,
+          });
+          break;
+        }
         case "labels":
           if (!currentIssue) break;
           setLabelPickerOpen(true);
@@ -136,6 +170,13 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
           }
           break;
         }
+        case "select-toggle":
+          if (!currentIssue) break;
+          options?.toggleSelection?.(currentIssue.id);
+          break;
+        case "select-all":
+          options?.selectAllVisible?.();
+          break;
         case "batch-push":
           batchPushRef.current.mutate();
           break;
@@ -156,6 +197,7 @@ export function useKeyboardActions(issues: IssueWithTriage[]) {
       setSnoozePickerOpen,
       setPresetPickerOpen,
       setFollowUpArmRequested,
+      options,
       popUndo,
     ]
   );

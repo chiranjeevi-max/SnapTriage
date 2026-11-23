@@ -335,6 +335,24 @@ describe("GET /api/issues/:id/comments — shape and failures", () => {
 
   /**
    * @target GET /api/issues/:id/comments
+   * @dependencies none
+   * @scenario The request cannot reach the provider at all — DNS, a reset
+   *           socket, a self-hosted instance that is down
+   * @expectedOutput 502. `fetch` rejects with a plain `TypeError`, not a
+   *                 `ProviderApiError`, and rethrowing it made an unreachable
+   *                 provider look like a defect in this app.
+   */
+  it("should return 502 when the provider is unreachable", async () => {
+    provider.fetchComments.mockRejectedValue(new TypeError("fetch failed"));
+
+    const res = await getComments();
+
+    expect(res.status).toBe(502);
+    expect((res.body as { error: string }).error).toBe("Could not load this discussion right now.");
+  });
+
+  /**
+   * @target GET /api/issues/:id/comments
    * @dependencies ProviderApiError.isAuthError
    * @scenario The stored token is rejected by the provider
    * @expectedOutput 403, because the fix is to re-authenticate rather than retry

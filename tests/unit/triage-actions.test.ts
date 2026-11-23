@@ -15,6 +15,7 @@ import {
   snoozeIssue,
   unsnoozeIssue,
   dismissIssue,
+  toggleIssueState,
 } from "@/features/triage/triage-actions";
 
 describe("triage-actions", () => {
@@ -70,6 +71,39 @@ describe("triage-actions", () => {
     it("returns payload with dismissed flag", () => {
       expect(dismissIssue(true)).toEqual({ dismissed: true });
       expect(dismissIssue(false)).toEqual({ dismissed: false });
+    });
+  });
+
+  describe("toggleIssueState", () => {
+    it("closes an open issue and names the direction", () => {
+      expect(toggleIssueState("open")).toEqual({
+        payload: { state: "closed" },
+        previousPayload: { state: "open" },
+        description: "Closed issue",
+      });
+    });
+
+    it("reopens a closed issue", () => {
+      expect(toggleIssueState("closed")).toEqual({
+        payload: { state: "open" },
+        previousPayload: { state: "closed" },
+        description: "Reopened issue",
+      });
+    });
+
+    /**
+     * The inverse is what undo replays, so applying either half must land back
+     * where it started. Derived in one place, the two cannot drift apart.
+     */
+    it("returns an inverse that reverses the payload", () => {
+      for (const state of ["open", "closed"] as const) {
+        const { payload, previousPayload } = toggleIssueState(state);
+        // Toggling the state the payload sets must return the prior state, which
+        // is what undo replays.
+        const after = toggleIssueState(payload.state as "open" | "closed").payload;
+        expect(after).toEqual(previousPayload);
+        expect(payload.state).not.toBe(state);
+      }
     });
   });
 });

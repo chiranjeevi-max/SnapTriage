@@ -19,7 +19,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   armFollowUp,
-  followUpStatesFor,
   listFollowUps,
   reviewFollowUp,
   runFollowUpCheck,
@@ -339,7 +338,10 @@ describe("runFollowUpCheck", () => {
   it("should skip a row still inside the cooldown", async () => {
     seedRepoAndIssue();
     fakeDb.state.rows.follow_up.push(
-      followUpRow({ checkedAt: new Date(Date.now() - 5_000), attemptedAt: new Date(Date.now() - 5_000) })
+      followUpRow({
+        checkedAt: new Date(Date.now() - 5_000),
+        attemptedAt: new Date(Date.now() - 5_000),
+      })
     );
 
     const summary = await runFollowUpCheck("user-1");
@@ -447,7 +449,12 @@ describe("runFollowUpCheck", () => {
         issueRow({ id: issueId, number: index + 1, providerIssueId: `gh-cooled-${index}` })
       );
       fakeDb.state.rows.follow_up.push(
-        followUpRow({ id: `follow-up-cooled-${index}`, issueId, checkedAt: cooled, attemptedAt: cooled })
+        followUpRow({
+          id: `follow-up-cooled-${index}`,
+          issueId,
+          checkedAt: cooled,
+          attemptedAt: cooled,
+        })
       );
     }
     fakeDb.state.rows.issue.push(
@@ -657,51 +664,5 @@ describe("listFollowUps", () => {
     fakeDb.state.rows.follow_up.push(followUpRow({ userId: "user-2" }));
 
     expect(await listFollowUps("user-1")).toEqual([]);
-  });
-});
-
-describe("followUpStatesFor", () => {
-  /**
-   * @target followUpStatesFor
-   * @dependencies inArray
-   * @scenario The caller asks about two issues, one of which is followed
-   * @expectedOutput A map holding only the followed issue's state
-   */
-  it("should map the requested issues to their follow-up state", async () => {
-    fakeDb.state.rows.follow_up.push(
-      followUpRow({ issueId: ISSUE_ID, state: "waiting" }),
-      followUpRow({ id: "follow-up-other", issueId: "issue-not-asked-about" })
-    );
-
-    const states = await followUpStatesFor("user-1", [ISSUE_ID, OTHER_ISSUE_ID]);
-
-    expect(states.size).toBe(1);
-    expect(states.get(ISSUE_ID)).toBe("waiting");
-  });
-
-  /**
-   * @target followUpStatesFor
-   * @dependencies typedDb.select
-   * @scenario No issue ids are supplied
-   * @expectedOutput An empty map with no query issued, which is what keeps the
-   *                 queue overlay from emitting `in ()`
-   */
-  it("should answer an empty map without querying for no ids", async () => {
-    const states = await followUpStatesFor("user-1", []);
-
-    expect(states.size).toBe(0);
-    expect(fakeDb.state.log).toHaveLength(0);
-  });
-
-  /**
-   * @target followUpStatesFor
-   * @dependencies inArray
-   * @scenario The followed issue belongs to another user
-   * @expectedOutput An empty map
-   */
-  it("should not report another user's follow-up state", async () => {
-    fakeDb.state.rows.follow_up.push(followUpRow({ userId: "user-2" }));
-
-    expect((await followUpStatesFor("user-1", [ISSUE_ID])).size).toBe(0);
   });
 });

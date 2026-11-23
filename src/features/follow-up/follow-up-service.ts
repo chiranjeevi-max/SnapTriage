@@ -13,7 +13,7 @@
  * not hammer the provider. Anything not examined keeps its previous
  * `checkedAt`, which is what the UI shows to make freshness honest.
  */
-import { and, eq, inArray, desc, isNull, lt, or } from "drizzle-orm";
+import { and, eq, desc, isNull, lt, or, sql } from "drizzle-orm";
 import { typedDb } from "@/lib/db/query";
 import { followUps, issues, repos } from "@/lib/db/schema";
 import { getProvider } from "@/lib/providers";
@@ -265,6 +265,31 @@ async function passContextFor(userId: string, provider: ProviderName, cache: Pas
 }
 
 /**
+ * The order a check pass reads waiting rows in.
+ *
+ * Oldest attempt first, with never-attempted rows leading. A failed row moves to
+ * the back on its next pass because `attemptedAt` advanced.
+ *
+ * The NULL placement is stated rather than assumed: SQLite sorts NULL below
+ * every value, but Postgres sorts it *above* on an ascending order, so the two
+ * drivers disagree about a never-attempted row. On Neon that inverted the
+ * schedule — a freshly armed follow-up sorted behind twenty attempted rows, and
+ * the batch refilled with those every pass, so the new row was never reached.
+ *
+ * `coalesce` fixed the ordering but wrapped the column, which stopped
+ * `follow_up_due_idx` from satisfying the sort and forced a temporary B-tree over
+ * every eligible row on every pass. `NULLS FIRST` keeps the bare column, so the
+ * index serves the order. Exported so a test can check that against the real
+ * clause rather than a copy of it.
+ */
+export function followUpOrder() {
+  return [
+    sql`${followUps.attemptedAt} asc nulls first`,
+    sql`${followUps.checkedAt} asc nulls first`,
+  ];
+}
+
+/**
  * Run one bounded check pass over the user's waiting issues.
  *
  * Issues checked within the cooldown are skipped, which keeps a user who
@@ -281,21 +306,18 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
   // Two rules decide which rows this pass examines, and both belong in the query.
   //
   // The cooldown filters, because applying it after `.limit()` lets recently
-  // checked rows consume the batch and starve the due ones.
+  // attempted rows consume the batch and starve the due ones.
   //
   // The ordering uses `attemptedAt`, not `checkedAt`. `checkedAt` only moves when
   // a check completes, so a row whose provider read keeps failing would stay the
   // oldest forever and be retried on every pass while healthy rows behind it
   // wait. Ordering by the last attempt rotates those rows to the back once they
-  // have had their turn, and `checkedAt` keeps its meaning for the UI.
-  // A row is due when neither its last attempt nor its last completed check is
-  // inside the cooldown. Written as two disjunctions rather than a `coalesce`
-  // so the predicate stays plain column comparisons, which both drivers index
-  // and which any reader can check against the schema.
-  // Due means "not attempted recently". `checkedAt` only decides the order for
-  // rows that have never been attempted, so it does not appear here: including
-  // it would permanently exclude a row whose attempts keep failing, which is the
-  // starvation this column exists to prevent.
+  // have had their turn, and `checkedAt` keeps its meaning for the UI — it orders
+  // two never-attempted rows, and nothing else.
+  //
+  // Due means "not attempted recently": one disjunction over `attemptedAt` alone.
+  // Adding `checkedAt` to it would permanently exclude a row whose attempts keep
+  // failing, which is the starvation this column exists to prevent.
   const due = or(isNull(followUps.attemptedAt), lt(followUps.attemptedAt, cutoff));
 
   const waiting = await typedDb
@@ -304,10 +326,7 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
     .innerJoin(issues, eq(issues.id, followUps.issueId))
     .innerJoin(repos, eq(repos.id, issues.repoId))
     .where(and(eq(followUps.userId, userId), eq(followUps.state, "waiting"), due))
-    // Oldest attempt first. NULL sorts below every timestamp on SQLite and
-    // Postgres, so never-attempted rows lead. A failed row moves to the back on
-    // its next pass because `attemptedAt` advanced.
-    .orderBy(followUps.attemptedAt, followUps.checkedAt)
+    .orderBy(...followUpOrder())
     .limit(MAX_CHECKS_PER_PASS);
 
   const cache: PassContext = new Map();
@@ -346,7 +365,21 @@ export async function runFollowUpCheck(userId: string): Promise<FollowUpCheckSum
       continue;
     }
 
-    const result = await checkOne(userId, row.followUp, row.issue, row.repo, context);
+    // A pass with no usable token could read nothing, and the row keeps its
+    // baseline either way. Recording the turn is what stops the same twenty rows
+    // from being selected first on every pass and starving the queue behind
+    // them; without it a user whose token cannot be decrypted has no working
+    // follow-ups at all, not merely stale ones.
+    if (!context.token) {
+      await markAttempted(row.followUp.id);
+      skipped++;
+      continue;
+    }
+
+    const result = await checkOne(userId, row.followUp, row.issue, row.repo, {
+      token: context.token,
+      identity: context.identity,
+    });
     if (!result) {
       skipped++;
       continue;
@@ -373,12 +406,11 @@ async function checkOne(
   followUp: FollowUpRow,
   issue: IssueRow,
   repo: RepoRow,
-  context: { token: string | null; identity: { login: string } | null }
+  context: { token: string; identity: { login: string } | null }
 ): Promise<FollowUpCheck | null> {
   const providerName = repo.provider as ProviderName;
   const provider = getProvider(providerName);
   if (!provider.fetchComments) return null;
-  if (!context.token) return null;
 
   const token = context.token;
   const now = new Date();
@@ -595,31 +627,4 @@ function toEntry(
     checkedAt: state.checkedAt?.toISOString() ?? null,
     due: state.due,
   };
-}
-
-/** Follow-up states an issue can be in, for the query filter. */
-export const FOLLOW_UP_STATES = ["waiting", "reviewed", "stopped"] as const;
-
-/**
- * Load the follow-up rows for a set of issues.
- *
- * Used by the queue overlay so the inbox can mark issues it is already waiting
- * on without one query per row.
- *
- * @param userId - The authenticated user.
- * @param issueIds - The issues to look up.
- * @returns A map from issue id to its follow-up state.
- */
-export async function followUpStatesFor(
-  userId: string,
-  issueIds: string[]
-): Promise<Map<string, FollowUpEntry["state"]>> {
-  if (issueIds.length === 0) return new Map();
-
-  const rows = await typedDb
-    .select({ issueId: followUps.issueId, state: followUps.state })
-    .from(followUps)
-    .where(and(eq(followUps.userId, userId), inArray(followUps.issueId, issueIds)));
-
-  return new Map(rows.map((row) => [row.issueId, row.state as FollowUpEntry["state"]]));
 }

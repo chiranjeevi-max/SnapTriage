@@ -33,7 +33,6 @@ interface KeyboardState {
    * consumes a request naming its own issue, and clears it when it does.
    */
   followUpArmRequested: string | null;
-
   setSelectedIndex: (i: number) => void;
   setIssueCount: (n: number | null) => void;
   moveSelection: (delta: number) => void;

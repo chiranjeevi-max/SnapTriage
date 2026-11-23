@@ -8,6 +8,8 @@
 // Types
 export type { TriagePayload, TriageAction, PendingChanges } from "./types";
 export { mergePendingChanges, payloadToIssueUpdate } from "./types";
+export type { PendingSummary, SummaryLine } from "./pending-summary";
+export { summarizePending, describePending, hasProviderChanges } from "./pending-summary";
 
 // Action builders
 export {
@@ -19,7 +21,9 @@ export {
   snoozeIssue,
   unsnoozeIssue,
   dismissIssue,
+  toggleIssueState,
 } from "./triage-actions";
+export type { IssueState } from "./triage-actions";
 
 // Hooks
 export { useTriageMutation } from "./use-triage-mutation";

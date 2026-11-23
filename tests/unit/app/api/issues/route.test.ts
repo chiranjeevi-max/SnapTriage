@@ -9,13 +9,14 @@
  * provider is called before `triage_state` is touched, and a provider rejection
  * commits nothing at all.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PATCH } from "@/app/api/issues/[id]/route";
 import { auth } from "@/auth";
 import { getProviderToken } from "@/features/auth/get-provider-token";
 import { getProvider } from "@/lib/providers";
 import type { IssueProvider } from "@/lib/provider-interface";
 import { ISSUE_ID, fakeDb, issueRow, repoRow, triageRow } from "../../../support/fake-db";
+import { triageState as triageStateTable } from "@/lib/db/schema";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/features/auth/get-provider-token", () => ({ getProviderToken: vi.fn() }));
@@ -62,6 +63,12 @@ async function patchIssue(body: unknown, issueId = ISSUE_ID) {
   await PATCH(req, { params: Promise.resolve({ id: issueId }) });
   return { status: lastStatus, body: lastBody };
 }
+
+afterEach(() => {
+  // Restored here rather than at the end of a test body: a failed assertion
+  // would otherwise leave `typedDb.update` throwing for every later test.
+  vi.restoreAllMocks();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -225,6 +232,43 @@ describe("PATCH /api/issues/:id", () => {
     // Whatever the interleaving, neither write may be lost.
     expect(staged.labels?.add ?? []).toContain("bug");
     expect(staged.assignees?.add ?? []).toContain("octocat");
+  });
+
+  /**
+   * @target PATCH /api/issues/:id
+   * @dependencies applyTriage
+   * @scenario The provider accepts the write, then recording it locally fails
+   * @expectedOutput A 200 carrying a warning, not a 502. Upstream really did
+   *                 change, so a failure status makes the client roll its
+   *                 optimistic update back to values the provider no longer
+   *                 holds. The cached issue row is written first, so it still
+   *                 mirrors the provider after the personal write fails.
+   */
+  it("should keep the write successful when only local recording fails", async () => {
+    fakeDb.state.rows.repo.push(repoRow({ syncMode: "live" }));
+    fakeDb.state.rows.issue.push(issueRow());
+    fakeDb.state.rows.triage_state.push(triageRow({ priority: 3 }));
+
+    const updateIssue = vi.fn(async () => {});
+    mockGetProvider.mockReturnValue(providerStub(updateIssue));
+
+    const { typedDb } = await import("@/lib/db/query");
+    const originalUpdate = typedDb.update.bind(typedDb);
+    vi.spyOn(typedDb, "update").mockImplementation(((table: unknown) => {
+      // Only the triage row fails; the issue cache write has already landed.
+      if (table === triageStateTable) throw new Error("database is locked");
+      return originalUpdate(table as never);
+    }) as never);
+
+    const res = await patchIssue({ priority: 0, labels: { add: ["bug"] } });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      ok: true,
+      warning: expect.stringContaining("accepted the change") as unknown as string,
+    });
+    expect(updateIssue).toHaveBeenCalledTimes(1);
+    expect(fakeDb.state.rows.issue[0].labels).toEqual(["bug"]);
   });
 
   /**

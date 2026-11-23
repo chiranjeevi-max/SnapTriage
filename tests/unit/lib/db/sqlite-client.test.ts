@@ -24,9 +24,12 @@ vi.mock("better-sqlite3", async (importOriginal) => {
   return {
     default: class {
       static SqliteError = SqliteError;
+      // Only the WAL switch is made to fail. The connection also issues
+      // `foreign_keys = ON`, and a harness that fails the first pragma of any
+      // kind would fail that instead of the statement under test.
       pragma(source: string) {
         driver.calls.push(source);
-        if (driver.failures > 0) {
+        if (source.includes("journal_mode") && driver.failures > 0) {
           driver.failures--;
           throw new SqliteError("database is locked", driver.code);
         }
@@ -57,6 +60,7 @@ describe("the SQLite client", () => {
     await import("@/lib/db");
 
     expect(driver.calls).toEqual([
+      "foreign_keys = ON",
       "journal_mode = WAL",
       "BEGIN IMMEDIATE; ROLLBACK",
       "journal_mode = WAL",
@@ -75,7 +79,7 @@ describe("the SQLite client", () => {
     driver.code = "SQLITE_IOERR";
 
     await expect(import("@/lib/db")).rejects.toMatchObject({ code: "SQLITE_IOERR" });
-    expect(driver.calls).toEqual(["journal_mode = WAL"]);
+    expect(driver.calls).toEqual(["foreign_keys = ON", "journal_mode = WAL"]);
   });
 
   it("keeps its remaining attempts when a wait for the lock times out", async () => {
@@ -85,6 +89,7 @@ describe("the SQLite client", () => {
     await import("@/lib/db");
 
     expect(driver.calls).toEqual([
+      "foreign_keys = ON",
       "journal_mode = WAL",
       "BEGIN IMMEDIATE; ROLLBACK",
       "journal_mode = WAL",
@@ -99,6 +104,10 @@ describe("the SQLite client", () => {
     driver.waitCode = "SQLITE_IOERR";
 
     await expect(import("@/lib/db")).rejects.toMatchObject({ code: "SQLITE_IOERR" });
-    expect(driver.calls).toEqual(["journal_mode = WAL", "BEGIN IMMEDIATE; ROLLBACK"]);
+    expect(driver.calls).toEqual([
+      "foreign_keys = ON",
+      "journal_mode = WAL",
+      "BEGIN IMMEDIATE; ROLLBACK",
+    ]);
   });
 });

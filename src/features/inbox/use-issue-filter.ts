@@ -6,9 +6,9 @@
  */
 "use client";
 
-import { useState } from "react";
 import type { IssueFilter } from "./issue-filters";
 import { ISSUE_FILTERS } from "./issue-filters";
+import { useLocalStorageValue } from "./use-local-storage-value";
 
 const STORAGE_KEY = "snaptriage:issue-filter";
 
@@ -17,16 +17,7 @@ function isIssueFilter(value: string | null): value is IssueFilter {
 }
 
 export function useIssueFilter(): [IssueFilter, (next: IssueFilter) => void] {
-  const [filter, setFilter] = useState<IssueFilter>(() => {
-    if (typeof window === "undefined") return "all";
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    return isIssueFilter(stored) ? stored : "all";
-  });
-
-  const update = (next: IssueFilter) => {
-    setFilter(next);
-    if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, next);
-  };
-
-  return [filter, update];
+  return useLocalStorageValue<IssueFilter>(STORAGE_KEY, "all", (stored) =>
+    isIssueFilter(stored) ? stored : "all"
+  );
 }

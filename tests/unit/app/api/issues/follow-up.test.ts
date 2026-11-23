@@ -281,6 +281,50 @@ describe("PUT /api/issues/:id/follow-up — transitions", () => {
 
   /**
    * @target PUT /api/issues/:id/follow-up
+   * @dependencies reviewFollowUp, detection
+   * @scenario `commentAt` is far in the future
+   * @expectedOutput 400 and the baseline untouched. The review instant becomes
+   *                 `lastSeenCommentAt`, and detection asks whether a comment is
+   *                 at or after it — so a future baseline matches nothing and
+   *                 the issue can never resurface again.
+   */
+  it("should return 400 for a commentAt in the future", async () => {
+    fakeDb.state.rows.follow_up.push(followUpRow({ reason: "reply", lastSeenCommentId: "90" }));
+    const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+
+    const res = await putFollowUp(
+      { action: "review" },
+      `?commentId=100&commentAt=${encodeURIComponent(farFuture)}`
+    );
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: string }).error).toContain("future");
+    expect(fakeDb.state.rows.follow_up[0].state).toBe("waiting");
+    expect(fakeDb.state.rows.follow_up[0].lastSeenCommentId).toBe("90");
+  });
+
+  /**
+   * @target PUT /api/issues/:id/follow-up
+   * @dependencies reviewFollowUp
+   * @scenario `commentAt` is a few seconds ahead, as a provider clock may be
+   * @expectedOutput Accepted, because a small lead is legitimate and the bound
+   *                 must not reject an honest review.
+   */
+  it("should accept a commentAt slightly ahead of our clock", async () => {
+    fakeDb.state.rows.follow_up.push(followUpRow({ reason: "reply" }));
+    const slightlyAhead = new Date(Date.now() + 5_000).toISOString();
+
+    const res = await putFollowUp(
+      { action: "review" },
+      `?commentAt=${encodeURIComponent(slightlyAhead)}`
+    );
+
+    expect(res.status).toBe(200);
+    expect(fakeDb.state.rows.follow_up[0].state).toBe("reviewed");
+  });
+
+  /**
+   * @target PUT /api/issues/:id/follow-up
    * @dependencies reviewFollowUp
    * @scenario Nothing is being followed on the issue
    * @expectedOutput 404 rather than a silent success that changed no row

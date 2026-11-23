@@ -200,7 +200,9 @@ describe("crypto", () => {
       const [, iv, authTag, ciphertext] = encrypt("super_secret_data").split(":");
       const tampered = `${iv.slice(0, -1)}${iv.endsWith("0") ? "1" : "0"}`;
 
-      expect(() => decrypt(`v1:${tampered}:${authTag}:${ciphertext}`)).toThrow(TokenDecryptionError);
+      expect(() => decrypt(`v1:${tampered}:${authTag}:${ciphertext}`)).toThrow(
+        TokenDecryptionError
+      );
     });
 
     /**
