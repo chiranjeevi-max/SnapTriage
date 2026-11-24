@@ -34,6 +34,12 @@ export interface KeyboardActionOptions {
   toggleSelection?: (issueId: string) => void;
   /** Select every visible issue, or clear if they are all selected. */
   selectAllVisible?: () => void;
+  /** The view opened the detail pane; on phones this is the only way it shows. */
+  openDetail?: () => void;
+  /** The view closed the detail pane. */
+  closeDetail?: () => void;
+  /** Whether undo may run when no row is selected (the queue can be emptied). */
+  undoAllowed?: boolean;
 }
 
 export function useKeyboardActions(issues: IssueWithTriage[], options?: KeyboardActionOptions) {
@@ -52,7 +58,6 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
   const triage = useTriageMutation();
   const sync = useSync();
   const batchPush = useBatchPush();
-  const popUndo = useUndoStore((s) => s.pop);
 
   // Use refs for unstable dependencies (mutation objects that change identity each render)
   const triageRef = useRef(triage);
@@ -84,9 +89,12 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
           if (selectedIndexRef.current < 0 && issuesRef.current.length > 0) {
             setSelectedIndex(0);
           }
+          options?.openDetail?.();
           break;
         case "close-detail":
-          setSelectedIndex(-1);
+          // The view closes the pane and keeps the queue cursor; clearing the
+          // selection here would send the next j/k back to row 0.
+          options?.closeDetail?.();
           break;
         case "priority-0":
         case "priority-1":
@@ -113,6 +121,9 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
             payload: { dismissed: newDismissed },
             previousPayload: { dismissed: !newDismissed },
             description: newDismissed ? "Dismissed issue" : "Undismissed issue",
+            // The advance belongs to the mutation input, not to a per-call
+            // callback: a newer write on the same observer replaces those.
+            advanceAfterSuccess: true,
           });
           break;
         }
@@ -129,6 +140,10 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
             payload,
             previousPayload,
             description,
+            // A closed issue leaves the open queue, so the next row is what the
+            // user wants in the pane. The inbox decides whether the index has to
+            // move, since the optimistic removal already shifted the list.
+            advanceAfterSuccess: true,
           });
           break;
         }
@@ -156,16 +171,38 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
           break;
         case "undo": {
           // Undo reverses an action on a queue row, and that row is not on screen
-          // while the follow-up surface is up. Popping the stack there would undo
-          // something the user cannot see and cannot connect to the keystroke.
-          if (!currentIssue) break;
-          const action = popUndo();
-          if (action) {
+          // while the follow-up surface is up. Popping either stack there would
+          // undo something the user cannot see and cannot connect to the gesture.
+          // On the queue, the last row may have just left, which leaves no
+          // current issue; the undo is still reversible.
+          if (!currentIssue && !options?.undoAllowed) break;
+          const { stack, liveStack, pop, popLive } = useUndoStore.getState();
+          const staged = stack[stack.length - 1];
+          const live = liveStack[liveStack.length - 1];
+
+          // Both stacks share one sequence, so the newest action is undone
+          // whichever mode recorded it.
+          if (staged && (!live || staged.sequence > live.sequence)) {
+            pop();
             triageRef.current.mutate({
-              issueId: action.issueId,
-              payload: action.previousPayload,
-              previousPayload: action.payload,
+              issueId: staged.issueId,
+              payload: staged.previousPayload,
+              previousPayload: staged.payload,
+              description: "Undid staged change",
+              // The staged stack only holds staged actions. Writing the reversal
+              // live would apply the inverse to the provider while leaving the
+              // staged change in place, so the next push would send the original.
+              batch: true,
+              undo: true,
+            });
+          } else if (live) {
+            popLive();
+            triageRef.current.mutate({
+              issueId: live.issueId,
+              payload: live.previousPayload,
+              previousPayload: live.payload,
               description: "Undid last action",
+              undo: true,
             });
           }
           break;
@@ -198,7 +235,6 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
       setPresetPickerOpen,
       setFollowUpArmRequested,
       options,
-      popUndo,
     ]
   );
 }

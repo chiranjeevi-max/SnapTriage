@@ -195,7 +195,17 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
     <>
       {mode === "browse" && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <CommandInput placeholder="Search presets..." className="min-w-0 pr-10" />
+          <div className="border-b px-4 py-3 pr-10">
+            <p className="text-sm font-medium">Presets</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Preview and apply a saved triage decision.
+            </p>
+          </div>
+          <CommandInput
+            placeholder="Search presets..."
+            aria-label="Search presets"
+            className="min-w-0 pr-10"
+          />
           <CommandList className="min-h-0 max-h-[min(24rem,60dvh)] flex-1">
             <CommandEmpty className="px-4 py-6">
               <p className="text-sm font-medium">
@@ -285,18 +295,9 @@ function PresetPickerBody({ issue, stageMode, onApplied }: PresetPickerBodyProps
             <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
               {visiblePresets.length}/{PRESET_LIMIT_PER_REPO}
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs"
-              onClick={() => setMode("create")}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.stopPropagation();
-              }}
-            >
-              <Plus className="h-3 w-3" />
-              New preset
-            </Button>
+            <span className="text-[11px] text-muted-foreground">
+              Enter opens a preview before anything is applied
+            </span>
           </div>
         </div>
       )}
@@ -499,6 +500,10 @@ export function PresetPicker({ open, onOpenChange, issue, batch }: PresetPickerP
   }, [open]);
 
   if (!issue) return null;
+  // A closed CommandDialog leaves its labelled header outside the portal, in the
+  // accessibility tree. Mount the picker only while it is open; the exit
+  // animation is skipped as the cost of that choice.
+  if (!open) return null;
 
   return (
     <CommandDialog

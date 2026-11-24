@@ -20,17 +20,98 @@ export interface Shortcut {
 }
 
 const OVERRIDE_STORAGE_KEY = "snaptriage:shortcut-overrides";
+const EMPTY_OVERRIDES: Record<string, string> = {};
+
+let overrideRaw: string | null = null;
+let overrideSnapshot: Record<string, string> = EMPTY_OVERRIDES;
+let overrideDirty = true;
+/**
+ * Overrides this tab holds that storage refused to keep.
+ *
+ * A blocked or full storage must not make a rebind silently revert; the value
+ * still applies for this session. A later successful write or reset clears
+ * this map and storage becomes authoritative again.
+ */
+let unsavedOverrides: Record<string, string> | null = null;
+const overrideListeners = new Set<() => void>();
+
+function parseOverrides(raw: string | null): Record<string, string> {
+  if (!raw) return EMPTY_OVERRIDES;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return EMPTY_OVERRIDES;
+    }
+    const overrides: Record<string, string> = {};
+    for (const [id, key] of Object.entries(parsed)) {
+      if (typeof key === "string" && key.length > 0) overrides[id] = key;
+    }
+    return overrides;
+  } catch {
+    return EMPTY_OVERRIDES;
+  }
+}
+
+/**
+ * The current override map, stable between localStorage changes.
+ *
+ * `useSyncExternalStore` needs a cached snapshot; this returns the same object
+ * until the raw value changes. On the server it returns the empty map, so the
+ * first client render matches the server markup and the real overrides arrive
+ * after hydration. Storage can be blocked by the browser; that is treated as
+ * no overrides, matching the pre-store read.
+ */
+export function getShortcutOverridesSnapshot(): Record<string, string> {
+  if (typeof window === "undefined") return EMPTY_OVERRIDES;
+  // A value this tab wrote but storage refused takes precedence over whatever
+  // stale value is still on disk.
+  if (unsavedOverrides) return unsavedOverrides;
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(OVERRIDE_STORAGE_KEY);
+  } catch {
+    return EMPTY_OVERRIDES;
+  }
+  if (overrideDirty || raw !== overrideRaw) {
+    overrideRaw = raw;
+    overrideSnapshot = parseOverrides(raw);
+    overrideDirty = false;
+  }
+  return overrideSnapshot;
+}
+
+/** The server snapshot: no storage exists, so no overrides. */
+export function getServerShortcutOverridesSnapshot(): Record<string, string> {
+  return EMPTY_OVERRIDES;
+}
+
+function handleStorageChange(event: StorageEvent): void {
+  if (event.key === OVERRIDE_STORAGE_KEY || event.key === null) {
+    notifyShortcutOverridesChanged();
+  }
+}
+
+/** Subscribes to same-tab and cross-tab override changes. */
+export function subscribeToShortcutOverrides(listener: () => void): () => void {
+  overrideListeners.add(listener);
+  if (typeof window !== "undefined" && overrideListeners.size === 1) {
+    window.addEventListener("storage", handleStorageChange);
+  }
+  return () => {
+    overrideListeners.delete(listener);
+    if (typeof window !== "undefined" && overrideListeners.size === 0) {
+      window.removeEventListener("storage", handleStorageChange);
+    }
+  };
+}
+
+function notifyShortcutOverridesChanged(): void {
+  overrideDirty = true;
+  for (const listener of overrideListeners) listener();
+}
 
 function readOverrides(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(OVERRIDE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
+  return getShortcutOverridesSnapshot();
 }
 
 /** Returns the effective key for a shortcut, including any user override. */
@@ -42,15 +123,29 @@ export function getShortcutKey(shortcut: Shortcut): string {
 /** Persists an override for a shortcut key. */
 export function setShortcutOverride(id: string, key: string): void {
   if (typeof window === "undefined") return;
-  const overrides = readOverrides();
-  overrides[id] = key;
-  window.localStorage.setItem(OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+  const overrides = { ...readOverrides(), [id]: key };
+  try {
+    window.localStorage.setItem(OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+    unsavedOverrides = null;
+  } catch {
+    // A write that cannot persist still applies for this session, so the
+    // keycap does not silently revert under the user.
+    unsavedOverrides = overrides;
+  }
+  notifyShortcutOverridesChanged();
 }
 
 /** Removes all user keyboard shortcut overrides. */
 export function resetShortcutOverrides(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(OVERRIDE_STORAGE_KEY);
+  try {
+    window.localStorage.removeItem(OVERRIDE_STORAGE_KEY);
+    unsavedOverrides = null;
+  } catch {
+    // The reset still takes effect for this session even if storage refuses it.
+    unsavedOverrides = EMPTY_OVERRIDES;
+  }
+  notifyShortcutOverridesChanged();
 }
 
 /** Complete list of registered shortcuts, ordered by category then key. */
@@ -112,15 +207,26 @@ export const categoryLabels: Record<Shortcut["category"], string> = {
 export const categoryOrder: Shortcut["category"][] = ["navigation", "triage", "utility"];
 
 /**
+ * Formats a shortcut's effective key for display.
+ *
+ * @param shortcut - The shortcut definition.
+ * @param key - The effective key, after any override.
+ */
+export function formatKeyValue(shortcut: Shortcut, key: string): string {
+  if (key === "Enter") return "↵";
+  if (key === "Escape") return "Esc";
+  if (shortcut.shift) {
+    return key === "?" ? "?" : `Shift+${key.toUpperCase()}`;
+  }
+  return key.toUpperCase();
+}
+
+/**
  * Formats a shortcut key for display (e.g., Enter → "↵", Escape → "Esc").
  * @param shortcut - The shortcut definition.
  */
 export function formatKey(shortcut: Shortcut): string {
-  const key = getShortcutKey(shortcut);
-  if (key === "Enter") return "↵";
-  if (key === "Escape") return "Esc";
-  if (shortcut.shift && key === shortcut.key) return key;
-  return key.toUpperCase();
+  return formatKeyValue(shortcut, getShortcutKey(shortcut));
 }
 
 /**

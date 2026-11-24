@@ -11,6 +11,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { TriagePayload } from "./types";
 import { showUndoToast, useUndoStore } from "./use-undo";
+import { useKeyboardStore } from "@/features/keyboard/keyboard-store";
 import type { IssueDetail, IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
@@ -21,6 +22,12 @@ import type { IssueDetail, IssueWithTriage } from "@/features/inbox/use-issues";
  * @property previousPayload - Inverse payload used for undo.
  * @property description - Human-readable summary of the action.
  * @property batch - When `true`, stages the change for batch push instead of live writeback.
+ * @property undo - When `true`, this write reverses an earlier action. It must
+ *           not be recorded as a new undo entry, or `z` would toggle the last
+ *           action forever instead of reaching the one before it.
+ * @property advanceAfterSuccess - Request the queue advance from the hook-level
+ *           success callback, so a newer write on the same observer cannot drop
+ *           the request and a retry still carries it.
  */
 interface TriageMutationInput {
   issueId: string;
@@ -28,6 +35,8 @@ interface TriageMutationInput {
   previousPayload: TriagePayload;
   description: string;
   batch?: boolean;
+  undo?: boolean;
+  advanceAfterSuccess?: boolean;
 }
 
 /**
@@ -109,8 +118,11 @@ export function endWrite(issueId: string, sequence: number): void {
 export function useTriageMutation() {
   const queryClient = useQueryClient();
   const pushUndo = useUndoStore((s) => s.push);
+  const pushLive = useUndoStore((s) => s.pushLive);
+  const removeLive = useUndoStore((s) => s.removeLive);
+  const requestAdvance = useKeyboardStore((s) => s.requestAdvance);
 
-  return useMutation({
+  const triage = useMutation({
     mutationFn: async (input: TriageMutationInput) => {
       const { issueId, payload, batch } = input;
       const res = await fetch(`/api/issues/${issueId}`, {
@@ -118,7 +130,13 @@ export function useTriageMutation() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...payload, batch }),
       });
-      if (!res.ok) throw new Error("Update failed");
+      if (!res.ok) {
+        // The server's sentence is the actionable one ("The provider rejected
+        // this label", a permission error). Falling back to the status keeps a
+        // non-JSON gateway response from showing "[object Object]".
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `The server rejected the change (${res.status}).`);
+      }
       return res.json();
     },
 
@@ -168,7 +186,7 @@ export function useTriageMutation() {
       return { snapshots, sequence, issueId: input.issueId };
     },
 
-    onError: (_err, input, context) => {
+    onError: (error, input, context) => {
       // Rollback all queries, but only if no later write for this issue has
       // started. Restoring an absolute snapshot otherwise discards the newer
       // write's optimistic state as well, so two quick keystrokes lose one.
@@ -179,11 +197,22 @@ export function useTriageMutation() {
           queryClient.setQueryData(queryKey, data);
         }
       }
-      toast.error("Failed to update issue");
+      const detail =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "The provider did not accept the change.";
+      toast.error("Failed to update issue", {
+        description: detail,
+        action: {
+          label: "Retry",
+          onClick: () => triage.mutate(input),
+        },
+      });
     },
 
     onSuccess: (data, input) => {
-      const { issueId, payload, previousPayload, description, batch } = input;
+      const { issueId, payload, previousPayload, description, batch, undo, advanceAfterSuccess } =
+        input;
 
       // The provider accepted the change but the server could not record it. Said
       // plainly rather than hidden behind the usual toast, because the row will
@@ -191,7 +220,12 @@ export function useTriageMutation() {
       const warning = (data as { warning?: string } | null)?.warning;
       if (warning) toast.warning(warning);
 
-      if (batch) {
+      if (undo) {
+        // An undo is not itself an undoable action. Recording it would make `z`
+        // toggle one action back and forth and never reach the one before it.
+        toast(description);
+        if (batch) queryClient.invalidateQueries({ queryKey: ["batch-pending-changes"] });
+      } else if (batch) {
         // Batch mode: push to undo stack
         pushUndo({ issueId, payload, previousPayload, description });
         toast("Change staged");
@@ -200,45 +234,22 @@ export function useTriageMutation() {
         // until the next poll.
         queryClient.invalidateQueries({ queryKey: ["batch-pending-changes"] });
       } else {
-        // Live mode: show undo toast
+        // Live mode: record the action so both the toast and `z` can reverse it.
+        // The id is what stops a double undo when the user presses both.
+        const undoId = pushLive({ issueId, payload, previousPayload, description });
         showUndoToast(description, () => {
-          // Fire the reverse mutation (no undo for the undo)
-          const reverseMutation = queryClient.getMutationCache().build(queryClient, {
-            mutationFn: async () => {
-              const res = await fetch(`/api/issues/${issueId}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(previousPayload),
-              });
-              if (!res.ok) throw new Error("Undo failed");
-              return res.json();
-            },
+          if (!removeLive(undoId)) return;
+          triage.mutate({
+            issueId,
+            payload: previousPayload,
+            previousPayload: payload,
+            description: "Undid last action",
+            undo: true,
           });
-          reverseMutation.execute({}).then(
-            (undoResult) => {
-              // The provider accepted the undo but the server could not record it.
-              // Refetching would read the pre-undo row and show the state the
-              // provider just reversed, so the optimistic result stays put.
-              const undoWarning = (undoResult as { warning?: string } | null)?.warning;
-              if (undoWarning) {
-                toast.warning(undoWarning);
-                return;
-              }
-              queryClient.invalidateQueries({ queryKey: ["issues"] });
-              // The detail pane reads its own key, so undoing from the queue left
-              // it showing the state that was just reversed.
-              queryClient.invalidateQueries({ queryKey: ["issue", issueId] });
-            },
-            () => {
-              // A failed undo may still have reached the provider, so refresh
-              // both: showing the applied values would be a claim the app cannot
-              // support.
-              queryClient.invalidateQueries({ queryKey: ["issues"] });
-              queryClient.invalidateQueries({ queryKey: ["issue", issueId] });
-            }
-          );
         });
       }
+
+      if (advanceAfterSuccess && !undo) requestAdvance(issueId);
     },
 
     onSettled: (data, _error, input, context) => {
@@ -256,6 +267,8 @@ export function useTriageMutation() {
       if (input) queryClient.invalidateQueries({ queryKey: ["issue", input.issueId] });
     },
   });
+
+  return triage;
 }
 
 /**

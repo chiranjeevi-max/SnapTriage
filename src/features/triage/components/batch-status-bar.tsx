@@ -8,7 +8,7 @@
 
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/features/keyboard";
+import { ShortcutKbd } from "@/features/keyboard";
 import {
   usePendingBatchCount,
   usePendingBatchChanges,
@@ -71,9 +71,7 @@ export function BatchStatusBar() {
       >
         <Upload className="h-3.5 w-3.5" />
         Push
-        <Kbd tone="inverse" className="ml-0.5">
-          Shift+P
-        </Kbd>
+        <ShortcutKbd id="batch-push" tone="inverse" className="ml-0.5" />
       </Button>
     </div>
   );

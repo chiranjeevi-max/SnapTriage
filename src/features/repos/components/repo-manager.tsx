@@ -27,19 +27,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { devAvailableRepos, devRepos, readDataMode } from "@/features/dev-tools/data-mode";
+import { devAvailableRepos, readDataMode } from "@/features/dev-tools/data-mode";
+import { CONNECTED_REPOS_KEY, useConnectedRepos } from "@/features/repos/use-connected-repos";
 import type { AvailableRepo } from "@/features/repos/fetch-available-repos";
-
-/** Shape of a connected repo record from the repos API. */
-interface ConnectedRepo {
-  id: string;
-  provider: string;
-  owner: string;
-  name: string;
-  fullName: string;
-  permission: string;
-  syncEnabled: boolean;
-}
 
 /**
  * Full repo management UI with connected list and provider-tabbed browser.
@@ -51,16 +41,12 @@ export function RepoManager() {
   const [connectingRepo, setConnectingRepo] = useState<string | null>(null);
 
   // The sidebar reads the same query, so both stay in step after a change.
-  const { data: connected = [], isLoading: loadingConnected } = useQuery<ConnectedRepo[]>({
-    queryKey: ["connected-repos"],
-    queryFn: async () => {
-      // The dev-only data toggle swaps the real repos for the worst case.
-      const fixture = await devRepos(readDataMode());
-      if (fixture) return fixture;
-      return fetch("/api/repos").then((res) => (res.ok ? res.json() : []));
-    },
-    staleTime: 60_000,
-  });
+  const {
+    data: connected = [],
+    isLoading: loadingConnected,
+    isError: connectedError,
+    refetch: refetchConnected,
+  } = useConnectedRepos();
 
   const { data: available = [], isFetching: loadingAvailable } = useQuery<AvailableRepo[]>({
     queryKey: ["available-repos", activeProvider],
@@ -86,7 +72,7 @@ export function RepoManager() {
       body: JSON.stringify({ provider: repo.provider, owner: repo.owner, name: repo.name }),
     });
     if (res.ok) {
-      await queryClient.invalidateQueries({ queryKey: ["connected-repos"] });
+      await queryClient.invalidateQueries({ queryKey: CONNECTED_REPOS_KEY });
       await queryClient.invalidateQueries({ queryKey: ["available-repos"] });
     }
     setConnectingRepo(null);
@@ -94,7 +80,7 @@ export function RepoManager() {
 
   async function handleDisconnect(id: string) {
     await fetch(`/api/repos/${id}`, { method: "DELETE" });
-    await queryClient.invalidateQueries({ queryKey: ["connected-repos"] });
+    await queryClient.invalidateQueries({ queryKey: CONNECTED_REPOS_KEY });
   }
 
   const connectedFullNames = new Set(connected.map((r) => r.fullName));
@@ -112,6 +98,18 @@ export function RepoManager() {
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
+          ) : connectedError && connected.length === 0 ? (
+            <EmptyState
+              icon={<Plug className="h-5 w-5" />}
+              title="Could not load repositories"
+              description="The repository list did not come back. Try again; the rest of the page still works."
+              action={
+                <Button size="sm" variant="outline" onClick={() => void refetchConnected()}>
+                  Try again
+                </Button>
+              }
+              className="items-start border-y py-8 text-left"
+            />
           ) : connected.length === 0 ? (
             <EmptyState
               icon={<Plug className="h-5 w-5" />}
@@ -120,61 +118,76 @@ export function RepoManager() {
               className="items-start border-y py-8 text-left"
             />
           ) : (
-            <div className="divide-y border-y">
-              {connected.map((repo) => (
+            <div className="space-y-3">
+              {connectedError && (
                 <div
-                  key={repo.id}
-                  className="flex flex-col items-start justify-between gap-3 py-4 sm:flex-row"
+                  role="status"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-muted-foreground"
                 >
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <ProviderIcon provider={repo.provider} />
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="break-words font-mono text-sm font-medium [overflow-wrap:anywhere]"
-                        title={repo.fullName}
-                      >
-                        {repo.fullName}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                        <PermissionBadge permission={repo.permission} />
-                        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <RefreshCw className="h-3 w-3" />
-                          Auto-sync {repo.syncEnabled ? "on" : "off"}
-                        </span>
+                  <span>
+                    Could not refresh the repository list. Showing the last known repositories.
+                  </span>
+                  <Button size="sm" variant="outline" onClick={() => void refetchConnected()}>
+                    Try again
+                  </Button>
+                </div>
+              )}
+              <div className="divide-y border-y">
+                {connected.map((repo) => (
+                  <div
+                    key={repo.id}
+                    className="flex flex-col items-start justify-between gap-3 py-4 sm:flex-row"
+                  >
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <ProviderIcon provider={repo.provider} />
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="break-words font-mono text-sm font-medium [overflow-wrap:anywhere]"
+                          title={repo.fullName}
+                        >
+                          {repo.fullName}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                          <PermissionBadge permission={repo.permission} />
+                          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <RefreshCw className="h-3 w-3" />
+                            Auto-sync {repo.syncEnabled ? "on" : "off"}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Disconnect ${repo.fullName}`}
+                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive active:bg-muted"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle className="pr-6 [overflow-wrap:anywhere]">
+                            Disconnect {repo.fullName}?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This removes the cached issues and triage state for this repository. You
+                            can reconnect it later, but the triage data is gone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDisconnect(repo.id)}>
+                            Disconnect
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Disconnect ${repo.fullName}`}
-                        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive active:bg-muted"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="pr-6 [overflow-wrap:anywhere]">
-                          Disconnect {repo.fullName}?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This removes the cached issues and triage state for this repository. You
-                          can reconnect it later, but the triage data is gone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDisconnect(repo.id)}>
-                          Disconnect
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </div>

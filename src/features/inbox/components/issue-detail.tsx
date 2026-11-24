@@ -8,6 +8,7 @@
  */
 "use client";
 
+import { useEffect } from "react";
 import Image from "next/image";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,6 +18,7 @@ import {
   ExternalLink,
   Layers,
   MessageSquare,
+  MoreHorizontal,
   Tag,
   User,
   UserPlus,
@@ -24,7 +26,14 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SelectField } from "@/components/select-field";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/empty-state";
@@ -33,8 +42,9 @@ import type { IssueWithTriage, IssueDetail } from "@/features/inbox/use-issues";
 import { useIssue } from "@/features/inbox/use-issues";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { priorityOptions } from "@/features/triage/priority";
+import { shortenRepoName } from "@/features/repos/repo-label";
 import { toggleIssueState } from "@/features/triage/triage-actions";
-import { useKeyboardStore, Kbd } from "@/features/keyboard";
+import { useKeyboardStore, ShortcutKbd, useShortcutLabel } from "@/features/keyboard";
 import { Discussion, Composer } from "@/features/replies";
 import { FollowUpControl } from "@/features/follow-up";
 
@@ -51,6 +61,16 @@ export type IssueDetailTarget = Pick<IssueWithTriage, "id"> &
 interface IssueDetailProps {
   issue: IssueDetailTarget | null;
   onClose: () => void;
+  /**
+   * Repository id → full name, so the pane can say which repository the issue is
+   * from. The queue already loads this list for the sidebar and the rows.
+   */
+  repoNames?: ReadonlyMap<string, string>;
+  /** What the empty pane should say, which depends on why the queue is empty. */
+  emptyTitle?: string;
+  emptyDescription?: string;
+  /** The pane's triage row is inert while Follow-ups owns the queue. */
+  triagePaused?: boolean;
   /**
    * Whether the queue row for this issue is on screen.
    *
@@ -83,36 +103,63 @@ function snoozeTimeLeft(isoStr: string): string {
 export function IssueDetail({
   issue: issueSummary,
   onClose,
+  repoNames,
+  emptyTitle,
+  emptyDescription,
+  triagePaused = false,
   shortcutTarget = true,
 }: IssueDetailProps) {
   const { data: issue } = useIssue(issueSummary?.id);
   const triage = useTriageMutation();
   const resolvedIssue = (issue ?? issueSummary) as IssueDetail;
-  const { setLabelPickerOpen, setAssigneePickerOpen, setSnoozePickerOpen, setPresetPickerOpen } =
-    useKeyboardStore();
+  const {
+    setLabelPickerOpen,
+    setAssigneePickerOpen,
+    setSnoozePickerOpen,
+    setPresetPickerOpen,
+    setTriageMenuOpen,
+  } = useKeyboardStore();
+
+  // The flag has to be released if the pane unmounts while the menu is open,
+  // or every later shortcut would stay muted for the session.
+  useEffect(() => () => setTriageMenuOpen(false), [setTriageMenuOpen]);
+
+  // Four fixed hook calls, one per priority key. The select renders these in its
+  // options, and a loop would break the rules of hooks.
+  const priorityKey0 = useShortcutLabel("priority-0");
+  const priorityKey1 = useShortcutLabel("priority-1");
+  const priorityKey2 = useShortcutLabel("priority-2");
+  const priorityKey3 = useShortcutLabel("priority-3");
+  const priorityKeys = [priorityKey0, priorityKey1, priorityKey2, priorityKey3];
 
   if (!issue) {
     return (
       <EmptyState
         icon={<MessageSquare className="h-5 w-5" />}
-        title="No issue selected"
-        description="Move with J and K, or click a row in the list to read it here."
+        title={emptyTitle ?? "No issue selected"}
+        description={emptyDescription ?? "Select a row in the queue to read it here."}
         className="h-full"
       />
     );
   }
 
   const currentIssue = issue;
+  const repoName = repoNames?.get(currentIssue.repoId) ?? null;
   const currentPriority = currentIssue.triage?.priority;
   const isSnoozed = !!currentIssue.triage?.snoozedUntil;
+  /**
+   * Follow-ups pauses the queue and replaces the triage block, so the pickers
+   * below have no way to open. Show the values read-only and in full there. A
+   * pinned follow-up is not paused: its More menu still opens the pickers.
+   */
+  const labelsReadOnly = triagePaused;
 
-  function handlePriority(priority: number) {
-    const newPriority = currentPriority === priority ? null : priority;
+  function handlePriority(priority: number | null) {
     triage.mutate({
       issueId: currentIssue.id,
-      payload: { priority: newPriority },
+      payload: { priority },
       previousPayload: { priority: currentPriority ?? null },
-      description: newPriority !== null ? `Set priority to P${newPriority}` : "Cleared priority",
+      description: priority !== null ? `Set priority to P${priority}` : "Cleared priority",
     });
   }
 
@@ -123,6 +170,7 @@ export function IssueDetail({
       payload: { dismissed: newDismissed },
       previousPayload: { dismissed: !newDismissed },
       description: newDismissed ? "Dismissed issue" : "Undismissed issue",
+      advanceAfterSuccess: true,
     });
   }
 
@@ -130,15 +178,16 @@ export function IssueDetail({
     triage.mutate({
       issueId: currentIssue.id,
       ...toggleIssueState(currentIssue.state === "closed" ? "closed" : "open"),
+      advanceAfterSuccess: true,
     });
   }
 
   return (
     <div className="issue-detail flex h-full min-w-0 flex-col bg-card">
       {/* Header */}
-      <div className="relative flex shrink-0 items-start gap-3 border-b px-6 py-6">
+      <div className="relative flex shrink-0 items-start gap-3 border-b px-5 py-4">
         <div className="min-w-0 flex-1">
-          <div className="flex min-h-9 items-center gap-2 pr-20">
+          <div className="flex min-h-0 items-center gap-2 pr-20">
             <CircleDot
               className={cn(
                 "h-4 w-4 shrink-0",
@@ -147,7 +196,18 @@ export function IssueDetail({
                   : "text-muted-foreground/60"
               )}
             />
+            <span className="sr-only">
+              {resolvedIssue.state === "open" ? "Open issue" : "Closed issue"}
+            </span>
             <span className="font-mono text-xs text-muted-foreground">#{issue.number}</span>
+            {repoName && (
+              <span
+                className="min-w-0 max-w-[26rem] truncate font-mono text-xs text-muted-foreground"
+                title={repoName}
+              >
+                {shortenRepoName(repoName, 56)}
+              </span>
+            )}
             {isSnoozed && (
               <Badge variant="secondary" className="gap-1 text-xs leading-4">
                 <Clock className="h-3 w-3" />
@@ -155,10 +215,16 @@ export function IssueDetail({
               </Badge>
             )}
           </div>
-          <h2 className="issue-detail-title mt-4 max-w-[40ch] font-semibold leading-snug tracking-[-0.025em]">
+          {/* Clamped, not truncated: the full title stays in the DOM and in the
+              tooltip, while the description keeps the height a six-line title
+              used to take. */}
+          <h2
+            className="issue-detail-title mt-2 line-clamp-2 max-w-[52ch] font-semibold leading-snug tracking-[-0.025em]"
+            title={resolvedIssue.title}
+          >
             {resolvedIssue.title}
           </h2>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {resolvedIssue.author && (
               <span className="flex min-w-0 max-w-full items-center gap-1 [overflow-wrap:anywhere]">
                 {resolvedIssue.authorAvatar ? (
@@ -186,7 +252,7 @@ export function IssueDetail({
             </span>
           </div>
         </div>
-        <div className="absolute right-4 top-6 flex shrink-0 items-center gap-1">
+        <div className="absolute right-4 top-4 flex shrink-0 items-center gap-1">
           <Button variant="ghost" size="icon" asChild>
             <a href={resolvedIssue.url} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-4 w-4" />
@@ -200,199 +266,221 @@ export function IssueDetail({
         </div>
       </div>
 
-      {/* Triage actions */}
-      <div className="shrink-0 border-b px-6 py-4">
-        <p className="mb-2 text-xs font-medium text-muted-foreground">Priority</p>
-        <div className="flex flex-wrap gap-1.5">
-          {priorityOptions.map((opt) => (
-            <Tooltip key={opt.value}>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => handlePriority(opt.value)}
-                  className={cn(
-                    "h-8 rounded-md border px-2.5 text-xs font-medium transition-colors active:bg-accent disabled:cursor-not-allowed disabled:opacity-50",
-                    currentPriority === opt.value
-                      ? opt.className
-                      : "border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground"
-                  )}
-                >
-                  {opt.name}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="flex items-center gap-1.5">
-                <span>{opt.name}</span>
-                <Kbd>{opt.key}</Kbd>
-              </TooltipContent>
-            </Tooltip>
-          ))}
+      {/* Triage actions. The queue shortcuts are paused while Follow-ups is open,
+          so the pane's controls pause with them rather than staying live on an
+          issue the keyboard cannot reach. */}
+      {triagePaused ? (
+        <div className="shrink-0 border-b px-5 py-3 text-xs leading-relaxed text-muted-foreground">
+          Triage is paused while Follow-ups is open. Close Follow-ups to act on this issue.
         </div>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={resolvedIssue.triage?.dismissed ? "secondary" : "outline"}
-                size="sm"
-                onClick={handleDismiss}
-                className="h-8 gap-1.5 px-2.5 text-xs"
-              >
-                {resolvedIssue.triage?.dismissed ? "Undismiss" : "Dismiss"}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="flex items-center gap-1.5">
-              <span>Toggle dismiss</span>
-              <Kbd>D</Kbd>
-            </TooltipContent>
-          </Tooltip>
+      ) : (
+        <div className="detail-actions shrink-0 border-b px-5 py-2.5">
+          <div className="flex flex-wrap items-center gap-1">
+            <SelectField
+              aria-label="Priority"
+              value={currentPriority ?? ""}
+              onChange={(event) => {
+                const value = event.target.value;
+                handlePriority(value === "" ? null : Number(value));
+              }}
+              className="h-8 min-w-[7.5rem] px-2 text-xs"
+            >
+              <option value="">No priority</option>
+              {priorityOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.name}
+                  {shortcutTarget ? ` (${priorityKeys[opt.value]})` : ""}
+                </option>
+              ))}
+            </SelectField>
+            {/* The actions wrap as one group. Left as siblings, a narrow pane
+              stranded only "More" on a second line; together they either fit or
+              move as a unit. The priority select is bordered, so the row needs
+              no divider — a vertical rule at the start of a wrapped line read as
+              a stray border. */}
+            <div className="flex flex-wrap items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={resolvedIssue.triage?.dismissed ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={handleDismiss}
+                    className="h-8 gap-1.5 px-2 text-xs"
+                  >
+                    {resolvedIssue.triage?.dismissed ? "Undismiss" : "Dismiss"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="flex items-center gap-1.5">
+                  <span>Toggle dismiss</span>
+                  {shortcutTarget && <ShortcutKbd id="dismiss" />}
+                </TooltipContent>
+              </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={resolvedIssue.state === "closed" ? "secondary" : "outline"}
-                size="sm"
-                onClick={handleToggleState}
-                className="h-8 gap-1.5 px-2.5 text-xs"
-              >
-                {resolvedIssue.state === "closed" ? "Reopen" : "Close"}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="flex items-center gap-1.5">
-              <span>{resolvedIssue.state === "closed" ? "Reopen issue" : "Close issue"}</span>
-              {/* A pinned follow-up has no queue row, so the keyboard dispatcher
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={resolvedIssue.state === "closed" ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={handleToggleState}
+                    className="h-8 gap-1.5 px-2 text-xs"
+                  >
+                    {resolvedIssue.state === "closed" ? "Reopen" : "Close"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="flex items-center gap-1.5">
+                  <span>{resolvedIssue.state === "closed" ? "Reopen issue" : "Close issue"}</span>
+                  {/* A pinned follow-up has no queue row, so the keyboard dispatcher
                   has no current issue and `c` does nothing there. Showing the
                   hint would promise a shortcut that cannot fire. */}
-              {shortcutTarget && <Kbd>C</Kbd>}
-            </TooltipContent>
-          </Tooltip>
+                  {shortcutTarget && <ShortcutKbd id="toggle-state" />}
+                </TooltipContent>
+              </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 px-2.5 text-xs"
-                onClick={() => setLabelPickerOpen(true)}
-              >
-                <Tag className="h-3 w-3" />
-                Labels
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="flex items-center gap-1.5">
-              <span>Edit labels</span>
-              <Kbd>L</Kbd>
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 px-2.5 text-xs"
-                onClick={() => setAssigneePickerOpen(true)}
-              >
-                <UserPlus className="h-3 w-3" />
-                Assignees
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="flex items-center gap-1.5">
-              <span>Edit assignees</span>
-              <Kbd>A</Kbd>
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 px-2.5 text-xs"
-                onClick={() => setSnoozePickerOpen(true)}
-              >
-                <Clock className="h-3 w-3" />
-                Snooze
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="flex items-center gap-1.5">
-              <span>Snooze issue</span>
-              <Kbd>S</Kbd>
-            </TooltipContent>
-          </Tooltip>
-
-          {/* Deliberately not a snooze variant: waiting for a reply is an
+              {/* Deliberately not a snooze variant: waiting for a reply is an
               explicit state that survives a snooze expiring, and it is what the
               follow-up queue lists. */}
-          <FollowUpControl issueId={issue.id} />
+              <FollowUpControl issueId={issue.id} showShortcut={shortcutTarget} />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 px-2.5 text-xs"
-                onClick={() => setPresetPickerOpen(true)}
-              >
-                <Layers className="h-3 w-3" />
-                Presets
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="flex items-center gap-1.5">
-              <span>Apply a preset</span>
-              <Kbd>T</Kbd>
-            </TooltipContent>
-          </Tooltip>
+              {/* The four remaining triage actions share one entry point. Seven
+              equal-weight buttons made the pane look like a toolbar and pushed
+              the description out of the viewport; the menu keeps every action
+              and its shortcut one click away. A pinned follow-up keeps the
+              actions but hides the hints, since `l`, `a`, `s` and `p` need a
+              visible queue row. */}
+              <DropdownMenu onOpenChange={setTriageMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2 text-xs">
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                    More
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuItem onSelect={() => setLabelPickerOpen(true)}>
+                    <Tag className="h-3.5 w-3.5" />
+                    Edit labels
+                    {shortcutTarget && <ShortcutKbd id="labels" className="ml-auto" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setAssigneePickerOpen(true)}>
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Edit assignees
+                    {shortcutTarget && <ShortcutKbd id="assignees" className="ml-auto" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setSnoozePickerOpen(true)}>
+                    <Clock className="h-3.5 w-3.5" />
+                    Snooze for later
+                    {shortcutTarget && <ShortcutKbd id="snooze" className="ml-auto" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPresetPickerOpen(true)}>
+                    <Layers className="h-3.5 w-3.5" />
+                    Apply a preset
+                    {shortcutTarget && <ShortcutKbd id="presets" className="ml-auto" />}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Labels & Assignees */}
+      {/* Labels & Assignees. Editable, each is one line with the remainder
+          behind the picker. Read-only (Follow-ups or a pinned follow-up), the
+          full values wrap in a bounded scroller: the pickers are unreachable,
+          so hiding the rest would leave no way to inspect them. */}
       {(resolvedIssue.labels.length > 0 || resolvedIssue.assignees.length > 0) && (
-        <div className="shrink-0 border-b px-6 py-4">
-          {resolvedIssue.labels.length > 0 && (
-            <div className="mb-2">
-              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Labels</p>
-              <div className="flex flex-wrap gap-1">
-                {resolvedIssue.labels.map((label) => (
-                  <span
-                    key={label}
-                    className="max-w-full break-all rounded bg-muted px-2 py-1 text-xs leading-4 text-muted-foreground"
-                  >
-                    {label}
-                  </span>
-                ))}
+        <div className="flex shrink-0 flex-col gap-1.5 border-b px-5 py-2">
+          {resolvedIssue.labels.length > 0 &&
+            (labelsReadOnly ? (
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xs font-medium text-muted-foreground">Labels</h3>
+                <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+                  {resolvedIssue.labels.map((label) => (
+                    <span
+                      key={label}
+                      className="max-w-[12rem] truncate rounded bg-muted px-2 py-0.5 text-xs leading-4 text-muted-foreground"
+                      title={label}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-          {resolvedIssue.assignees.length > 0 && (
-            <div>
-              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Assignees</p>
-              <div className="flex flex-wrap gap-1">
-                {resolvedIssue.assignees.map((assignee) => (
-                  <Badge
-                    key={assignee}
-                    variant="outline"
-                    className="max-w-full whitespace-normal break-words text-xs leading-4 [overflow-wrap:anywhere]"
-                  >
-                    {assignee}
-                  </Badge>
-                ))}
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="shrink-0 text-xs font-medium text-muted-foreground">Labels</h3>
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                  {resolvedIssue.labels.slice(0, 4).map((label) => (
+                    <span
+                      key={label}
+                      className="max-w-[12rem] shrink truncate rounded bg-muted px-2 py-0.5 text-xs leading-4 text-muted-foreground"
+                      title={label}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                  {resolvedIssue.labels.length > 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setLabelPickerOpen(true)}
+                      className="shrink-0 rounded px-1.5 py-0.5 text-xs leading-4 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
+                    >
+                      +{resolvedIssue.labels.length - 4} more
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            ))}
+          {resolvedIssue.assignees.length > 0 &&
+            (labelsReadOnly ? (
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xs font-medium text-muted-foreground">Assignees</h3>
+                <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+                  {resolvedIssue.assignees.map((assignee) => (
+                    <Badge
+                      key={assignee}
+                      variant="outline"
+                      className="max-w-[10rem] justify-start truncate text-xs leading-4"
+                      title={assignee}
+                    >
+                      {assignee}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="shrink-0 text-xs font-medium text-muted-foreground">Assignees</h3>
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                  {resolvedIssue.assignees.slice(0, 4).map((assignee) => (
+                    <Badge
+                      key={assignee}
+                      variant="outline"
+                      className="max-w-[10rem] shrink justify-start truncate text-xs leading-4"
+                      title={assignee}
+                    >
+                      {assignee}
+                    </Badge>
+                  ))}
+                  {resolvedIssue.assignees.length > 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setAssigneePickerOpen(true)}
+                      className="shrink-0 rounded px-1.5 py-0.5 text-xs leading-4 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
+                    >
+                      +{resolvedIssue.assignees.length - 4} more
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
         </div>
       )}
 
       <Separator />
 
-      {/* Body */}
-      {/* Radix wraps viewport children in a `display: table` box that sizes to
-          its widest descendant, so a markdown table would widen the whole
-          pane instead of scrolling inside it. Pinning that wrapper to the
-          viewport width breaks the loop; `contain: inline-size` on the body
-          (globals.css) keeps the same guarantee if the wrapper ever changes.
-
-          This is the pane's only unrestricted scroll region. The discussion
-          below it is a sibling with a bounded height rather than a child: a
-          scroller inside a scroller makes the wheel ambiguous at the inner
-          element's boundary, and the description is long enough to reach it. */}
+      {/* Body and discussion share one scroll column. Splitting them into two
+          scroll regions made the discussion the only shrinkable child, so a
+          short pane or the expanded composer squeezed the thread to 1px. The
+          column scrolls; the composer below it stays pinned. */}
       <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:w-full">
         <div className="mx-auto w-full max-w-[var(--reading-width)] p-6">
           {resolvedIssue.body ? (
@@ -403,22 +491,9 @@ export function IssueDetail({
             <p className="text-sm text-muted-foreground">No description provided.</p>
           )}
         </div>
+        {/* Keyed by issue so switching rows remounts the thread. */}
+        <Discussion key={issue.id} issueId={issue.id} providerUrl={resolvedIssue.url} embedded />
       </ScrollArea>
-
-      {/* Discussion and composer are siblings of the body, not children of it. A
-          scroller inside a scroller makes the wheel ambiguous at the inner
-          element's boundary, and a description is long enough to reach it.
-          Bounding the discussion means the body keeps the wheel for its whole
-          length, and neither of these can push the composer off the bottom.
-
-          The discussion may shrink and the composer may not: on a short viewport
-          the thread is the thing that can give up height, because it scrolls
-          internally, while the composer has to stay reachable. */}
-      <Discussion
-        issueId={issue.id}
-        providerUrl={resolvedIssue.url}
-        className="max-h-[min(18rem,30dvh)] min-h-0"
-      />
       {/* Keyed by issue so switching rows remounts the composer. Without it,
           every piece of local state (typed text, conflict banner, the
           unconfirmed-send latch) survives the switch and would autosave to, or

@@ -95,6 +95,8 @@ interface ApplyContext {
 export function useApplyPreset() {
   const queryClient = useQueryClient();
   const pushUndo = useUndoStore((s) => s.push);
+  const pushLive = useUndoStore((s) => s.pushLive);
+  const removeLive = useUndoStore((s) => s.removeLive);
 
   return useMutation<ApplyPresetResult, Error, ApplyPresetInput, ApplyContext>({
     mutationFn: async ({ issueId, presetId, batch, expectedUpdatedAt }) => {
@@ -196,7 +198,17 @@ export function useApplyPreset() {
         return;
       }
 
+      // Record the live action so the toast and `z` share one entry. The raw
+      // reverse mutation below never records history, so an undo cannot loop.
+      const undoId = pushLive({
+        issueId: input.issueId,
+        payload: result.applied,
+        previousPayload: inverse,
+        description,
+      });
+
       showUndoToast(description, () => {
+        if (!removeLive(undoId)) return;
         const reverseMutation = queryClient.getMutationCache().build(queryClient, {
           mutationFn: async () => {
             const res = await fetch(`/api/issues/${input.issueId}`, {

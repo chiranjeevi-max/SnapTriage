@@ -90,10 +90,10 @@
     @apply mb-0;
   }
   .issue-body h1 {
-    @apply mb-2 mt-5 text-base font-semibold tracking-[-0.01em];
+    @apply mb-2 mt-5 text-[1.0625rem] font-semibold tracking-[-0.01em];
   }
   .issue-body h2 {
-    @apply mb-2 mt-5 text-sm font-semibold;
+    @apply mb-2 mt-5 text-[0.9375rem] font-semibold;
   }
   .issue-body h3 {
     @apply mb-1.5 mt-4 text-sm font-semibold;
@@ -222,16 +222,17 @@
     overflow-y: auto;
   }
   .inbox-controls {
+    /* The narrowing controls own a row at every desktop width. One row only
+       fits while the count is short; "1000 of 1000" and a readable search push
+       "Save view" onto a line of its own, which was the wrap this layout exists
+       to remove. */
     flex: 1;
+    order: 3;
+    flex-basis: 100%;
+    padding-top: var(--space-xs);
   }
   .inbox-sync {
     margin-left: auto;
-  }
-  .inbox-bulk {
-    order: 4;
-    flex-basis: 100%;
-    padding-top: var(--space-sm);
-    border-top: 1px solid var(--border);
   }
   .issue-row:has(.is-selected) {
     background: var(--selection-surface);
@@ -246,19 +247,18 @@
     outline-offset: -3px;
   }
   .issue-body {
-    font-size: var(--text-sm);
-    line-height: 1.75;
+    font-size: 0.9375rem;
+    line-height: 1.7;
   }
   .issue-detail {
     container-type: inline-size;
-    overflow-x: clip;
-    overflow-y: auto;
+    overflow: hidden;
   }
   .issue-detail-title {
-    font-size: clamp(var(--text-lg), 4cqi, var(--text-2xl));
-  }
-  .issue-detail > [data-slot="scroll-area"] {
-    min-height: 240px;
+    /* Caps below the six-line display lockup the old clamp produced. The title
+       stays the largest object in the pane, but at 24px rather than 27.6px so a
+       long title cannot outgrow the page heading by half again. */
+    font-size: clamp(var(--text-lg), 4cqi, 1.5rem);
   }
 }
 
@@ -322,6 +322,74 @@
   }
 }
 
+/* Touch raises the controls to the 44px floor. Screen size is not the signal:
+   a touchscreen laptop has a coarse pointer at desktop width. */
+@media (pointer: coarse) {
+  /* A switch's track is sized by its own geometry; the 44px floor stretches
+     the track and pushes the checked thumb past its edge. */
+  .app-shell button:not([role="switch"]),
+  .app-shell input,
+  .app-shell select,
+  .app-shell textarea,
+  .app-shell a[data-slot="button"],
+  .app-nav-link,
+  .app-sidebar-footer a,
+  [data-slot="dialog-content"] button:not([role="switch"]),
+  [data-slot="dialog-content"] input,
+  [data-slot="dialog-content"] select,
+  [data-slot="dialog-content"] textarea,
+  [data-slot="dialog-content"] a[data-slot="button"],
+  [data-slot="alert-dialog-content"] button:not([role="switch"]),
+  [data-slot="alert-dialog-content"] input,
+  [data-slot="alert-dialog-content"] select,
+  [data-slot="alert-dialog-content"] textarea,
+  [data-slot="alert-dialog-content"] a[data-slot="button"],
+  [data-slot="command-input"],
+  [data-slot="dropdown-menu-item"] {
+    min-height: 44px;
+  }
+  .app-shell button:not([role="switch"]),
+  [data-slot="dialog-content"] button:not([role="switch"]),
+  [data-slot="alert-dialog-content"] button:not([role="switch"]) {
+    min-width: 44px;
+  }
+  .issue-row input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+    min-height: 24px;
+    margin-top: 10px;
+  }
+}
+
+/* Focus is one language: the ink outline. The primitives set `outline-none`
+   and a 50%-opacity ring, which measures about 1.5:1 at rest — below the 3:1
+   focus-appearance floor — while plain buttons got the global ink outline. This
+   unlayered block wins over the utility layer and makes every control match. */
+.app-shell button:focus-visible,
+.app-shell a[data-slot="button"]:focus-visible,
+.app-shell input:focus-visible,
+.app-shell select:focus-visible,
+.app-shell textarea:focus-visible,
+[data-slot="command-input"]:focus-visible,
+[data-slot="dialog-content"] button:focus-visible,
+[data-slot="dialog-content"] input:focus-visible,
+[data-slot="dialog-content"] select:focus-visible,
+[data-slot="dialog-content"] textarea:focus-visible,
+[data-slot="dialog-content"] a[data-slot="button"]:focus-visible,
+[data-slot="alert-dialog-content"] button:focus-visible,
+[data-slot="alert-dialog-content"] input:focus-visible,
+[data-slot="alert-dialog-content"] select:focus-visible,
+[data-slot="alert-dialog-content"] textarea:focus-visible,
+[data-slot="alert-dialog-content"] a[data-slot="button"]:focus-visible,
+[data-slot="dropdown-menu-item"]:focus-visible,
+[role="menuitem"]:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
+.app-shell .issue-row-button:focus-visible {
+  outline-offset: -3px;
+}
+
 @media (max-width: 40rem) {
   .inbox-toolbar {
     display: grid;
@@ -342,12 +410,18 @@
     grid-row: 2;
     flex-wrap: nowrap;
   }
-  .inbox-bulk {
-    grid-column: 1 / -1;
-    grid-row: 3;
-  }
   .inbox-controls:has(input) {
     flex-wrap: wrap;
+  }
+  .inbox-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  /* Reading on a phone gets the whole screen under the app bar. The queue
+     toolbar is 199px of narrowing controls with nothing to narrow while one
+     issue is open; the detail's own close button returns to the queue. */
+  .triage-inbox.has-selection .inbox-toolbar {
+    display: none;
   }
 
   .triage-panels > [data-slot="resizable-handle"] {

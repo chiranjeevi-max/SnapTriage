@@ -128,7 +128,7 @@ SnapTriage is production-ready today. What's next:
 - [x] **Bulk actions**: select multiple issues, apply changes in one shot
 - [x] **Webhooks**: real-time sync via webhooks alongside polling
 - [ ] **Browser extension**: triage sidebar on GitHub/GitLab issue pages
-- [ ] **Mobile-friendly view**: responsive triage for on-the-go processing
+- [x] **Mobile-friendly view**: queue-first triage and a full-height reading pane on phones
 
 <details>
 <summary><strong>Scripts</strong></summary>

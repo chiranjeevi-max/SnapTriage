@@ -28,8 +28,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { KeyboardEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ExternalLink, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, MessageSquare, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -148,8 +149,18 @@ export function Composer({ issue, className }: ComposerProps) {
    * the newer draft without ever raising a conflict.
    */
   const [pinnedVersion, setPinnedVersion] = useState<number | null>(null);
+  /**
+   * Whether the full editor is open.
+   *
+   * Collapsed is the resting state: an empty composer took 205px from the pane
+   * on every issue, which is height the description needs. The textarea stays
+   * mounted either way, so typing and the draft query do not remount the
+   * editor, and Send stays reachable without a second click.
+   */
+  const [expanded, setExpanded] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   /** Caret position to restore after a programmatic insert. */
   const caretRef = useRef<number | null>(null);
   const saveDraftNow = saveDraft.mutate;
@@ -463,11 +474,61 @@ export function Composer({ issue, className }: ComposerProps) {
   }
 
   const posted = send.isSuccess;
+  const populated = text.trim().length > 0;
+  // Anything the user must read keeps the full editor open. A banner or a
+  // withheld Send behind a collapsed bar would be a state the user cannot see.
+  // A stored draft is work in progress even when its body is empty, so it keeps
+  // the full editor (and its Discard control) visible.
+  const showEditor =
+    expanded ||
+    populated ||
+    draft !== null ||
+    notice !== null ||
+    unconfirmed ||
+    posted ||
+    saveFailure !== null;
+
+  /** The one irreversible control, shared by the collapsed and full layouts. */
+  const sendControl = unconfirmed ? (
+    <Button asChild variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 px-3 text-xs">
+      <a href={issue.url} target="_blank" rel="noopener noreferrer">
+        <ExternalLink className="h-3.5 w-3.5" />
+        Check the issue
+      </a>
+    </Button>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          size="sm"
+          className="h-9 shrink-0 gap-1.5 px-3 text-xs"
+          disabled={!canSend(sendState, text) || over || sendBlocked}
+          onClick={handleSend}
+        >
+          <Send className="h-3.5 w-3.5" />
+          {sending ? "Sending…" : "Send"}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top">Post this reply. It cannot be undone. ⌘↵ or Ctrl↵</TooltipContent>
+    </Tooltip>
+  );
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // An IME uses Enter to confirm composition. Sending there would publish a
+    // half-finished sentence. Safari reports the committing Enter with
+    // `isComposing` false and `keyCode` 229, so both signals have to hold.
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      handleSend();
+    }
+  }
 
   return (
     <section
+      ref={sectionRef}
       aria-label="Reply composer"
-      className={cn("shrink-0 border-t bg-card px-6 py-4", className)}
+      className={cn("shrink-0 border-t bg-card", showEditor ? "px-6 py-4" : "px-6 py-2", className)}
     >
       {posted && (
         <div className="mb-3 flex items-start gap-2 rounded-md border border-dashed px-3 py-2">
@@ -578,107 +639,132 @@ export function Composer({ issue, className }: ComposerProps) {
         </div>
       )}
 
-      <div className="flex items-baseline justify-between gap-3">
-        <label htmlFor={`reply-${issue.id}`} className="text-xs font-medium">
-          Reply
-        </label>
-        <div className="flex min-w-0 items-center gap-2">
-          {saveFailure && (
-            <span className="min-w-0 truncate text-[11px] text-destructive" title={saveFailure}>
-              Not saved. Your text is kept here and retried as you type.
-            </span>
-          )}
-          {!saveFailure && dirty && !notice && (
-            <span className="font-mono text-[11px] text-muted-foreground">
-              {saveDraft.isPending ? "saving…" : "unsaved"}
-            </span>
-          )}
-          {!saveFailure && !dirty && draft && (
-            <span className="font-mono text-[11px] text-muted-foreground">
-              saved {formatRelativeTime(draft.updatedAt, { suffix: true })}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <textarea
-        id={`reply-${issue.id}`}
-        ref={textareaRef}
-        value={text}
-        rows={4}
-        disabled={sending}
-        onChange={(event) => noteTyped(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            handleSend();
-          }
-        }}
-        placeholder="Write a reply. This posts publicly to the issue."
-        className="mt-1.5 min-h-[5.5rem] w-full min-w-0 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm [overflow-wrap:anywhere] placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none disabled:opacity-60"
-      />
-
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {/* In the unconfirmed state Send is not rendered at all rather than
-            shown greyed out: a disabled button next to "we could not confirm
-            this was posted" still reads as the thing to press once it wakes up,
-            and pressing it is exactly what must not happen. */}
-        {unconfirmed ? (
-          <Button asChild variant="outline" size="sm" className="h-9 gap-1.5 px-3 text-xs">
-            <a href={issue.url} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-3.5 w-3.5" />
-              Check the issue
-            </a>
-          </Button>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="sm"
-                className="h-9 gap-1.5 px-3 text-xs"
-                disabled={!canSend(sendState, text) || over || sendBlocked}
-                onClick={handleSend}
-              >
-                <Send className="h-3.5 w-3.5" />
-                {sending ? "Sending…" : "Send"}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              Post this reply. It cannot be undone. ⌘↵ or Ctrl↵
-            </TooltipContent>
-          </Tooltip>
+      <div className={cn(!showEditor && "flex items-end gap-2")}>
+        {showEditor && (
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="flex items-baseline gap-2">
+              <label htmlFor={`reply-${issue.id}`} className="text-xs font-medium">
+                Reply
+              </label>
+              <span className="text-[11px] text-muted-foreground">
+                Posts publicly to the issue.
+              </span>
+            </div>
+            <div className="flex min-w-0 items-center gap-2">
+              {saveFailure && (
+                <span className="min-w-0 truncate text-[11px] text-destructive" title={saveFailure}>
+                  Not saved. Your text is kept here and retried as you type.
+                </span>
+              )}
+              {!saveFailure && dirty && !notice && (
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {saveDraft.isPending ? "saving…" : "unsaved"}
+                </span>
+              )}
+              {!saveFailure && !dirty && draft && (
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  saved {formatRelativeTime(draft.updatedAt, { suffix: true })}
+                </span>
+              )}
+            </div>
+          </div>
         )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-9 px-2.5 text-xs"
-          onClick={() => {
-            setPicked(null);
-            setPickerOpen(true);
+        <textarea
+          id={`reply-${issue.id}`}
+          ref={textareaRef}
+          value={text}
+          rows={showEditor ? 4 : 1}
+          disabled={sending}
+          aria-label="Reply"
+          onChange={(event) => noteTyped(event.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setExpanded(true)}
+          onBlur={(event) => {
+            // Collapse an empty editor when focus leaves the composer. A draft
+            // or typed text keeps it open, and moving to Send or Saved replies
+            // stays inside the section so those buttons do not move mid-click.
+            const next = event.relatedTarget;
+            if (
+              text.trim().length === 0 &&
+              draft === null &&
+              !(next instanceof Node && sectionRef.current?.contains(next))
+            ) {
+              setExpanded(false);
+            }
           }}
-        >
-          Saved replies
-        </Button>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-9 gap-1.5 px-2.5 text-xs text-muted-foreground"
-          disabled={(!dirty && !draft) || discardDraft.isPending}
-          onClick={handleDiscard}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          Discard
-        </Button>
-
-        <span className="ml-auto flex items-center gap-3 font-mono text-[11px] tabular-nums text-muted-foreground">
-          {counter && (
-            <span className={cn(over && "text-destructive")} aria-live="polite">
-              {counter}
-            </span>
+          placeholder={
+            showEditor
+              ? "Write a reply. This posts publicly to the issue."
+              : "Write a reply… posts publicly to the issue."
+          }
+          className={cn(
+            "min-w-0 rounded-md border border-input bg-background px-3 text-sm [overflow-wrap:anywhere] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none disabled:opacity-60",
+            showEditor
+              ? "mt-1.5 min-h-[5.5rem] w-full resize-y py-2"
+              : "h-9 min-h-9 flex-1 resize-none py-1.5"
           )}
-        </span>
+        />
+
+        {showEditor ? (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {/* In the unconfirmed state Send is not rendered at all rather than
+                shown greyed out: a disabled button next to "we could not confirm
+                this was posted" still reads as the thing to press once it wakes
+                up, and pressing it is exactly what must not happen. */}
+            {sendControl}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 px-2.5 text-xs"
+              onClick={() => {
+                setPicked(null);
+                setPickerOpen(true);
+              }}
+            >
+              Saved replies
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 gap-1.5 px-2.5 text-xs text-muted-foreground"
+              disabled={(!dirty && !draft) || discardDraft.isPending}
+              onClick={handleDiscard}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Discard
+            </Button>
+
+            <span className="ml-auto flex items-center gap-3 font-mono text-[11px] tabular-nums text-muted-foreground">
+              {counter && (
+                <span className={cn(over && "text-destructive")} aria-live="polite">
+                  {counter}
+                </span>
+              )}
+            </span>
+          </div>
+        ) : (
+          <>
+            {/* Templates stay reachable while the editor is collapsed: the
+                picker is the fastest way to start a reply, and hiding it behind
+                an empty textarea would make an empty composer a dead end. */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              aria-label="Saved replies"
+              onClick={() => {
+                setPicked(null);
+                setPickerOpen(true);
+              }}
+            >
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+            {sendControl}
+          </>
+        )}
       </div>
 
       <Dialog

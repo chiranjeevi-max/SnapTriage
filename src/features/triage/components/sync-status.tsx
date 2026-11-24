@@ -24,16 +24,28 @@ const formatSyncTime = (isoStr: string | null) =>
  * @returns The sync status button wrapped in a tooltip.
  */
 export function SyncStatus() {
-  const { data: statuses } = useSyncStatus();
+  const { data: statuses, isError } = useSyncStatus();
   const sync = useSync();
 
-  // Show the most recent sync time across all repos
-  const lastSynced =
-    statuses?.reduce<string | null>((latest, s) => {
-      if (!s.lastSyncedAt) return latest;
-      if (!latest) return s.lastSyncedAt;
-      return new Date(s.lastSyncedAt) > new Date(latest) ? s.lastSyncedAt : latest;
-    }, null) ?? null;
+  // "Never" reads as a refusal or a filter, not a status. The button's job is
+  // to sync, so an unsynced queue names that action instead of the absence.
+  const lastSynced = statuses?.reduce<string | null>((latest, s) => {
+    if (!s.lastSyncedAt) return latest;
+    if (!latest) return s.lastSyncedAt;
+    return new Date(s.lastSyncedAt) > new Date(latest) ? s.lastSyncedAt : latest;
+  }, null);
+
+  // While the status query is still loading, `lastSynced` is null for lack of
+  // data rather than because nothing has synced. A failed query also leaves it
+  // undefined, so the error gets its own label instead of reading as loading.
+  const label =
+    statuses === undefined
+      ? isError
+        ? "Sync failed"
+        : "Sync"
+      : lastSynced
+        ? formatSyncTime(lastSynced)
+        : "Sync now";
 
   return (
     <Tooltip>
@@ -50,7 +62,7 @@ export function SyncStatus() {
           ) : (
             <RefreshCw className="h-3.5 w-3.5" />
           )}
-          <span>{formatSyncTime(lastSynced)}</span>
+          <span className="sr-only sm:not-sr-only">{label}</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent className="flex items-center gap-1.5">

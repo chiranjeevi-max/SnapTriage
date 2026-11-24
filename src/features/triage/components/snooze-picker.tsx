@@ -72,6 +72,8 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
       previousPayload: { snoozedUntil: issue.triage?.snoozedUntil ?? null },
       description: "Snoozed issue",
       batch,
+      // Carried by the input so a retry from the failure toast advances too.
+      advanceAfterSuccess: true,
     });
     onOpenChange(false);
     setShowCustom(false);

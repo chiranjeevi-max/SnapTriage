@@ -88,7 +88,7 @@ function FollowUpRow({
             {waiting && entry.reason && (
               <span className="text-[11px] text-muted-foreground">{STATE_LABELS.waiting}</span>
             )}
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/80">
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
               {entry.checkedAt
                 ? `checked ${formatRelativeTime(entry.checkedAt, { suffix: true })}`
                 : "never checked"}
@@ -159,7 +159,7 @@ interface FollowUpViewProps {
  * @param props - {@link FollowUpViewProps}
  */
 export function FollowUpView({ onOpenIssue }: FollowUpViewProps) {
-  const { data, isPending, isError, error } = useFollowUps();
+  const { data, isPending, isError, error, refetch } = useFollowUps();
   const check = useCheckFollowUps();
 
   // One pass per mount, not one per render and not on a timer. The server
@@ -215,9 +215,20 @@ export function FollowUpView({ onOpenIssue }: FollowUpViewProps) {
           className="mx-4 mt-2 flex items-start gap-2 rounded-md border border-dashed px-3 py-2"
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-          <p className="min-w-0 break-words text-xs leading-relaxed text-destructive">
-            {check.error.message}
-          </p>
+          <div className="min-w-0">
+            <p className="break-words text-xs leading-relaxed text-destructive">
+              {check.error.message}
+            </p>
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              disabled={check.isPending}
+              onClick={() => check.mutate()}
+            >
+              Try again
+            </Button>
+          </div>
         </div>
       )}
 
@@ -237,6 +248,14 @@ export function FollowUpView({ onOpenIssue }: FollowUpViewProps) {
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {error.message}
             </p>
+            <Button
+              variant="link"
+              size="sm"
+              className="mt-1 h-auto p-0 text-xs"
+              onClick={() => refetch()}
+            >
+              Try again
+            </Button>
           </div>
         ) : entries.length === 0 ? (
           <EmptyState

@@ -20,11 +20,10 @@ import {
   shortcuts,
   setShortcutOverride,
   resetShortcutOverrides,
-  formatKey,
   categoryLabels,
   categoryOrder,
 } from "@/features/keyboard/shortcut-registry";
-import { Kbd } from "@/features/keyboard/components/kbd";
+import { ShortcutKbd } from "@/features/keyboard/components/shortcut-kbd";
 
 /** Modal dialog showing all keyboard shortcuts grouped by category. */
 export function ShortcutOverlay() {
@@ -87,7 +86,7 @@ export function ShortcutOverlay() {
                           Press a key…
                         </span>
                       ) : (
-                        <Kbd>{formatKey(shortcut)}</Kbd>
+                        <ShortcutKbd id={shortcut.id} />
                       )}
                     </button>
                   </div>

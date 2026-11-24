@@ -15,6 +15,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useConnectedRepos } from "@/features/repos/use-connected-repos";
 import { toast } from "sonner";
 import { readApiError } from "./api-error";
 import type { Preset, PresetActions } from "./types";
@@ -145,33 +146,20 @@ export function useDeletePreset(repoId: string | undefined) {
   });
 }
 
-/** The connected repo fields the picker's wording needs. */
-interface CachedRepo {
-  id: string;
-  syncMode?: string;
-}
-
 /**
  * Reads the issue's repository sync mode out of the shared repo cache.
  *
  * The app shell and the repo manager already load `GET /api/repos`, and that
  * response carries `syncMode`, so the picker needs neither a second fetch nor a
- * prop threaded down from the inbox for a button label. The query is disabled
- * rather than duplicated: it subscribes to the cached list and updates when the
- * shell's fetch lands, without ever issuing a request of its own. The value is
- * advisory — the server decides the effective mode and returns it — and
- * `undefined` means "not cached yet", which falls back to that same decision
- * instead of assuming live.
+ * prop threaded down from the inbox for a button label. The shared hook owns
+ * the query and its cache; `undefined` means "not loaded yet", which falls back
+ * to the server's effective decision instead of assuming live.
  *
  * @param repoId - The issue's repository.
  * @returns `true` for batch, `false` for live, or `undefined` when not cached.
  */
 export function useRepoBatchMode(repoId: string | undefined): boolean | undefined {
-  const { data: repos } = useQuery<CachedRepo[]>({
-    queryKey: ["connected-repos"],
-    enabled: false,
-    staleTime: 60_000,
-  });
+  const { data: repos } = useConnectedRepos();
 
   if (!repoId) return undefined;
   const repo = repos?.find((item) => item.id === repoId);
