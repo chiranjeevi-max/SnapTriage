@@ -27,19 +27,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { devAvailableRepos, devRepos, readDataMode } from "@/features/dev-tools/data-mode";
+import { devAvailableRepos, readDataMode } from "@/features/dev-tools/data-mode";
+import { CONNECTED_REPOS_KEY, useConnectedRepos } from "@/features/repos/use-connected-repos";
 import type { AvailableRepo } from "@/features/repos/fetch-available-repos";
-
-/** Shape of a connected repo record from the repos API. */
-interface ConnectedRepo {
-  id: string;
-  provider: string;
-  owner: string;
-  name: string;
-  fullName: string;
-  permission: string;
-  syncEnabled: boolean;
-}
 
 /**
  * Full repo management UI with connected list and provider-tabbed browser.
@@ -51,16 +41,12 @@ export function RepoManager() {
   const [connectingRepo, setConnectingRepo] = useState<string | null>(null);
 
   // The sidebar reads the same query, so both stay in step after a change.
-  const { data: connected = [], isLoading: loadingConnected } = useQuery<ConnectedRepo[]>({
-    queryKey: ["connected-repos"],
-    queryFn: async () => {
-      // The dev-only data toggle swaps the real repos for the worst case.
-      const fixture = await devRepos(readDataMode());
-      if (fixture) return fixture;
-      return fetch("/api/repos").then((res) => (res.ok ? res.json() : []));
-    },
-    staleTime: 60_000,
-  });
+  const {
+    data: connected = [],
+    isLoading: loadingConnected,
+    isError: connectedError,
+    refetch: refetchConnected,
+  } = useConnectedRepos();
 
   const { data: available = [], isFetching: loadingAvailable } = useQuery<AvailableRepo[]>({
     queryKey: ["available-repos", activeProvider],
@@ -86,7 +72,7 @@ export function RepoManager() {
       body: JSON.stringify({ provider: repo.provider, owner: repo.owner, name: repo.name }),
     });
     if (res.ok) {
-      await queryClient.invalidateQueries({ queryKey: ["connected-repos"] });
+      await queryClient.invalidateQueries({ queryKey: CONNECTED_REPOS_KEY });
       await queryClient.invalidateQueries({ queryKey: ["available-repos"] });
     }
     setConnectingRepo(null);
@@ -94,7 +80,7 @@ export function RepoManager() {
 
   async function handleDisconnect(id: string) {
     await fetch(`/api/repos/${id}`, { method: "DELETE" });
-    await queryClient.invalidateQueries({ queryKey: ["connected-repos"] });
+    await queryClient.invalidateQueries({ queryKey: CONNECTED_REPOS_KEY });
   }
 
   const connectedFullNames = new Set(connected.map((r) => r.fullName));
@@ -112,6 +98,18 @@ export function RepoManager() {
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
+          ) : connectedError ? (
+            <EmptyState
+              icon={<Plug className="h-5 w-5" />}
+              title="Could not load repositories"
+              description="The repository list did not come back. Try again; the rest of the page still works."
+              action={
+                <Button size="sm" variant="outline" onClick={() => void refetchConnected()}>
+                  Try again
+                </Button>
+              }
+              className="items-start border-y py-8 text-left"
+            />
           ) : connected.length === 0 ? (
             <EmptyState
               icon={<Plug className="h-5 w-5" />}

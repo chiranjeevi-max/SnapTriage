@@ -40,6 +40,8 @@ interface KeyboardState {
    * "Snooze" would dismiss the issue behind the menu.
    */
   triageMenuOpen: boolean;
+  /** Whether the bulk-dismiss confirmation is open. */
+  bulkConfirmOpen: boolean;
   /**
    * The issue the `follow-up` shortcut was pressed for, or `null`.
    *
@@ -63,7 +65,7 @@ interface KeyboardState {
   clearAdvance: () => void;
   setSelectedIndex: (i: number) => void;
   setIssueCount: (n: number | null) => void;
-  moveSelection: (delta: number) => void;
+  moveSelection: (delta: number, options?: { openDetail?: boolean }) => void;
   setDetailOpen: (open: boolean) => void;
   toggleOverlay: () => void;
   setLabelPickerOpen: (open: boolean) => void;
@@ -73,6 +75,7 @@ interface KeyboardState {
   setSavedReplyPickerOpen: (open: boolean) => void;
   setFollowUpPanelOpen: (open: boolean) => void;
   setTriageMenuOpen: (open: boolean) => void;
+  setBulkConfirmOpen: (open: boolean) => void;
   setFollowUpArmRequested: (issueId: string | null) => void;
   isAnyPickerOpen: () => boolean;
   reset: () => void;
@@ -91,11 +94,11 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   savedReplyPickerOpen: false,
   followUpPanelOpen: false,
   triageMenuOpen: false,
+  bulkConfirmOpen: false,
   followUpArmRequested: null,
   advanceFromIssueId: null,
 
-  setSelectedIndex: (i) =>
-    set((state) => ({ selectedIndex: i, detailOpen: i >= 0 || state.detailOpen })),
+  setSelectedIndex: (i) => set({ selectedIndex: i }),
   setDetailOpen: (open) => set({ detailOpen: open }),
 
   /**
@@ -115,13 +118,13 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
         : { issueCount: n, selectedIndex: Math.min(state.selectedIndex, Math.max(0, n - 1)) }
     ),
 
-  moveSelection: (delta) =>
+  moveSelection: (delta, options) =>
     set((state) => {
       if (state.issueCount === 0) return state;
       const next = state.selectedIndex + delta;
       return {
         selectedIndex: Math.max(0, Math.min(next, state.issueCount - 1)),
-        detailOpen: true,
+        ...(options?.openDetail === false ? {} : { detailOpen: true }),
       };
     }),
 
@@ -134,6 +137,7 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   setSavedReplyPickerOpen: (open) => set({ savedReplyPickerOpen: open }),
   setFollowUpPanelOpen: (open) => set({ followUpPanelOpen: open }),
   setTriageMenuOpen: (open) => set({ triageMenuOpen: open }),
+  setBulkConfirmOpen: (open) => set({ bulkConfirmOpen: open }),
   setFollowUpArmRequested: (issueId) => set({ followUpArmRequested: issueId }),
   requestAdvance: (issueId) => set({ advanceFromIssueId: issueId }),
   clearAdvance: () => set({ advanceFromIssueId: null }),
@@ -151,7 +155,8 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
       s.presetPickerOpen ||
       s.savedReplyPickerOpen ||
       s.followUpPanelOpen ||
-      s.triageMenuOpen
+      s.triageMenuOpen ||
+      s.bulkConfirmOpen
     );
   },
 
@@ -168,6 +173,7 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
       savedReplyPickerOpen: false,
       followUpPanelOpen: false,
       triageMenuOpen: false,
+      bulkConfirmOpen: false,
       followUpArmRequested: null,
       advanceFromIssueId: null,
     }),

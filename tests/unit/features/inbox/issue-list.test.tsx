@@ -103,6 +103,9 @@ describe("IssueList", () => {
 
     expect(screen.getByText("No issues to triage")).toBeDefined();
     expect(screen.queryByText("No issues match")).toBeNull();
+
+    const connect = screen.getByRole("link", { name: "Connect a repository" });
+    expect(connect.getAttribute("href")).toBe("/repos");
   });
 
   it("keeps one tab stop per row and declares the full set size", () => {

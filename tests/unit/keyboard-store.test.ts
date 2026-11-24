@@ -20,6 +20,7 @@ describe("keyboard-store", () => {
       expect(state.savedReplyPickerOpen).toBe(false);
       expect(state.followUpPanelOpen).toBe(false);
       expect(state.triageMenuOpen).toBe(false);
+      expect(state.bulkConfirmOpen).toBe(false);
       expect(state.followUpArmRequested).toBeNull();
       expect(state.advanceFromIssueId).toBeNull();
     });
@@ -68,6 +69,27 @@ describe("keyboard-store", () => {
 
       expect(useKeyboardStore.getState().selectedIndex).toBe(5);
       expect(useKeyboardStore.getState().detailOpen).toBe(true);
+    });
+
+    it("can move the cursor without reopening a closed pane", () => {
+      const state = useKeyboardStore.getState();
+      state.setIssueCount(10);
+      state.setSelectedIndex(4);
+      state.setDetailOpen(false);
+      state.moveSelection(1, { openDetail: false });
+
+      expect(useKeyboardStore.getState().selectedIndex).toBe(5);
+      expect(useKeyboardStore.getState().detailOpen).toBe(false);
+    });
+
+    it("does not reopen the pane when a filter repositions the cursor", () => {
+      const state = useKeyboardStore.getState();
+      state.setIssueCount(10);
+      state.setDetailOpen(false);
+      state.setSelectedIndex(3);
+
+      expect(useKeyboardStore.getState().selectedIndex).toBe(3);
+      expect(useKeyboardStore.getState().detailOpen).toBe(false);
     });
 
     it("moves selection forward", () => {
@@ -154,6 +176,14 @@ describe("keyboard-store", () => {
       useKeyboardStore.getState().setTriageMenuOpen(false);
       expect(useKeyboardStore.getState().triageMenuOpen).toBe(false);
     });
+
+    it("updates bulkConfirmOpen", () => {
+      useKeyboardStore.getState().setBulkConfirmOpen(true);
+      expect(useKeyboardStore.getState().bulkConfirmOpen).toBe(true);
+
+      useKeyboardStore.getState().setBulkConfirmOpen(false);
+      expect(useKeyboardStore.getState().bulkConfirmOpen).toBe(false);
+    });
   });
 
   describe("followUpArmRequested", () => {
@@ -235,6 +265,11 @@ describe("keyboard-store", () => {
       expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(true);
     });
 
+    it("returns true when the bulk-dismiss confirmation is open", () => {
+      useKeyboardStore.getState().setBulkConfirmOpen(true);
+      expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(true);
+    });
+
     it("returns false again once every picker is closed", () => {
       const state = useKeyboardStore.getState();
       state.setPresetPickerOpen(true);
@@ -254,6 +289,7 @@ describe("keyboard-store", () => {
       state.setSavedReplyPickerOpen(true);
       state.setFollowUpPanelOpen(true);
       state.setTriageMenuOpen(true);
+      state.setBulkConfirmOpen(true);
       state.setFollowUpArmRequested("issue-7");
       state.requestAdvance("issue-9");
       state.setDetailOpen(false);
@@ -272,6 +308,7 @@ describe("keyboard-store", () => {
       expect(newState.savedReplyPickerOpen).toBe(false);
       expect(newState.followUpPanelOpen).toBe(false);
       expect(newState.triageMenuOpen).toBe(false);
+      expect(newState.bulkConfirmOpen).toBe(false);
       expect(newState.followUpArmRequested).toBeNull();
       expect(newState.advanceFromIssueId).toBeNull();
     });

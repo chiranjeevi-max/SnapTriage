@@ -501,7 +501,8 @@ export function PresetPicker({ open, onOpenChange, issue, batch }: PresetPickerP
 
   if (!issue) return null;
   // A closed CommandDialog leaves its labelled header outside the portal, in the
-  // accessibility tree. Mount the picker only while it is open.
+  // accessibility tree. Mount the picker only while it is open; the exit
+  // animation is skipped as the cost of that choice.
   if (!open) return null;
 
   return (

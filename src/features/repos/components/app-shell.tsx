@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeyboardStore } from "@/features/keyboard";
 import { useConnectedRepos } from "@/features/repos/use-connected-repos";
+import { shortenRepoName } from "@/features/repos/repo-label";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 
@@ -86,11 +87,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   ) : (
                     <GitLabIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   )}
-                  <span
-                    className="min-w-0 truncate font-mono leading-relaxed"
-                    title={repo.fullName}
-                  >
-                    {repo.fullName}
+                  {/* One line, both ends visible. The full path is in the
+                      title and on /repos; wrapping a 78-character slug into
+                      five lines made the sidebar unreadable. */}
+                  <span className="min-w-0 font-mono leading-relaxed" title={repo.fullName}>
+                    {shortenRepoName(repo.fullName, 22)}
                   </span>
                 </div>
               ))}

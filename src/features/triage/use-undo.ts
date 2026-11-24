@@ -4,10 +4,11 @@
  *
  * Two stacks, because the two sync modes undo different things. A staged action
  * is reversed by merging its inverse into the pending changes; a live action
- * has already reached the provider and is reversed with another write. `z` uses
- * the staged stack first, then the live one. The live stack is what makes the
- * shortcut work in the default live mode; the toast covers the same action by
- * id, so pressing both cannot undo twice.
+ * has already reached the provider and is reversed with another write. Every
+ * entry carries the same monotonic sequence, so `z` always reverses whichever
+ * action happened last, regardless of which stack holds it. The live stack is
+ * what makes the shortcut work in the default live mode; the toast covers the
+ * same action by id, so pressing both cannot undo twice.
  */
 "use client";
 
@@ -15,22 +16,28 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import type { TriageAction } from "./types";
 
-/** A live action with the id its toast and the keyboard stack share. */
-export interface LiveUndoAction extends TriageAction {
+/** A staged action with the order stamp shared by both stacks. */
+export interface StagedUndoAction extends TriageAction {
+  sequence: number;
+}
+
+/** A live action with the order stamp and the id its toast shares. */
+export interface LiveUndoAction extends StagedUndoAction {
   id: string;
 }
 
 /** How many live actions stay available to `z`. */
 const LIVE_STACK_LIMIT = 20;
 
+let sequence = 0;
 let liveSequence = 0;
 
 /**
  * Zustand state shape for the undo stacks.
  *
- * @property stack - LIFO array of staged {@link TriageAction} entries.
- * @property liveStack - LIFO array of {@link LiveUndoAction} entries.
- * @property push - Pushes a staged action onto the top of the staged stack.
+ * @property stack - LIFO array of staged actions.
+ * @property liveStack - LIFO array of live actions.
+ * @property push - Records a staged action and returns its sequence.
  * @property pop - Removes and returns the most recent staged action.
  * @property pushLive - Records a live action and returns its id.
  * @property popLive - Removes and returns the most recent live action.
@@ -38,10 +45,10 @@ let liveSequence = 0;
  * @property clear - Empties both stacks.
  */
 interface UndoState {
-  stack: TriageAction[];
+  stack: StagedUndoAction[];
   liveStack: LiveUndoAction[];
-  push: (action: TriageAction) => void;
-  pop: () => TriageAction | undefined;
+  push: (action: TriageAction) => number;
+  pop: () => StagedUndoAction | undefined;
   pushLive: (action: TriageAction) => string;
   popLive: () => LiveUndoAction | undefined;
   removeLive: (id: string) => LiveUndoAction | undefined;
@@ -54,7 +61,11 @@ interface UndoState {
 export const useUndoStore = create<UndoState>((set, get) => ({
   stack: [],
   liveStack: [],
-  push: (action) => set((s) => ({ stack: [...s.stack, action] })),
+  push: (action) => {
+    const order = ++sequence;
+    set((s) => ({ stack: [...s.stack, { ...action, sequence: order }] }));
+    return order;
+  },
   pop: () => {
     const stack = get().stack;
     if (stack.length === 0) return undefined;
@@ -64,7 +75,10 @@ export const useUndoStore = create<UndoState>((set, get) => ({
   },
   pushLive: (action) => {
     const id = `live-${++liveSequence}`;
-    set((s) => ({ liveStack: [...s.liveStack, { ...action, id }].slice(-LIVE_STACK_LIMIT) }));
+    const order = ++sequence;
+    set((s) => ({
+      liveStack: [...s.liveStack, { ...action, id, sequence: order }].slice(-LIVE_STACK_LIMIT),
+    }));
     return id;
   },
   popLive: () => {

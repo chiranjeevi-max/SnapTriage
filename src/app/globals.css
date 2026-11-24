@@ -325,25 +325,29 @@
 /* Touch raises the controls to the 44px floor. Screen size is not the signal:
    a touchscreen laptop has a coarse pointer at desktop width. */
 @media (pointer: coarse) {
-  .inbox-toolbar button,
-  .inbox-toolbar input,
-  .inbox-toolbar select,
-  .issue-detail button,
-  .issue-detail a[data-slot="button"],
+  .app-shell button,
+  .app-shell input,
+  .app-shell select,
+  .app-shell textarea,
+  .app-shell a[data-slot="button"],
   .app-nav-link,
-  .app-sidebar-footer button,
-  .app-sidebar-footer a {
-    min-height: 44px;
-  }
-  .issue-detail button {
-    min-width: 44px;
-  }
+  .app-sidebar-footer a,
+  [data-slot="dialog-content"] button,
+  [data-slot="dialog-content"] a[data-slot="button"],
+  [data-slot="alert-dialog-content"] button,
+  [data-slot="alert-dialog-content"] a[data-slot="button"],
   [data-slot="dropdown-menu-item"] {
     min-height: 44px;
+  }
+  .app-shell button,
+  [data-slot="dialog-content"] button,
+  [data-slot="alert-dialog-content"] button {
+    min-width: 44px;
   }
   .issue-row input[type="checkbox"] {
     width: 24px;
     height: 24px;
+    min-height: 24px;
     margin-top: 10px;
   }
 }
@@ -357,6 +361,11 @@
 .app-shell input:focus-visible,
 .app-shell select:focus-visible,
 .app-shell textarea:focus-visible,
+[data-slot="command-input"]:focus-visible,
+[data-slot="dialog-content"] button:focus-visible,
+[data-slot="dialog-content"] a[data-slot="button"]:focus-visible,
+[data-slot="alert-dialog-content"] button:focus-visible,
+[data-slot="alert-dialog-content"] a[data-slot="button"]:focus-visible,
 [data-slot="dropdown-menu-item"]:focus-visible,
 [role="menuitem"]:focus-visible {
   outline: 2px solid var(--foreground);

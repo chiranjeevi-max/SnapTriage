@@ -11,6 +11,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { TriagePayload } from "./types";
 import { showUndoToast, useUndoStore } from "./use-undo";
+import { useKeyboardStore } from "@/features/keyboard/keyboard-store";
 import type { IssueDetail, IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
@@ -21,6 +22,12 @@ import type { IssueDetail, IssueWithTriage } from "@/features/inbox/use-issues";
  * @property previousPayload - Inverse payload used for undo.
  * @property description - Human-readable summary of the action.
  * @property batch - When `true`, stages the change for batch push instead of live writeback.
+ * @property undo - When `true`, this write reverses an earlier action. It must
+ *           not be recorded as a new undo entry, or `z` would toggle the last
+ *           action forever instead of reaching the one before it.
+ * @property advanceAfterSuccess - Request the queue advance from the hook-level
+ *           success callback, so a newer write on the same observer cannot drop
+ *           the request and a retry still carries it.
  */
 interface TriageMutationInput {
   issueId: string;
@@ -28,6 +35,8 @@ interface TriageMutationInput {
   previousPayload: TriagePayload;
   description: string;
   batch?: boolean;
+  undo?: boolean;
+  advanceAfterSuccess?: boolean;
 }
 
 /**
@@ -111,6 +120,7 @@ export function useTriageMutation() {
   const pushUndo = useUndoStore((s) => s.push);
   const pushLive = useUndoStore((s) => s.pushLive);
   const removeLive = useUndoStore((s) => s.removeLive);
+  const requestAdvance = useKeyboardStore((s) => s.requestAdvance);
 
   const triage = useMutation({
     mutationFn: async (input: TriageMutationInput) => {
@@ -201,7 +211,8 @@ export function useTriageMutation() {
     },
 
     onSuccess: (data, input) => {
-      const { issueId, payload, previousPayload, description, batch } = input;
+      const { issueId, payload, previousPayload, description, batch, undo, advanceAfterSuccess } =
+        input;
 
       // The provider accepted the change but the server could not record it. Said
       // plainly rather than hidden behind the usual toast, because the row will
@@ -209,7 +220,12 @@ export function useTriageMutation() {
       const warning = (data as { warning?: string } | null)?.warning;
       if (warning) toast.warning(warning);
 
-      if (batch) {
+      if (undo) {
+        // An undo is not itself an undoable action. Recording it would make `z`
+        // toggle one action back and forth and never reach the one before it.
+        toast(description);
+        if (batch) queryClient.invalidateQueries({ queryKey: ["batch-pending-changes"] });
+      } else if (batch) {
         // Batch mode: push to undo stack
         pushUndo({ issueId, payload, previousPayload, description });
         toast("Change staged");
@@ -228,9 +244,12 @@ export function useTriageMutation() {
             payload: previousPayload,
             previousPayload: payload,
             description: "Undid last action",
+            undo: true,
           });
         });
       }
+
+      if (advanceAfterSuccess && !undo) requestAdvance(issueId);
     },
 
     onSettled: (data, _error, input, context) => {

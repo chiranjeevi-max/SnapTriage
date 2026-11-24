@@ -72,7 +72,8 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
 
   if (!issue) return null;
   // See label-picker: a closed CommandDialog leaves its mirrored header in the
-  // accessibility tree, so it is mounted only while open.
+  // accessibility tree, so it is mounted only while open. The exit animation is
+  // skipped as the cost of that choice.
   if (!open) return null;
 
   const currentAssignees = new Set(issue.assignees);

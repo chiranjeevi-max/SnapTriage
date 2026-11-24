@@ -69,7 +69,8 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
   if (!issue) return null;
   // CommandDialog renders its labelled header outside DialogContent, so a
   // closed picker leaves orphaned H2s in the accessibility tree. Mount only
-  // while open.
+  // while open. The exit animation is skipped; that is the cost of not leaving
+  // the heading in the tree.
   if (!open) return null;
 
   const currentLabels = new Set(issue.labels);

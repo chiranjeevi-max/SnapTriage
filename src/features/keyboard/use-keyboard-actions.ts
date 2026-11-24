@@ -38,6 +38,8 @@ export interface KeyboardActionOptions {
   openDetail?: () => void;
   /** The view closed the detail pane. */
   closeDetail?: () => void;
+  /** Whether undo may run when no row is selected (the queue can be emptied). */
+  undoAllowed?: boolean;
 }
 
 export function useKeyboardActions(issues: IssueWithTriage[], options?: KeyboardActionOptions) {
@@ -53,12 +55,9 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
   const setSnoozePickerOpen = useKeyboardStore((state) => state.setSnoozePickerOpen);
   const setPresetPickerOpen = useKeyboardStore((state) => state.setPresetPickerOpen);
   const setFollowUpArmRequested = useKeyboardStore((state) => state.setFollowUpArmRequested);
-  const requestAdvance = useKeyboardStore((state) => state.requestAdvance);
   const triage = useTriageMutation();
   const sync = useSync();
   const batchPush = useBatchPush();
-  const popUndo = useUndoStore((s) => s.pop);
-  const popLive = useUndoStore((s) => s.popLive);
 
   // Use refs for unstable dependencies (mutation objects that change identity each render)
   const triageRef = useRef(triage);
@@ -117,18 +116,15 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
         case "dismiss": {
           if (!currentIssue) break;
           const newDismissed = !currentIssue.triage?.dismissed;
-          triageRef.current.mutate(
-            {
-              issueId: currentIssue.id,
-              payload: { dismissed: newDismissed },
-              previousPayload: { dismissed: !newDismissed },
-              description: newDismissed ? "Dismissed issue" : "Undismissed issue",
-            },
-            // Clearing is one key, not two. The request is resolved against the
-            // list after the optimistic update: a row that left the queue does
-            // not need a move, and a failed write never asks for one.
-            { onSuccess: () => requestAdvance(currentIssue.id) }
-          );
+          triageRef.current.mutate({
+            issueId: currentIssue.id,
+            payload: { dismissed: newDismissed },
+            previousPayload: { dismissed: !newDismissed },
+            description: newDismissed ? "Dismissed issue" : "Undismissed issue",
+            // The advance belongs to the mutation input, not to a per-call
+            // callback: a newer write on the same observer replaces those.
+            advanceAfterSuccess: true,
+          });
           break;
         }
         case "toggle-state": {
@@ -139,18 +135,16 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
           const { payload, previousPayload, description } = toggleIssueState(
             currentIssue.state === "closed" ? "closed" : "open"
           );
-          triageRef.current.mutate(
-            {
-              issueId: currentIssue.id,
-              payload,
-              previousPayload,
-              description,
-            },
+          triageRef.current.mutate({
+            issueId: currentIssue.id,
+            payload,
+            previousPayload,
+            description,
             // A closed issue leaves the open queue, so the next row is what the
             // user wants in the pane. The inbox decides whether the index has to
             // move, since the optimistic removal already shifted the list.
-            { onSuccess: () => requestAdvance(currentIssue.id) }
-          );
+            advanceAfterSuccess: true,
+          });
           break;
         }
         case "labels":
@@ -179,9 +173,17 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
           // Undo reverses an action on a queue row, and that row is not on screen
           // while the follow-up surface is up. Popping either stack there would
           // undo something the user cannot see and cannot connect to the gesture.
-          if (!currentIssue) break;
-          const staged = popUndo();
-          if (staged) {
+          // On the queue, the last row may have just left, which leaves no
+          // current issue; the undo is still reversible.
+          if (!currentIssue && !options?.undoAllowed) break;
+          const { stack, liveStack, pop, popLive } = useUndoStore.getState();
+          const staged = stack[stack.length - 1];
+          const live = liveStack[liveStack.length - 1];
+
+          // Both stacks share one sequence, so the newest action is undone
+          // whichever mode recorded it.
+          if (staged && (!live || staged.sequence > live.sequence)) {
+            pop();
             triageRef.current.mutate({
               issueId: staged.issueId,
               payload: staged.previousPayload,
@@ -191,20 +193,16 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
               // live would apply the inverse to the provider while leaving the
               // staged change in place, so the next push would send the original.
               batch: true,
+              undo: true,
             });
-            break;
-          }
-
-          // Live mode: the action has already reached the provider, so its undo
-          // is another write. The toast records the same action by id, so
-          // whichever the user reaches first removes it.
-          const live = popLive();
-          if (live) {
+          } else if (live) {
+            popLive();
             triageRef.current.mutate({
               issueId: live.issueId,
               payload: live.previousPayload,
               previousPayload: live.payload,
               description: "Undid last action",
+              undo: true,
             });
           }
           break;
@@ -236,10 +234,7 @@ export function useKeyboardActions(issues: IssueWithTriage[], options?: Keyboard
       setSnoozePickerOpen,
       setPresetPickerOpen,
       setFollowUpArmRequested,
-      requestAdvance,
       options,
-      popUndo,
-      popLive,
     ]
   );
 }

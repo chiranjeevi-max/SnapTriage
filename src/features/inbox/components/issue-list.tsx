@@ -193,7 +193,11 @@ const IssueRow = memo(function IssueRow({
       {onToggleSelected && (
         <input
           type="checkbox"
-          aria-label={`Select issue #${issue.number}`}
+          aria-label={
+            repoName
+              ? `Select ${shortenRepoName(repoName)} #${issue.number}`
+              : `Select issue #${issue.number}`
+          }
           // One tab stop per row (the row button). Bulk selection keeps the X
           // shortcut and the visible Select all control; the checkbox stays
           // pointer-accessible without doubling a 1,000-row tab walk.

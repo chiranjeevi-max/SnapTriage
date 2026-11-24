@@ -119,10 +119,21 @@ export function formatKey(shortcut: Shortcut): string {
   const key = getShortcutKey(shortcut);
   if (key === "Enter") return "↵";
   if (key === "Escape") return "Esc";
-  if (shortcut.shift && key === shortcut.key) {
+  if (shortcut.shift) {
     return key === "?" ? "?" : `Shift+${key.toUpperCase()}`;
   }
   return key.toUpperCase();
+}
+
+/**
+ * Formats one registry entry by id, including any user override.
+ *
+ * @param id - The shortcut id.
+ * @returns The formatted key, or an empty string when the id is unknown.
+ */
+export function formatShortcutById(id: string): string {
+  const shortcut = shortcuts.find((item) => item.id === id);
+  return shortcut ? formatKey(shortcut) : "";
 }
 
 /**

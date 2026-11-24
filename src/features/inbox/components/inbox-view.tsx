@@ -178,6 +178,7 @@ export function InboxView() {
   const advanceFromIssueId = useKeyboardStore((state) => state.advanceFromIssueId);
   const clearAdvance = useKeyboardStore((state) => state.clearAdvance);
   const toggleOverlay = useKeyboardStore((state) => state.toggleOverlay);
+  const setBulkConfirmOpen = useKeyboardStore((state) => state.setBulkConfirmOpen);
   const labelPickerOpen = useKeyboardStore((state) => state.labelPickerOpen);
   const setLabelPickerOpen = useKeyboardStore((state) => state.setLabelPickerOpen);
   const assigneePickerOpen = useKeyboardStore((state) => state.assigneePickerOpen);
@@ -214,7 +215,9 @@ export function InboxView() {
   // settled does not get pulled forward.
   useEffect(() => {
     if (advanceFromIssueId === null) return;
-    if (filteredIssues[selectedIndex]?.id === advanceFromIssueId) moveSelection(1);
+    if (filteredIssues[selectedIndex]?.id === advanceFromIssueId) {
+      moveSelection(1, { openDetail: false });
+    }
     clearAdvance();
   }, [advanceFromIssueId, filteredIssues, selectedIndex, moveSelection, clearAdvance]);
 
@@ -248,6 +251,10 @@ export function InboxView() {
     setPinnedIssue(null);
   }, [setQueryText, setFilter, clearSelection]);
 
+  // The flag has to be released if the route unmounts with the confirmation
+  // open, or every later shortcut stays muted for the session.
+  useEffect(() => () => setBulkConfirmOpen(false), [setBulkConfirmOpen]);
+
   const detailEmptyDescription = !detailOpen
     ? "Details are closed. Press Enter or select a row to read it here."
     : issueList.length === 0
@@ -278,8 +285,12 @@ export function InboxView() {
         setDetailOpen(false);
         setMobileDetailOpen(false);
       },
+      // The queue is the only surface where the cursor names a visible row, so
+      // it is also the only one where an undo may act with no current row (the
+      // last row may have just left).
+      undoAllowed: surface === "queue",
     }),
-    [toggleSelected, selectAllVisible, setDetailOpen]
+    [toggleSelected, selectAllVisible, setDetailOpen, surface]
   );
 
   const visibleSelectedIds = useMemo(
@@ -435,7 +446,11 @@ export function InboxView() {
             }}
           />
         </div>
-        <div className="inbox-controls flex min-w-0 flex-wrap items-center gap-2">
+        <div
+          className="inbox-controls flex min-w-0 flex-wrap items-center gap-2"
+          role="toolbar"
+          aria-label="Inbox controls"
+        >
           {/* The queue filters and the follow-up list are alternatives, not
               layers: a follow-up row can be dismissed, snoozed, or closed, so
               applying the queue's filter to it would hide the rows the queue
@@ -573,7 +588,7 @@ export function InboxView() {
                 <FollowUpView onOpenIssue={handleOpenFollowUp} />
               )}
             </div>
-            {surface === "queue" && selectedIds.size > 0 ? (
+            {surface === "queue" && visibleSelectedIds.length > 0 ? (
               // The bulk bar belongs to the queue, not the page toolbar. Here it
               // replaces the shortcut footer for one row instead of growing the
               // toolbar and pushing the whole split pane down mid-task.
@@ -607,7 +622,10 @@ export function InboxView() {
                     size="sm"
                     className="h-8 shrink-0 px-2 text-xs"
                     disabled={bulkTriage.isPending}
-                    onClick={() => setConfirmBulkDismiss(true)}
+                    onClick={() => {
+                      setConfirmBulkDismiss(true);
+                      setBulkConfirmOpen(true);
+                    }}
                   >
                     Dismiss selected
                   </Button>
@@ -697,7 +715,13 @@ export function InboxView() {
       {/* Dismissing a selection is the one bulk action that changes what is on
           screen with no undo path; the other bulk actions are reversible by
           selecting the rows again. */}
-      <AlertDialog open={confirmBulkDismiss} onOpenChange={setConfirmBulkDismiss}>
+      <AlertDialog
+        open={confirmBulkDismiss}
+        onOpenChange={(open) => {
+          setConfirmBulkDismiss(open);
+          setBulkConfirmOpen(open);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>

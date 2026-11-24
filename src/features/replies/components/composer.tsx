@@ -160,6 +160,7 @@ export function Composer({ issue, className }: ComposerProps) {
   const [expanded, setExpanded] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   /** Caret position to restore after a programmatic insert. */
   const caretRef = useRef<number | null>(null);
   const saveDraftNow = saveDraft.mutate;
@@ -513,6 +514,9 @@ export function Composer({ issue, className }: ComposerProps) {
   );
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // An IME uses Enter to confirm composition. Sending there would publish a
+    // half-finished sentence.
+    if (event.nativeEvent.isComposing) return;
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       handleSend();
@@ -521,6 +525,7 @@ export function Composer({ issue, className }: ComposerProps) {
 
   return (
     <section
+      ref={sectionRef}
       aria-label="Reply composer"
       className={cn("shrink-0 border-t bg-card", showEditor ? "px-6 py-4" : "px-6 py-2", className)}
     >
@@ -674,6 +679,19 @@ export function Composer({ issue, className }: ComposerProps) {
           onChange={(event) => noteTyped(event.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => setExpanded(true)}
+          onBlur={(event) => {
+            // Collapse an empty editor when focus leaves the composer. A draft
+            // or typed text keeps it open, and moving to Send or Saved replies
+            // stays inside the section so those buttons do not move mid-click.
+            const next = event.relatedTarget;
+            if (
+              text.trim().length === 0 &&
+              draft === null &&
+              !(next instanceof Node && sectionRef.current?.contains(next))
+            ) {
+              setExpanded(false);
+            }
+          }}
           placeholder={
             showEditor
               ? "Write a reply. This posts publicly to the issue."

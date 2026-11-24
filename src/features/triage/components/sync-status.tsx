@@ -35,7 +35,11 @@ export function SyncStatus() {
     return new Date(s.lastSyncedAt) > new Date(latest) ? s.lastSyncedAt : latest;
   }, null);
 
-  const label = lastSynced ? formatSyncTime(lastSynced) : "Sync now";
+  // While the status query is still loading, `lastSynced` is null for lack of
+  // data rather than because nothing has synced. Say "Sync" until the answer
+  // lands instead of claiming the queue has never synced.
+  const label =
+    statuses === undefined ? "Sync" : lastSynced ? formatSyncTime(lastSynced) : "Sync now";
 
   return (
     <Tooltip>

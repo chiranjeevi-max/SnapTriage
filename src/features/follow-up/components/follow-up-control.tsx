@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatRelativeTime } from "@/lib/utils";
-import { Kbd, useKeyboardStore } from "@/features/keyboard";
+import { Kbd, useKeyboardStore, formatShortcutById } from "@/features/keyboard";
 import { describeFollowUpReason } from "@/features/follow-up/detection";
 import { useFollowUpAction, useFollowUps } from "@/features/follow-up/use-follow-ups";
 
@@ -143,7 +143,7 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
         </TooltipTrigger>
         <TooltipContent side="bottom" className="flex items-center gap-1.5">
           <span>{state ? "Follow-up details" : "Wait for a reply"}</span>
-          <Kbd>W</Kbd>
+          <Kbd>{formatShortcutById("follow-up")}</Kbd>
         </TooltipContent>
       </Tooltip>
 

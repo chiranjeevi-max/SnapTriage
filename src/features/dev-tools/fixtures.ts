@@ -440,6 +440,7 @@ export function manyIssues(count = 1000): FixtureIssue[] {
       title: `${index + 1}. ${LONG_TITLE.slice(0, TITLE_LIMIT - String(index + 1).length - 2)}`,
       repo: WORST_CASE_REPOS[index % WORST_CASE_REPOS.length].fullName,
       repoId: WORST_CASE_REPOS[index % WORST_CASE_REPOS.length].id,
+      provider: WORST_CASE_REPOS[index % WORST_CASE_REPOS.length].provider,
       labels: MAX_LABELS_LIST.slice(0, 3),
       updatedAt: hoursAgo(index % 72),
       triage: {

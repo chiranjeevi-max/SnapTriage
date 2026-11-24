@@ -184,6 +184,18 @@ describe("Composer", () => {
     expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false);
   });
 
+  it("collapses an empty composer when focus leaves it", async () => {
+    renderComposer();
+    await waitFor(() => expect(textarea()).toBeDefined());
+    expect(textarea().rows).toBe(1);
+
+    fireEvent.focus(textarea());
+    expect(textarea().rows).toBe(4);
+
+    fireEvent.blur(textarea(), { relatedTarget: document.body });
+    expect(textarea().rows).toBe(1);
+  });
+
   it("hides Send entirely and shows the notice when a previous attempt is unconfirmed", async () => {
     global.fetch = vi.fn(async () =>
       json(draft({ body: TYPED, sendAttemptedAt: new Date().toISOString() }))
@@ -371,6 +383,26 @@ describe("Composer", () => {
     expect(textarea().value).toBe("Ready to go");
 
     releaseDraft();
+  });
+
+  it("does not send on Ctrl+Enter while an IME composition is active", async () => {
+    const base = global.fetch;
+    let sends = 0;
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/replies") && init?.method === "POST") sends += 1;
+      return base(input, init);
+    }) as unknown as typeof fetch;
+
+    renderComposer();
+    await waitFor(() => expect(textarea()).toBeDefined());
+    fireEvent.change(textarea(), { target: { value: TYPED } });
+
+    fireEvent.keyDown(textarea(), { key: "Enter", ctrlKey: true, isComposing: true });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(sends).toBe(0);
+
+    fireEvent.keyDown(textarea(), { key: "Enter", ctrlKey: true, isComposing: false });
+    await waitFor(() => expect(sends).toBe(1));
   });
 
   /**

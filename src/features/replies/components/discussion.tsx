@@ -9,10 +9,9 @@
  * maintainer that the reporter has gone quiet when the truth is that we cannot
  * see. So the unavailable case gets its own sentence and a link out.
  *
- * The list is bounded and scrolls on its own instead of growing the pane. It is
- * a sibling of the body's scroll area rather than a child of it: nesting one
- * scroller inside another makes the wheel ambiguous at the boundary, and the
- * body already owns the wheel for the length of a description.
+ * The list is bounded and scrolls on its own in standalone mode. Embedded in
+ * the reading column, it flows with the description and the column owns the
+ * wheel; the section does not cap its height or open a second scroller.
  *
  * Paging is the server's cursor, used untouched. Providers page in opposite
  * directions and the adapters normalise both to "this page is oldest first, and

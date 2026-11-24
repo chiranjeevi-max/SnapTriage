@@ -18,8 +18,23 @@ describe("shortenRepoName", () => {
 
     expect(short.length).toBeLessThanOrEqual(40);
     expect(short.startsWith("group/")).toBe(true);
-    expect(short.endsWith("…")).toBe(true);
-    expect(short).toContain("/");
+    expect(short.endsWith("name")).toBe(true);
+    expect(short).toContain("…");
+  });
+
+  it("keeps the repository suffix that distinguishes similar repos", () => {
+    const short = shortenRepoName("owner/repository-with-suffix-v2", 20);
+
+    expect(short.length).toBeLessThanOrEqual(20);
+    expect(short.endsWith("v2")).toBe(true);
+  });
+
+  it("stays within the requested maximum for every size above the guard", () => {
+    const full = "a-very-long-organization/repository-with-a-very-long-name";
+
+    for (const max of [4, 5, 8, 12, 20, 40]) {
+      expect(shortenRepoName(full, max).length).toBeLessThanOrEqual(max);
+    }
   });
 
   it("truncates a name with no slash from the end", () => {

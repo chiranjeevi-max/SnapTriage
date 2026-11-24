@@ -12,4 +12,4 @@ Before captures were taken during the critique, before any edits. After captures
 
 Suggested PR body line:
 
-> Before/after screenshots for the inbox redesign. The description and discussion now share a real scrolling reading column (488px at 1440×900, 305px at 1024×768) with the composer pinned; queue density is 8–9 issues per screen instead of 5.5; rows and the pane name their repository; the triage row is one line (priority select + Dismiss/Close/Wait/More); phones open on the queue, and opening an issue hides the queue toolbar so the description is visible.
+> Before/after screenshots for the inbox redesign. The description and discussion now share a real scrolling reading column (488px at 1440×900, 305px at 1024×768) with the composer pinned; queue density is 8–9 issues per screen instead of 5.5; rows and the pane name their repository; the triage bar is one action group (priority select + Dismiss/Close/Wait/More); phones open on the queue, and opening an issue hides the queue toolbar so the description is visible.

@@ -1,9 +1,9 @@
 /**
  * @module repos/use-connected-repos
  *
- * The connected-repository list shared by the shell, the queue, and the reading
- * pane. The shell already loads it for the sidebar; the other surfaces read the
- * same query rather than asking the server for a second copy.
+ * The connected-repository list shared by the shell, the queue, the reading
+ * pane, the repo manager, and the preset picker. One query definition keeps the
+ * fixture path and the fetch from drifting apart.
  */
 "use client";
 
@@ -14,10 +14,12 @@ import { devRepos, readDataMode } from "@/features/dev-tools/data-mode";
 export interface ConnectedRepo {
   id: string;
   provider: string;
+  owner: string;
+  name: string;
   fullName: string;
   permission: string;
-  syncMode?: string;
-  syncEnabled?: boolean;
+  syncMode: string;
+  syncEnabled: boolean;
 }
 
 /** Query key shared by every consumer. */
@@ -27,7 +29,9 @@ export const CONNECTED_REPOS_KEY = ["connected-repos"] as const;
  * Loads the user's connected repositories.
  *
  * The dev-only data toggle swaps the real list for its fixture, which is what
- * keeps the queue's repository labels populated in fixture mode.
+ * keeps the queue's repository labels populated in fixture mode. A failed
+ * response throws so react-query can retry and report the error instead of
+ * caching an empty list as if the user had no repositories.
  */
 export function useConnectedRepos() {
   return useQuery<ConnectedRepo[]>({
@@ -36,7 +40,8 @@ export function useConnectedRepos() {
       const fixture = await devRepos(readDataMode());
       if (fixture) return fixture;
       const res = await fetch("/api/repos");
-      return res.ok ? res.json() : [];
+      if (!res.ok) throw new Error("Could not load connected repositories.");
+      return res.json();
     },
     staleTime: 60_000,
   });

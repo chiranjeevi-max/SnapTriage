@@ -44,7 +44,7 @@ import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { priorityOptions } from "@/features/triage/priority";
 import { shortenRepoName } from "@/features/repos/repo-label";
 import { toggleIssueState } from "@/features/triage/triage-actions";
-import { useKeyboardStore, Kbd } from "@/features/keyboard";
+import { useKeyboardStore, Kbd, formatShortcutById } from "@/features/keyboard";
 import { Discussion, Composer } from "@/features/replies";
 import { FollowUpControl } from "@/features/follow-up";
 
@@ -118,7 +118,6 @@ export function IssueDetail({
     setSnoozePickerOpen,
     setPresetPickerOpen,
     setTriageMenuOpen,
-    requestAdvance,
   } = useKeyboardStore();
 
   // The flag has to be released if the pane unmounts while the menu is open,
@@ -152,25 +151,21 @@ export function IssueDetail({
 
   function handleDismiss() {
     const newDismissed = !currentIssue.triage?.dismissed;
-    triage.mutate(
-      {
-        issueId: currentIssue.id,
-        payload: { dismissed: newDismissed },
-        previousPayload: { dismissed: !newDismissed },
-        description: newDismissed ? "Dismissed issue" : "Undismissed issue",
-      },
-      { onSuccess: () => requestAdvance(currentIssue.id) }
-    );
+    triage.mutate({
+      issueId: currentIssue.id,
+      payload: { dismissed: newDismissed },
+      previousPayload: { dismissed: !newDismissed },
+      description: newDismissed ? "Dismissed issue" : "Undismissed issue",
+      advanceAfterSuccess: true,
+    });
   }
 
   function handleToggleState() {
-    triage.mutate(
-      {
-        issueId: currentIssue.id,
-        ...toggleIssueState(currentIssue.state === "closed" ? "closed" : "open"),
-      },
-      { onSuccess: () => requestAdvance(currentIssue.id) }
-    );
+    triage.mutate({
+      issueId: currentIssue.id,
+      ...toggleIssueState(currentIssue.state === "closed" ? "closed" : "open"),
+      advanceAfterSuccess: true,
+    });
   }
 
   return (
@@ -279,7 +274,7 @@ export function IssueDetail({
               <option value="">No priority</option>
               {priorityOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
-                  {opt.name} ({opt.key})
+                  {opt.name} ({formatShortcutById(`priority-${opt.value}`)})
                 </option>
               ))}
             </SelectField>
@@ -302,7 +297,7 @@ export function IssueDetail({
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="flex items-center gap-1.5">
                   <span>Toggle dismiss</span>
-                  <Kbd>D</Kbd>
+                  <Kbd>{formatShortcutById("dismiss")}</Kbd>
                 </TooltipContent>
               </Tooltip>
 
@@ -322,7 +317,7 @@ export function IssueDetail({
                   {/* A pinned follow-up has no queue row, so the keyboard dispatcher
                   has no current issue and `c` does nothing there. Showing the
                   hint would promise a shortcut that cannot fire. */}
-                  {shortcutTarget && <Kbd>C</Kbd>}
+                  {shortcutTarget && <Kbd>{formatShortcutById("toggle-state")}</Kbd>}
                 </TooltipContent>
               </Tooltip>
 
@@ -346,22 +341,22 @@ export function IssueDetail({
                   <DropdownMenuItem onSelect={() => setLabelPickerOpen(true)}>
                     <Tag className="h-3.5 w-3.5" />
                     Edit labels
-                    <Kbd className="ml-auto">L</Kbd>
+                    <Kbd className="ml-auto">{formatShortcutById("labels")}</Kbd>
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setAssigneePickerOpen(true)}>
                     <UserPlus className="h-3.5 w-3.5" />
                     Edit assignees
-                    <Kbd className="ml-auto">A</Kbd>
+                    <Kbd className="ml-auto">{formatShortcutById("assignees")}</Kbd>
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setSnoozePickerOpen(true)}>
                     <Clock className="h-3.5 w-3.5" />
                     Snooze for later
-                    <Kbd className="ml-auto">S</Kbd>
+                    <Kbd className="ml-auto">{formatShortcutById("snooze")}</Kbd>
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setPresetPickerOpen(true)}>
                     <Layers className="h-3.5 w-3.5" />
                     Apply a preset
-                    <Kbd className="ml-auto">T</Kbd>
+                    <Kbd className="ml-auto">{formatShortcutById("presets")}</Kbd>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -388,7 +383,7 @@ export function IssueDetail({
                     {label}
                   </span>
                 ))}
-                {resolvedIssue.labels.length > 4 && (
+                {!triagePaused && resolvedIssue.labels.length > 4 && (
                   <button
                     type="button"
                     onClick={() => setLabelPickerOpen(true)}
@@ -414,7 +409,7 @@ export function IssueDetail({
                     {assignee}
                   </Badge>
                 ))}
-                {resolvedIssue.assignees.length > 4 && (
+                {!triagePaused && resolvedIssue.assignees.length > 4 && (
                   <button
                     type="button"
                     onClick={() => setAssigneePickerOpen(true)}

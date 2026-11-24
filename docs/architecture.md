@@ -95,13 +95,14 @@ and meaningful issue state. Live and batch modes use named controls and icons.
 **Controls.** Panels are `rounded-xl`, controls and chips `rounded-md`, pills
 `rounded-full`. Heights: `h-9` for toolbar controls, `h-8` for dense actions,
 `h-11` for large buttons. Coarse-pointer devices raise app controls to a 44px
-touch target. A single triage row holds a priority select, Dismiss, Close, Wait,
-and a More menu for the remaining actions. Queue rows carry the title, priority,
-repository, number, author, and age; labels belong to the pane. The description
-and discussion share one scrolling reading column, with the reply composer
-pinned below it; the composer rests at one line until it is focused or holds a
-draft. Bulk actions sit at the foot of the queue, where they do not reflow the
-toolbar.
+touch target; the bulk checkbox stays at 24px. Triage controls form one bar with
+a priority select, Dismiss, Close, Wait, and a More menu for the remaining
+actions. The action group wraps as a unit when the pane narrows. Queue rows
+carry the title, priority, repository, number, author, and age; labels belong to
+the pane. The description and discussion share one scrolling reading column,
+with the reply composer pinned below it; the composer rests at one line until it
+is focused or holds a draft. Bulk actions sit at the foot of the queue, where
+they do not reflow the toolbar.
 
 The shared tokens live in `src/app/tokens.css`; `design.md` records the system.
 The desktop shell is capped at 1600px. Below 960px navigation becomes a horizontal

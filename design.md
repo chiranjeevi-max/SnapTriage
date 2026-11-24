@@ -31,7 +31,7 @@ Shared design reference for the utilitarian workbench redesign.
 
 - Desktop: compact sidebar, full-height queue, distinct reading surface. The toolbar is two stable rows: identity and surfaces above, narrowing controls below.
 - Queue rows carry the title, priority, repository, number, author, and age. Labels belong to the reading pane, not the row.
-- The description and discussion share one scrolling reading column; the reply composer stays pinned below it. Triage actions share one row: a priority select, Dismiss, Close, Wait, and a More menu for labels, assignees, snooze, and presets. The composer rests at one line and expands on focus, on typed text, or on a stored draft.
+- The description and discussion share one scrolling reading column; the reply composer stays pinned below it. Triage controls form one bar: a priority select, Dismiss, Close, Wait, and a More menu for labels, assignees, snooze, and presets. The action group wraps as a unit when the pane narrows. The composer rests at one line and expands on focus, on typed text, or on a stored draft.
 - Small screens: navigation becomes a horizontal bar and the inbox opens on the queue. Selecting a row, pressing Enter, or opening a follow-up shows the issue at full width and hides the queue toolbar so the reading column owns the screen; closing it returns to the queue.
 - Repositories and settings: one capped content measure, section labels beside their controls.
 - Public pages: same system, a product-led opening, solid surfaces, generous type.
