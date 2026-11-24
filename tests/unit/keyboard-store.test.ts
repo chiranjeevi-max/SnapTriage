@@ -11,6 +11,7 @@ describe("keyboard-store", () => {
       const state = useKeyboardStore.getState();
       expect(state.selectedIndex).toBe(0);
       expect(state.issueCount).toBe(0);
+      expect(state.detailOpen).toBe(true);
       expect(state.overlayOpen).toBe(false);
       expect(state.labelPickerOpen).toBe(false);
       expect(state.assigneePickerOpen).toBe(false);
@@ -18,7 +19,9 @@ describe("keyboard-store", () => {
       expect(state.presetPickerOpen).toBe(false);
       expect(state.savedReplyPickerOpen).toBe(false);
       expect(state.followUpPanelOpen).toBe(false);
+      expect(state.triageMenuOpen).toBe(false);
       expect(state.followUpArmRequested).toBeNull();
+      expect(state.advanceFromIssueId).toBeNull();
     });
   });
 
@@ -54,6 +57,17 @@ describe("keyboard-store", () => {
     it("does nothing when issueCount is 0", () => {
       useKeyboardStore.getState().moveSelection(1);
       expect(useKeyboardStore.getState().selectedIndex).toBe(0);
+    });
+
+    it("reopens the detail pane when the cursor moves", () => {
+      const state = useKeyboardStore.getState();
+      state.setIssueCount(10);
+      state.setSelectedIndex(4);
+      state.setDetailOpen(false);
+      state.moveSelection(1);
+
+      expect(useKeyboardStore.getState().selectedIndex).toBe(5);
+      expect(useKeyboardStore.getState().detailOpen).toBe(true);
     });
 
     it("moves selection forward", () => {
@@ -132,6 +146,14 @@ describe("keyboard-store", () => {
       useKeyboardStore.getState().setFollowUpPanelOpen(false);
       expect(useKeyboardStore.getState().followUpPanelOpen).toBe(false);
     });
+
+    it("updates triageMenuOpen", () => {
+      useKeyboardStore.getState().setTriageMenuOpen(true);
+      expect(useKeyboardStore.getState().triageMenuOpen).toBe(true);
+
+      useKeyboardStore.getState().setTriageMenuOpen(false);
+      expect(useKeyboardStore.getState().triageMenuOpen).toBe(false);
+    });
   });
 
   describe("followUpArmRequested", () => {
@@ -149,6 +171,22 @@ describe("keyboard-store", () => {
       // The flag is a one-shot request, not a modal. Treating it as one would
       // mute the keyboard until the next unrelated picker closed.
       useKeyboardStore.getState().setFollowUpArmRequested("issue-7");
+      expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(false);
+    });
+  });
+
+  describe("advanceFromIssueId", () => {
+    it("carries the issue an action settled on until the queue resolves it", () => {
+      const state = useKeyboardStore.getState();
+      state.requestAdvance("issue-9");
+      expect(useKeyboardStore.getState().advanceFromIssueId).toBe("issue-9");
+
+      state.clearAdvance();
+      expect(useKeyboardStore.getState().advanceFromIssueId).toBeNull();
+    });
+
+    it("does not make the store think a dialog is open", () => {
+      useKeyboardStore.getState().requestAdvance("issue-9");
       expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(false);
     });
   });
@@ -190,6 +228,13 @@ describe("keyboard-store", () => {
       expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(true);
     });
 
+    it("returns true when the triage menu is open", () => {
+      // The menu's items are not editable elements, so without this flag a
+      // shortcut would act on the issue behind the open menu.
+      useKeyboardStore.getState().setTriageMenuOpen(true);
+      expect(useKeyboardStore.getState().isAnyPickerOpen()).toBe(true);
+    });
+
     it("returns false again once every picker is closed", () => {
       const state = useKeyboardStore.getState();
       state.setPresetPickerOpen(true);
@@ -208,13 +253,17 @@ describe("keyboard-store", () => {
       state.setPresetPickerOpen(true);
       state.setSavedReplyPickerOpen(true);
       state.setFollowUpPanelOpen(true);
+      state.setTriageMenuOpen(true);
       state.setFollowUpArmRequested("issue-7");
+      state.requestAdvance("issue-9");
+      state.setDetailOpen(false);
 
       state.reset();
 
       const newState = useKeyboardStore.getState();
       expect(newState.selectedIndex).toBe(0);
       expect(newState.issueCount).toBe(0);
+      expect(newState.detailOpen).toBe(true);
       expect(newState.overlayOpen).toBe(false);
       expect(newState.labelPickerOpen).toBe(false);
       expect(newState.assigneePickerOpen).toBe(false);
@@ -222,13 +271,16 @@ describe("keyboard-store", () => {
       expect(newState.presetPickerOpen).toBe(false);
       expect(newState.savedReplyPickerOpen).toBe(false);
       expect(newState.followUpPanelOpen).toBe(false);
+      expect(newState.triageMenuOpen).toBe(false);
       expect(newState.followUpArmRequested).toBeNull();
+      expect(newState.advanceFromIssueId).toBeNull();
     });
 
     it("leaves no dialog flag set, so the keyboard is not muted after a sign-out", () => {
       const state = useKeyboardStore.getState();
       state.setSavedReplyPickerOpen(true);
       state.setFollowUpPanelOpen(true);
+      state.setTriageMenuOpen(true);
 
       state.reset();
 

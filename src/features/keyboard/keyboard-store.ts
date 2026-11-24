@@ -17,6 +17,14 @@ import { create } from "zustand";
 interface KeyboardState {
   selectedIndex: number;
   issueCount: number;
+  /**
+   * Whether the reading pane shows its issue.
+   *
+   * Separate from the selection so closing the pane keeps the queue cursor.
+   * Moving the cursor, selecting a row, or pressing Enter reopens it; closing
+   * only changes this flag.
+   */
+  detailOpen: boolean;
   overlayOpen: boolean;
   labelPickerOpen: boolean;
   assigneePickerOpen: boolean;
@@ -24,6 +32,14 @@ interface KeyboardState {
   presetPickerOpen: boolean;
   savedReplyPickerOpen: boolean;
   followUpPanelOpen: boolean;
+  /**
+   * Whether the detail pane's triage menu is open.
+   *
+   * A dropdown is not an editable element and Radix does not trap focus the
+   * way a dialog does, so without this flag a `d` pressed while choosing
+   * "Snooze" would dismiss the issue behind the menu.
+   */
+  triageMenuOpen: boolean;
   /**
    * The issue the `follow-up` shortcut was pressed for, or `null`.
    *
@@ -33,9 +49,22 @@ interface KeyboardState {
    * consumes a request naming its own issue, and clears it when it does.
    */
   followUpArmRequested: string | null;
+  /**
+   * The issue an action just settled on, waiting for the queue to advance past it.
+   *
+   * The list decides whether advancing is right: a dismissed row in the All
+   * filter stays put, so the cursor must move; a closed row leaves the queue, so
+   * the next row already holds the index and moving would skip it. The action
+   * cannot know which, because the optimistic update lands before the mutation
+   * settles. The inbox resolves the request against the list it renders.
+   */
+  advanceFromIssueId: string | null;
+  requestAdvance: (issueId: string) => void;
+  clearAdvance: () => void;
   setSelectedIndex: (i: number) => void;
   setIssueCount: (n: number | null) => void;
   moveSelection: (delta: number) => void;
+  setDetailOpen: (open: boolean) => void;
   toggleOverlay: () => void;
   setLabelPickerOpen: (open: boolean) => void;
   setAssigneePickerOpen: (open: boolean) => void;
@@ -43,6 +72,7 @@ interface KeyboardState {
   setPresetPickerOpen: (open: boolean) => void;
   setSavedReplyPickerOpen: (open: boolean) => void;
   setFollowUpPanelOpen: (open: boolean) => void;
+  setTriageMenuOpen: (open: boolean) => void;
   setFollowUpArmRequested: (issueId: string | null) => void;
   isAnyPickerOpen: () => boolean;
   reset: () => void;
@@ -52,6 +82,7 @@ interface KeyboardState {
 export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   selectedIndex: 0,
   issueCount: 0,
+  detailOpen: true,
   overlayOpen: false,
   labelPickerOpen: false,
   assigneePickerOpen: false,
@@ -59,9 +90,13 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   presetPickerOpen: false,
   savedReplyPickerOpen: false,
   followUpPanelOpen: false,
+  triageMenuOpen: false,
   followUpArmRequested: null,
+  advanceFromIssueId: null,
 
-  setSelectedIndex: (i) => set({ selectedIndex: i }),
+  setSelectedIndex: (i) =>
+    set((state) => ({ selectedIndex: i, detailOpen: i >= 0 || state.detailOpen })),
+  setDetailOpen: (open) => set({ detailOpen: open }),
 
   /**
    * Report the length of the list the keyboard is navigating.
@@ -84,7 +119,10 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
     set((state) => {
       if (state.issueCount === 0) return state;
       const next = state.selectedIndex + delta;
-      return { selectedIndex: Math.max(0, Math.min(next, state.issueCount - 1)) };
+      return {
+        selectedIndex: Math.max(0, Math.min(next, state.issueCount - 1)),
+        detailOpen: true,
+      };
     }),
 
   toggleOverlay: () => set((state) => ({ overlayOpen: !state.overlayOpen })),
@@ -95,7 +133,10 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
   setPresetPickerOpen: (open) => set({ presetPickerOpen: open }),
   setSavedReplyPickerOpen: (open) => set({ savedReplyPickerOpen: open }),
   setFollowUpPanelOpen: (open) => set({ followUpPanelOpen: open }),
+  setTriageMenuOpen: (open) => set({ triageMenuOpen: open }),
   setFollowUpArmRequested: (issueId) => set({ followUpArmRequested: issueId }),
+  requestAdvance: (issueId) => set({ advanceFromIssueId: issueId }),
+  clearAdvance: () => set({ advanceFromIssueId: null }),
 
   // The two dialogs that belong to the reply surface are counted here even
   // though they are not triage controls: their buttons are not editable
@@ -109,7 +150,8 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
       s.snoozePickerOpen ||
       s.presetPickerOpen ||
       s.savedReplyPickerOpen ||
-      s.followUpPanelOpen
+      s.followUpPanelOpen ||
+      s.triageMenuOpen
     );
   },
 
@@ -117,6 +159,7 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
     set({
       selectedIndex: 0,
       issueCount: 0,
+      detailOpen: true,
       overlayOpen: false,
       labelPickerOpen: false,
       assigneePickerOpen: false,
@@ -124,6 +167,8 @@ export const useKeyboardStore = create<KeyboardState>((set, get) => ({
       presetPickerOpen: false,
       savedReplyPickerOpen: false,
       followUpPanelOpen: false,
+      triageMenuOpen: false,
       followUpArmRequested: null,
+      advanceFromIssueId: null,
     }),
 }));

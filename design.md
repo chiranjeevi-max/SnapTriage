@@ -29,8 +29,10 @@ Shared design reference for the utilitarian workbench redesign.
 
 ## Composition
 
-- Desktop: compact sidebar, full-height queue, distinct reading surface.
-- Small screens: navigation becomes a horizontal bar; issue detail uses the available width.
+- Desktop: compact sidebar, full-height queue, distinct reading surface. The toolbar is two stable rows: identity and surfaces above, narrowing controls below.
+- Queue rows carry the title, priority, repository, number, author, and age. Labels belong to the reading pane, not the row.
+- The description and discussion share one scrolling reading column; the reply composer stays pinned below it. Triage actions share one row: a priority select, Dismiss, Close, Wait, and a More menu for labels, assignees, snooze, and presets. The composer rests at one line and expands on focus, on typed text, or on a stored draft.
+- Small screens: navigation becomes a horizontal bar and the inbox opens on the queue. Selecting a row, pressing Enter, or opening a follow-up shows the issue at full width and hides the queue toolbar so the reading column owns the screen; closing it returns to the queue.
 - Repositories and settings: one capped content measure, section labels beside their controls.
 - Public pages: same system, a product-led opening, solid surfaces, generous type.
 - Hairlines separate rows. A panel frames a tool; avoid nested cards.
@@ -38,7 +40,7 @@ Shared design reference for the utilitarian workbench redesign.
 
 ## Controls and motion
 
-- App controls: 32–40px; public primary actions: 44px.
+- App controls: 32–40px; public primary actions: 44px. Coarse-pointer devices raise app controls to 44px.
 - Controls use the shared radius and visible, instant focus outlines.
 - Motion answers an action; respect reduced motion throughout.
 - Use shared component wrappers. Never edit `src/components/ui/*` primitives.

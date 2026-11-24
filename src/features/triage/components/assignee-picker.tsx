@@ -71,6 +71,9 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
   }, [collaborators, issue?.assignees]);
 
   if (!issue) return null;
+  // See label-picker: a closed CommandDialog leaves its mirrored header in the
+  // accessibility tree, so it is mounted only while open.
+  if (!open) return null;
 
   const currentAssignees = new Set(issue.assignees);
 
@@ -107,7 +110,17 @@ export function AssigneePicker({ open, onOpenChange, issue, batch }: AssigneePic
       description="Search and toggle assignees"
       className="flex max-h-[calc(100dvh-2rem)] flex-col [&_[data-slot=command]]:min-h-0"
     >
-      <CommandInput placeholder="Search collaborators..." className="min-w-0 pr-10" />
+      <div className="border-b px-4 py-3 pr-10">
+        <p className="text-sm font-medium">Assignees</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Toggle who is assigned to this issue.
+        </p>
+      </div>
+      <CommandInput
+        placeholder="Search collaborators..."
+        aria-label="Search collaborators"
+        className="min-w-0 pr-10"
+      />
       {/* Outside CommandEmpty: that element only renders when the list is empty,
           and the merged issue values keep it non-empty even when the read
           failed. The notice has to show beside them rather than instead. */}

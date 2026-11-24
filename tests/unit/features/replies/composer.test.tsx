@@ -621,10 +621,9 @@ describe("Composer", () => {
 
     // The listener is attached: the same kind of key outside the textarea does
     // reach the dispatcher, so the assertions above are not passing merely
-    // because nothing is listening. Escape closes the detail pane, which needs
-    // no selected issue and is visible in the store.
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    expect(useKeyboardStore.getState().selectedIndex).toBe(-1);
+    // because nothing is listening. `?` toggles the overlay through the store.
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+    expect(useKeyboardStore.getState().overlayOpen).toBe(true);
   });
 
   it("reports a conflict through the typed error class, not a bare 409", () => {

@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { getSnoozeOptions, parseCustomSnooze, snoozeInputMin } from "@/features/triage/snooze";
+import { useKeyboardStore } from "@/features/keyboard";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
 /**
@@ -46,6 +47,7 @@ interface SnoozePickerProps {
  */
 export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerProps) {
   const triage = useTriageMutation();
+  const requestAdvance = useKeyboardStore((state) => state.requestAdvance);
   const [showCustom, setShowCustom] = useState(false);
   const [customDate, setCustomDate] = useState("");
 
@@ -66,13 +68,17 @@ export function SnoozePicker({ open, onOpenChange, issue, batch }: SnoozePickerP
    */
   function handleSnooze(isoString: string) {
     if (!issue) return;
-    triage.mutate({
-      issueId: issue.id,
-      payload: { snoozedUntil: isoString },
-      previousPayload: { snoozedUntil: issue.triage?.snoozedUntil ?? null },
-      description: "Snoozed issue",
-      batch,
-    });
+    triage.mutate(
+      {
+        issueId: issue.id,
+        payload: { snoozedUntil: isoString },
+        previousPayload: { snoozedUntil: issue.triage?.snoozedUntil ?? null },
+        description: "Snoozed issue",
+        batch,
+      },
+      // A snoozed row is set aside; the next one is what the operator came for.
+      { onSuccess: () => requestAdvance(issue.id) }
+    );
     onOpenChange(false);
     setShowCustom(false);
   }

@@ -51,7 +51,7 @@ export function Providers({
         >
           <TooltipProvider>
             {children}
-            <Toaster richColors closeButton />
+            <Toaster richColors closeButton position="top-right" />
           </TooltipProvider>
         </ThemeProvider>
       </QueryClientProvider>

@@ -64,6 +64,35 @@ describe("useUndoStore", () => {
     useUndoStore.getState().clear();
     expect(useUndoStore.getState().stack).toEqual([]);
   });
+
+  it("records live actions with an id and pops the most recent", () => {
+    const first = useUndoStore.getState().pushLive(mockAction1);
+    const second = useUndoStore.getState().pushLive(mockAction2);
+
+    expect(useUndoStore.getState().liveStack).toHaveLength(2);
+    expect(useUndoStore.getState().popLive()).toMatchObject({ ...mockAction2, id: second });
+    expect(useUndoStore.getState().popLive()).toMatchObject({ ...mockAction1, id: first });
+    expect(useUndoStore.getState().popLive()).toBeUndefined();
+  });
+
+  it("removes one live action by id so the toast and z cannot undo twice", () => {
+    const first = useUndoStore.getState().pushLive(mockAction1);
+    const second = useUndoStore.getState().pushLive(mockAction2);
+
+    expect(useUndoStore.getState().removeLive(first)).toMatchObject({ ...mockAction1, id: first });
+    expect(useUndoStore.getState().removeLive(first)).toBeUndefined();
+    expect(useUndoStore.getState().liveStack).toHaveLength(1);
+    expect(useUndoStore.getState().popLive()).toMatchObject({ ...mockAction2, id: second });
+  });
+
+  it("clears both stacks together", () => {
+    useUndoStore.getState().push(mockAction1);
+    useUndoStore.getState().pushLive(mockAction2);
+
+    useUndoStore.getState().clear();
+    expect(useUndoStore.getState().stack).toEqual([]);
+    expect(useUndoStore.getState().liveStack).toEqual([]);
+  });
 });
 
 describe("showUndoToast", () => {

@@ -232,7 +232,14 @@ describe("shortcut-registry", () => {
       const dismiss = shortcuts.find((shortcut) => shortcut.id === "dismiss");
       const batch = shortcuts.find((shortcut) => shortcut.id === "batch-push");
       expect(formatKey(dismiss!)).toBe("D");
-      expect(formatKey(batch!)).toBe("P");
+      expect(formatKey(batch!)).toBe("Shift+P");
+    });
+
+    it("prints shifted select-all distinctly from select-toggle", () => {
+      const selectToggle = shortcuts.find((shortcut) => shortcut.id === "select-toggle");
+      const selectAll = shortcuts.find((shortcut) => shortcut.id === "select-all");
+      expect(formatKey(selectToggle!)).toBe("X");
+      expect(formatKey(selectAll!)).toBe("Shift+X");
     });
   });
 });

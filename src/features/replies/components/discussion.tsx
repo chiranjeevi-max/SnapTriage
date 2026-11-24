@@ -65,11 +65,11 @@ function CommentRow({ comment }: { comment: ReplyComment }) {
           {authorLabel(comment)}
         </span>
         {comment.isSystem && (
-          <span className="shrink-0 rounded-full border px-1.5 py-px text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="shrink-0 rounded-full border px-1.5 py-px text-[11px] uppercase tracking-wide text-muted-foreground">
             note
           </span>
         )}
-        <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/80">
+        <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
           {formatRelativeTime(comment.createdAt, { suffix: true })}
         </span>
         {comment.url && (
@@ -107,6 +107,14 @@ interface DiscussionProps {
   providerUrl: string | null;
   /** Extra classes for the section. */
   className?: string;
+  /**
+   * Whether the section sits inside a scrollable reading column.
+   *
+   * Embedded, the column owns the wheel and the thread flows with the
+   * description; the section must not cap its height or open a second scroller.
+   * Standalone (the default), it keeps its own bounded scroller.
+   */
+  embedded?: boolean;
 }
 
 /**
@@ -114,7 +122,7 @@ interface DiscussionProps {
  *
  * @param props - {@link DiscussionProps}
  */
-export function Discussion({ issueId, providerUrl, className }: DiscussionProps) {
+export function Discussion({ issueId, providerUrl, className, embedded = false }: DiscussionProps) {
   // Open by default: the whole point of the pane is that a reply is visible
   // without a second click. Collapsing is for reading a long description.
   const [expanded, setExpanded] = useState(true);
@@ -139,7 +147,10 @@ export function Discussion({ issueId, providerUrl, className }: DiscussionProps)
   const loaded = comments.length;
 
   return (
-    <section aria-label="Discussion" className={cn("flex min-h-0 flex-col border-t", className)}>
+    <section
+      aria-label="Discussion"
+      className={cn("flex flex-col border-t", !embedded && "min-h-0", className)}
+    >
       <div className="flex shrink-0 items-center gap-2 px-6 py-2">
         <button
           type="button"
@@ -155,7 +166,7 @@ export function Discussion({ issueId, providerUrl, className }: DiscussionProps)
           <MessageSquare className="h-3.5 w-3.5 shrink-0" />
           Discussion
           {query.data && supported && (
-            <span className="font-mono tabular-nums text-muted-foreground/80">({loaded})</span>
+            <span className="font-mono tabular-nums text-muted-foreground">({loaded})</span>
           )}
         </button>
 
@@ -173,7 +184,7 @@ export function Discussion({ issueId, providerUrl, className }: DiscussionProps)
       </div>
 
       {expanded && (
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+        <div className={cn("px-6 pb-4", !embedded && "min-h-0 flex-1 overflow-y-auto")}>
           {!supported ? (
             <div className="rounded-md border border-dashed px-3 py-3">
               <p className="text-xs leading-relaxed text-muted-foreground">

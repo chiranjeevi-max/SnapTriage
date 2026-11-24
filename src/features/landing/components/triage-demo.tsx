@@ -456,7 +456,7 @@ function TriageQueue({ mode }: { mode: DataMode }) {
                 {priority && (
                   <Badge
                     variant="outline"
-                    className={cn("px-1.5 py-0 text-[10px] leading-4", priority.className)}
+                    className={cn("px-1.5 py-0 text-[11px] leading-4", priority.className)}
                   >
                     {priority.label}
                   </Badge>

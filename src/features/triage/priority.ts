@@ -29,7 +29,7 @@ export const priorityLabels: Record<number, PriorityOption> = {
     value: 0,
     label: "P0",
     name: "P0 Critical",
-    className: "border-red-500/30 bg-red-500/10 text-red-700 dark:bg-red-500/20 dark:text-red-400",
+    className: "border-red-500/30 bg-red-500/10 text-red-800 dark:bg-red-500/20 dark:text-red-300",
     key: "1",
   },
   1: {
@@ -37,7 +37,7 @@ export const priorityLabels: Record<number, PriorityOption> = {
     label: "P1",
     name: "P1 High",
     className:
-      "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400",
+      "border-orange-500/30 bg-orange-500/10 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400",
     key: "2",
   },
   2: {
@@ -45,7 +45,7 @@ export const priorityLabels: Record<number, PriorityOption> = {
     label: "P2",
     name: "P2 Medium",
     className:
-      "border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400",
+      "border-yellow-500/30 bg-yellow-500/10 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-400",
     key: "3",
   },
   3: {
@@ -53,7 +53,7 @@ export const priorityLabels: Record<number, PriorityOption> = {
     label: "P3",
     name: "P3 Low",
     className:
-      "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400",
+      "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400",
     key: "4",
   },
 };

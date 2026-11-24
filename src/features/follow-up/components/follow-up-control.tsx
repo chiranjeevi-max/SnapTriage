@@ -123,7 +123,7 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
           <Button
             variant={state === "waiting" ? "secondary" : "outline"}
             size="sm"
-            className="h-8 gap-1.5 px-2.5 text-xs"
+            className="h-8 gap-1.5 px-2 text-xs"
             disabled={action.isPending || isPending || isError}
             onClick={handleClick}
           >

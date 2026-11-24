@@ -205,7 +205,7 @@ export function PresetEditor({
             <span
               className={cn(
                 "font-mono tabular-nums",
-                name.length >= PRESET_NAME_LIMIT ? "text-destructive" : "text-muted-foreground/70"
+                name.length >= PRESET_NAME_LIMIT ? "text-destructive" : "text-muted-foreground"
               )}
               aria-live="polite"
             >

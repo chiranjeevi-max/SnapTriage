@@ -27,8 +27,12 @@ export default function AppError({
       <EmptyState
         icon={<AlertTriangle className="h-5 w-5 text-destructive" />}
         titleAs="h1"
-        title="Something went wrong"
-        description={error.message || "An unexpected error occurred."}
+        title="This page could not load"
+        description={
+          error.digest
+            ? `An unexpected error stopped the page. Quote reference ${error.digest} if you report it.`
+            : "An unexpected error stopped the page. Try again, and reload if it returns."
+        }
         action={
           <Button onClick={reset} variant="outline" size="sm">
             Try again

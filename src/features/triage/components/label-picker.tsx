@@ -67,6 +67,10 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
   }, [labels, issue?.labels]);
 
   if (!issue) return null;
+  // CommandDialog renders its labelled header outside DialogContent, so a
+  // closed picker leaves orphaned H2s in the accessibility tree. Mount only
+  // while open.
+  if (!open) return null;
 
   const currentLabels = new Set(issue.labels);
 
@@ -103,7 +107,15 @@ export function LabelPicker({ open, onOpenChange, issue, batch }: LabelPickerPro
       description="Search and toggle labels"
       className="flex max-h-[calc(100dvh-2rem)] flex-col [&_[data-slot=command]]:min-h-0"
     >
-      <CommandInput placeholder="Search labels..." className="min-w-0 pr-10" />
+      <div className="border-b px-4 py-3 pr-10">
+        <p className="text-sm font-medium">Labels</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">Toggle labels on this issue.</p>
+      </div>
+      <CommandInput
+        placeholder="Search labels..."
+        aria-label="Search labels"
+        className="min-w-0 pr-10"
+      />
       {/* Outside CommandEmpty: that element only renders when the list is empty,
           and the merged issue labels keep it non-empty even when the read
           failed. The notice has to show beside them rather than instead. */}

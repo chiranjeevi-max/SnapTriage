@@ -119,7 +119,9 @@ export function formatKey(shortcut: Shortcut): string {
   const key = getShortcutKey(shortcut);
   if (key === "Enter") return "↵";
   if (key === "Escape") return "Esc";
-  if (shortcut.shift && key === shortcut.key) return key;
+  if (shortcut.shift && key === shortcut.key) {
+    return key === "?" ? "?" : `Shift+${key.toUpperCase()}`;
+  }
   return key.toUpperCase();
 }
 

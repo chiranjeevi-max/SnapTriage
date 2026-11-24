@@ -9,7 +9,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { Inbox, FolderGit2, Settings, Keyboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Wordmark } from "@/components/brand";
@@ -18,17 +17,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeyboardStore } from "@/features/keyboard";
-import { devRepos, readDataMode } from "@/features/dev-tools/data-mode";
+import { useConnectedRepos } from "@/features/repos/use-connected-repos";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
-
-/** Shape of a connected repo record returned by the repos API. */
-interface ConnectedRepo {
-  id: string;
-  provider: string;
-  fullName: string;
-  permission: string;
-}
 
 /** Sidebar navigation links. */
 const navItems = [
@@ -45,16 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const toggleOverlay = useKeyboardStore((s) => s.toggleOverlay);
 
-  const { data: repos = [] } = useQuery<ConnectedRepo[]>({
-    queryKey: ["connected-repos"],
-    queryFn: async () => {
-      // The dev-only data toggle swaps the real repos for the worst case.
-      const fixture = await devRepos(readDataMode());
-      if (fixture) return fixture;
-      return fetch("/api/repos").then((res) => (res.ok ? res.json() : []));
-    },
-    staleTime: 60_000,
-  });
+  const { data: repos = [] } = useConnectedRepos();
 
   return (
     <div className="app-shell">
@@ -105,7 +87,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <GitLabIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   )}
                   <span
-                    className="min-w-0 break-all font-mono leading-relaxed"
+                    className="min-w-0 truncate font-mono leading-relaxed"
                     title={repo.fullName}
                   >
                     {repo.fullName}
