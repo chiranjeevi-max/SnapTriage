@@ -334,12 +334,12 @@
   .app-shell a[data-slot="button"],
   .app-nav-link,
   .app-sidebar-footer a,
-  [data-slot="dialog-content"] button,
+  [data-slot="dialog-content"] button:not([role="switch"]),
   [data-slot="dialog-content"] input,
   [data-slot="dialog-content"] select,
   [data-slot="dialog-content"] textarea,
   [data-slot="dialog-content"] a[data-slot="button"],
-  [data-slot="alert-dialog-content"] button,
+  [data-slot="alert-dialog-content"] button:not([role="switch"]),
   [data-slot="alert-dialog-content"] input,
   [data-slot="alert-dialog-content"] select,
   [data-slot="alert-dialog-content"] textarea,
@@ -349,8 +349,8 @@
     min-height: 44px;
   }
   .app-shell button:not([role="switch"]),
-  [data-slot="dialog-content"] button,
-  [data-slot="alert-dialog-content"] button {
+  [data-slot="dialog-content"] button:not([role="switch"]),
+  [data-slot="alert-dialog-content"] button:not([role="switch"]) {
     min-width: 44px;
   }
   .issue-row input[type="checkbox"] {

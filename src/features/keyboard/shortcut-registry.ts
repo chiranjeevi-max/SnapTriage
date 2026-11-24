@@ -31,9 +31,14 @@ function parseOverrides(raw: string | null): Record<string, string> {
   if (!raw) return EMPTY_OVERRIDES;
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, string>)
-      : EMPTY_OVERRIDES;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return EMPTY_OVERRIDES;
+    }
+    const overrides: Record<string, string> = {};
+    for (const [id, key] of Object.entries(parsed)) {
+      if (typeof key === "string" && key.length > 0) overrides[id] = key;
+    }
+    return overrides;
   } catch {
     return EMPTY_OVERRIDES;
   }
@@ -45,11 +50,17 @@ function parseOverrides(raw: string | null): Record<string, string> {
  * `useSyncExternalStore` needs a cached snapshot; this returns the same object
  * until the raw value changes. On the server it returns the empty map, so the
  * first client render matches the server markup and the real overrides arrive
- * after hydration.
+ * after hydration. Storage can be blocked by the browser; that is treated as
+ * no overrides, matching the pre-store read.
  */
 export function getShortcutOverridesSnapshot(): Record<string, string> {
   if (typeof window === "undefined") return EMPTY_OVERRIDES;
-  const raw = window.localStorage.getItem(OVERRIDE_STORAGE_KEY);
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(OVERRIDE_STORAGE_KEY);
+  } catch {
+    return EMPTY_OVERRIDES;
+  }
   if (overrideDirty || raw !== overrideRaw) {
     overrideRaw = raw;
     overrideSnapshot = parseOverrides(raw);
@@ -63,10 +74,24 @@ export function getServerShortcutOverridesSnapshot(): Record<string, string> {
   return EMPTY_OVERRIDES;
 }
 
-/** Subscribes to same-tab override changes. */
+function handleStorageChange(event: StorageEvent): void {
+  if (event.key === OVERRIDE_STORAGE_KEY || event.key === null) {
+    notifyShortcutOverridesChanged();
+  }
+}
+
+/** Subscribes to same-tab and cross-tab override changes. */
 export function subscribeToShortcutOverrides(listener: () => void): () => void {
   overrideListeners.add(listener);
-  return () => overrideListeners.delete(listener);
+  if (typeof window !== "undefined" && overrideListeners.size === 1) {
+    window.addEventListener("storage", handleStorageChange);
+  }
+  return () => {
+    overrideListeners.delete(listener);
+    if (typeof window !== "undefined" && overrideListeners.size === 0) {
+      window.removeEventListener("storage", handleStorageChange);
+    }
+  };
 }
 
 function notifyShortcutOverridesChanged(): void {
@@ -88,14 +113,22 @@ export function getShortcutKey(shortcut: Shortcut): string {
 export function setShortcutOverride(id: string, key: string): void {
   if (typeof window === "undefined") return;
   const overrides = { ...readOverrides(), [id]: key };
-  window.localStorage.setItem(OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+  try {
+    window.localStorage.setItem(OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+  } catch {
+    return;
+  }
   notifyShortcutOverridesChanged();
 }
 
 /** Removes all user keyboard shortcut overrides. */
 export function resetShortcutOverrides(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(OVERRIDE_STORAGE_KEY);
+  try {
+    window.localStorage.removeItem(OVERRIDE_STORAGE_KEY);
+  } catch {
+    return;
+  }
   notifyShortcutOverridesChanged();
 }
 

@@ -118,61 +118,76 @@ export function RepoManager() {
               className="items-start border-y py-8 text-left"
             />
           ) : (
-            <div className="divide-y border-y">
-              {connected.map((repo) => (
+            <div className="space-y-3">
+              {connectedError && (
                 <div
-                  key={repo.id}
-                  className="flex flex-col items-start justify-between gap-3 py-4 sm:flex-row"
+                  role="status"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-muted-foreground"
                 >
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <ProviderIcon provider={repo.provider} />
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="break-words font-mono text-sm font-medium [overflow-wrap:anywhere]"
-                        title={repo.fullName}
-                      >
-                        {repo.fullName}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                        <PermissionBadge permission={repo.permission} />
-                        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <RefreshCw className="h-3 w-3" />
-                          Auto-sync {repo.syncEnabled ? "on" : "off"}
-                        </span>
+                  <span>
+                    Could not refresh the repository list. Showing the last known repositories.
+                  </span>
+                  <Button size="sm" variant="outline" onClick={() => void refetchConnected()}>
+                    Try again
+                  </Button>
+                </div>
+              )}
+              <div className="divide-y border-y">
+                {connected.map((repo) => (
+                  <div
+                    key={repo.id}
+                    className="flex flex-col items-start justify-between gap-3 py-4 sm:flex-row"
+                  >
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <ProviderIcon provider={repo.provider} />
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="break-words font-mono text-sm font-medium [overflow-wrap:anywhere]"
+                          title={repo.fullName}
+                        >
+                          {repo.fullName}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                          <PermissionBadge permission={repo.permission} />
+                          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <RefreshCw className="h-3 w-3" />
+                            Auto-sync {repo.syncEnabled ? "on" : "off"}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Disconnect ${repo.fullName}`}
+                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive active:bg-muted"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle className="pr-6 [overflow-wrap:anywhere]">
+                            Disconnect {repo.fullName}?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This removes the cached issues and triage state for this repository. You
+                            can reconnect it later, but the triage data is gone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDisconnect(repo.id)}>
+                            Disconnect
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Disconnect ${repo.fullName}`}
-                        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive active:bg-muted"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="pr-6 [overflow-wrap:anywhere]">
-                          Disconnect {repo.fullName}?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This removes the cached issues and triage state for this repository. You
-                          can reconnect it later, but the triage data is gone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDisconnect(repo.id)}>
-                          Disconnect
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </div>

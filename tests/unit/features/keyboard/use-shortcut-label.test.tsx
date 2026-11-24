@@ -6,15 +6,25 @@
 /* @vitest-environment jsdom */
 import { act, renderHook } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useShortcutLabel } from "@/features/keyboard/use-shortcut-label";
 import { ShortcutKbd } from "@/features/keyboard/components/shortcut-kbd";
-import { resetShortcutOverrides, setShortcutOverride } from "@/features/keyboard/shortcut-registry";
+import {
+  matchShortcut,
+  resetShortcutOverrides,
+  setShortcutOverride,
+} from "@/features/keyboard/shortcut-registry";
+
+const OVERRIDE_KEY = "snaptriage:shortcut-overrides";
 
 describe("useShortcutLabel", () => {
   beforeEach(() => {
     resetShortcutOverrides();
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders the registry key and follows an override", () => {
@@ -47,5 +57,40 @@ describe("useShortcutLabel", () => {
 
     expect(html).toContain(">D<");
     expect(html).not.toContain(">Q<");
+  });
+
+  it("ignores a persisted override that is not a non-empty string", () => {
+    window.localStorage.setItem(OVERRIDE_KEY, JSON.stringify({ dismiss: 42, undo: null }));
+
+    const { result } = renderHook(() => useShortcutLabel("dismiss"));
+
+    expect(result.current).toBe("D");
+  });
+
+  it("falls back to the defaults when storage is blocked", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+
+    const { result } = renderHook(() => useShortcutLabel("dismiss"));
+    expect(result.current).toBe("D");
+    expect(matchShortcut(new KeyboardEvent("keydown", { key: "d" }))?.id).toBe("dismiss");
+  });
+
+  it("follows a change or clear made by another tab", () => {
+    const { result } = renderHook(() => useShortcutLabel("dismiss"));
+    expect(result.current).toBe("D");
+
+    act(() => {
+      window.localStorage.setItem(OVERRIDE_KEY, JSON.stringify({ dismiss: "q" }));
+      window.dispatchEvent(new StorageEvent("storage", { key: OVERRIDE_KEY }));
+    });
+    expect(result.current).toBe("Q");
+
+    act(() => {
+      window.localStorage.removeItem(OVERRIDE_KEY);
+      window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    });
+    expect(result.current).toBe("D");
   });
 });

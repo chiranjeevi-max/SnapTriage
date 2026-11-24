@@ -28,5 +28,9 @@ export function useShortcutLabel(id: string): string {
   );
   const shortcut = shortcuts.find((item) => item.id === id);
   if (!shortcut) return "";
-  return formatKeyValue(shortcut, overrides[shortcut.id] ?? shortcut.key);
+  const override = overrides[shortcut.id];
+  return formatKeyValue(
+    shortcut,
+    typeof override === "string" && override.length > 0 ? override : shortcut.key
+  );
 }
