@@ -44,7 +44,7 @@ import { useTriageMutation } from "@/features/triage/use-triage-mutation";
 import { priorityOptions } from "@/features/triage/priority";
 import { shortenRepoName } from "@/features/repos/repo-label";
 import { toggleIssueState } from "@/features/triage/triage-actions";
-import { useKeyboardStore, Kbd, formatShortcutById } from "@/features/keyboard";
+import { useKeyboardStore, ShortcutKbd, useShortcutLabel } from "@/features/keyboard";
 import { Discussion, Composer } from "@/features/replies";
 import { FollowUpControl } from "@/features/follow-up";
 
@@ -124,6 +124,14 @@ export function IssueDetail({
   // or every later shortcut would stay muted for the session.
   useEffect(() => () => setTriageMenuOpen(false), [setTriageMenuOpen]);
 
+  // Four fixed hook calls, one per priority key. The select renders these in its
+  // options, and a loop would break the rules of hooks.
+  const priorityKey0 = useShortcutLabel("priority-0");
+  const priorityKey1 = useShortcutLabel("priority-1");
+  const priorityKey2 = useShortcutLabel("priority-2");
+  const priorityKey3 = useShortcutLabel("priority-3");
+  const priorityKeys = [priorityKey0, priorityKey1, priorityKey2, priorityKey3];
+
   if (!issue) {
     return (
       <EmptyState
@@ -139,6 +147,12 @@ export function IssueDetail({
   const repoName = repoNames?.get(currentIssue.repoId) ?? null;
   const currentPriority = currentIssue.triage?.priority;
   const isSnoozed = !!currentIssue.triage?.snoozedUntil;
+  /**
+   * Follow-ups pauses the queue and replaces the triage block, so the pickers
+   * below have no way to open. Show the values read-only and in full there. A
+   * pinned follow-up is not paused: its More menu still opens the pickers.
+   */
+  const labelsReadOnly = triagePaused;
 
   function handlePriority(priority: number | null) {
     triage.mutate({
@@ -274,7 +288,8 @@ export function IssueDetail({
               <option value="">No priority</option>
               {priorityOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
-                  {opt.name} ({formatShortcutById(`priority-${opt.value}`)})
+                  {opt.name}
+                  {shortcutTarget ? ` (${priorityKeys[opt.value]})` : ""}
                 </option>
               ))}
             </SelectField>
@@ -297,7 +312,7 @@ export function IssueDetail({
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="flex items-center gap-1.5">
                   <span>Toggle dismiss</span>
-                  <Kbd>{formatShortcutById("dismiss")}</Kbd>
+                  {shortcutTarget && <ShortcutKbd id="dismiss" />}
                 </TooltipContent>
               </Tooltip>
 
@@ -317,19 +332,21 @@ export function IssueDetail({
                   {/* A pinned follow-up has no queue row, so the keyboard dispatcher
                   has no current issue and `c` does nothing there. Showing the
                   hint would promise a shortcut that cannot fire. */}
-                  {shortcutTarget && <Kbd>{formatShortcutById("toggle-state")}</Kbd>}
+                  {shortcutTarget && <ShortcutKbd id="toggle-state" />}
                 </TooltipContent>
               </Tooltip>
 
               {/* Deliberately not a snooze variant: waiting for a reply is an
               explicit state that survives a snooze expiring, and it is what the
               follow-up queue lists. */}
-              <FollowUpControl issueId={issue.id} />
+              <FollowUpControl issueId={issue.id} showShortcut={shortcutTarget} />
 
               {/* The four remaining triage actions share one entry point. Seven
               equal-weight buttons made the pane look like a toolbar and pushed
               the description out of the viewport; the menu keeps every action
-              and its shortcut one click away. */}
+              and its shortcut one click away. A pinned follow-up keeps the
+              actions but hides the hints, since `l`, `a`, `s` and `p` need a
+              visible queue row. */}
               <DropdownMenu onOpenChange={setTriageMenuOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2 text-xs">
@@ -341,22 +358,22 @@ export function IssueDetail({
                   <DropdownMenuItem onSelect={() => setLabelPickerOpen(true)}>
                     <Tag className="h-3.5 w-3.5" />
                     Edit labels
-                    <Kbd className="ml-auto">{formatShortcutById("labels")}</Kbd>
+                    {shortcutTarget && <ShortcutKbd id="labels" className="ml-auto" />}
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setAssigneePickerOpen(true)}>
                     <UserPlus className="h-3.5 w-3.5" />
                     Edit assignees
-                    <Kbd className="ml-auto">{formatShortcutById("assignees")}</Kbd>
+                    {shortcutTarget && <ShortcutKbd id="assignees" className="ml-auto" />}
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setSnoozePickerOpen(true)}>
                     <Clock className="h-3.5 w-3.5" />
                     Snooze for later
-                    <Kbd className="ml-auto">{formatShortcutById("snooze")}</Kbd>
+                    {shortcutTarget && <ShortcutKbd id="snooze" className="ml-auto" />}
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setPresetPickerOpen(true)}>
                     <Layers className="h-3.5 w-3.5" />
                     Apply a preset
-                    <Kbd className="ml-auto">{formatShortcutById("presets")}</Kbd>
+                    {shortcutTarget && <ShortcutKbd id="presets" className="ml-auto" />}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -365,62 +382,96 @@ export function IssueDetail({
         </div>
       )}
 
-      {/* Labels & Assignees, one line each. A hundred labels are real data, but
-          they cannot be allowed to push the description out of the pane; the
-          overflow opens the picker that lists them all. */}
+      {/* Labels & Assignees. Editable, each is one line with the remainder
+          behind the picker. Read-only (Follow-ups or a pinned follow-up), the
+          full values wrap in a bounded scroller: the pickers are unreachable,
+          so hiding the rest would leave no way to inspect them. */}
       {(resolvedIssue.labels.length > 0 || resolvedIssue.assignees.length > 0) && (
         <div className="flex shrink-0 flex-col gap-1.5 border-b px-5 py-2">
-          {resolvedIssue.labels.length > 0 && (
-            <div className="flex min-w-0 items-center gap-2">
-              <h3 className="shrink-0 text-xs font-medium text-muted-foreground">Labels</h3>
-              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                {resolvedIssue.labels.slice(0, 4).map((label) => (
-                  <span
-                    key={label}
-                    className="max-w-[12rem] shrink truncate rounded bg-muted px-2 py-0.5 text-xs leading-4 text-muted-foreground"
-                    title={label}
-                  >
-                    {label}
-                  </span>
-                ))}
-                {!triagePaused && resolvedIssue.labels.length > 4 && (
-                  <button
-                    type="button"
-                    onClick={() => setLabelPickerOpen(true)}
-                    className="shrink-0 rounded px-1.5 py-0.5 text-xs leading-4 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
-                  >
-                    +{resolvedIssue.labels.length - 4} more
-                  </button>
-                )}
+          {resolvedIssue.labels.length > 0 &&
+            (labelsReadOnly ? (
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xs font-medium text-muted-foreground">Labels</h3>
+                <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+                  {resolvedIssue.labels.map((label) => (
+                    <span
+                      key={label}
+                      className="max-w-[12rem] truncate rounded bg-muted px-2 py-0.5 text-xs leading-4 text-muted-foreground"
+                      title={label}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-          {resolvedIssue.assignees.length > 0 && (
-            <div className="flex min-w-0 items-center gap-2">
-              <h3 className="shrink-0 text-xs font-medium text-muted-foreground">Assignees</h3>
-              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                {resolvedIssue.assignees.slice(0, 4).map((assignee) => (
-                  <Badge
-                    key={assignee}
-                    variant="outline"
-                    className="max-w-[10rem] shrink justify-start truncate text-xs leading-4"
-                    title={assignee}
-                  >
-                    {assignee}
-                  </Badge>
-                ))}
-                {!triagePaused && resolvedIssue.assignees.length > 4 && (
-                  <button
-                    type="button"
-                    onClick={() => setAssigneePickerOpen(true)}
-                    className="shrink-0 rounded px-1.5 py-0.5 text-xs leading-4 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
-                  >
-                    +{resolvedIssue.assignees.length - 4} more
-                  </button>
-                )}
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="shrink-0 text-xs font-medium text-muted-foreground">Labels</h3>
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                  {resolvedIssue.labels.slice(0, 4).map((label) => (
+                    <span
+                      key={label}
+                      className="max-w-[12rem] shrink truncate rounded bg-muted px-2 py-0.5 text-xs leading-4 text-muted-foreground"
+                      title={label}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                  {resolvedIssue.labels.length > 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setLabelPickerOpen(true)}
+                      className="shrink-0 rounded px-1.5 py-0.5 text-xs leading-4 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
+                    >
+                      +{resolvedIssue.labels.length - 4} more
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            ))}
+          {resolvedIssue.assignees.length > 0 &&
+            (labelsReadOnly ? (
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xs font-medium text-muted-foreground">Assignees</h3>
+                <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+                  {resolvedIssue.assignees.map((assignee) => (
+                    <Badge
+                      key={assignee}
+                      variant="outline"
+                      className="max-w-[10rem] justify-start truncate text-xs leading-4"
+                      title={assignee}
+                    >
+                      {assignee}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="shrink-0 text-xs font-medium text-muted-foreground">Assignees</h3>
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                  {resolvedIssue.assignees.slice(0, 4).map((assignee) => (
+                    <Badge
+                      key={assignee}
+                      variant="outline"
+                      className="max-w-[10rem] shrink justify-start truncate text-xs leading-4"
+                      title={assignee}
+                    >
+                      {assignee}
+                    </Badge>
+                  ))}
+                  {resolvedIssue.assignees.length > 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setAssigneePickerOpen(true)}
+                      className="shrink-0 rounded px-1.5 py-0.5 text-xs leading-4 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
+                    >
+                      +{resolvedIssue.assignees.length - 4} more
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
         </div>
       )}
 

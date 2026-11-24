@@ -285,12 +285,12 @@ export function InboxView() {
         setDetailOpen(false);
         setMobileDetailOpen(false);
       },
-      // The queue is the only surface where the cursor names a visible row, so
-      // it is also the only one where an undo may act with no current row (the
-      // last row may have just left).
-      undoAllowed: surface === "queue",
+      // The queue is the only surface where the cursor names a visible row, and
+      // a pinned follow-up has no visible row at all: it may share the queue
+      // surface, but `z` there would reverse an unrelated action.
+      undoAllowed: surface === "queue" && pinnedIssue === null,
     }),
-    [toggleSelected, selectAllVisible, setDetailOpen, surface]
+    [toggleSelected, selectAllVisible, setDetailOpen, surface, pinnedIssue]
   );
 
   const visibleSelectedIds = useMemo(

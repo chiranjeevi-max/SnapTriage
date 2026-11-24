@@ -24,7 +24,7 @@ const formatSyncTime = (isoStr: string | null) =>
  * @returns The sync status button wrapped in a tooltip.
  */
 export function SyncStatus() {
-  const { data: statuses } = useSyncStatus();
+  const { data: statuses, isError } = useSyncStatus();
   const sync = useSync();
 
   // "Never" reads as a refusal or a filter, not a status. The button's job is
@@ -36,10 +36,16 @@ export function SyncStatus() {
   }, null);
 
   // While the status query is still loading, `lastSynced` is null for lack of
-  // data rather than because nothing has synced. Say "Sync" until the answer
-  // lands instead of claiming the queue has never synced.
+  // data rather than because nothing has synced. A failed query also leaves it
+  // undefined, so the error gets its own label instead of reading as loading.
   const label =
-    statuses === undefined ? "Sync" : lastSynced ? formatSyncTime(lastSynced) : "Sync now";
+    statuses === undefined
+      ? isError
+        ? "Sync failed"
+        : "Sync"
+      : lastSynced
+        ? formatSyncTime(lastSynced)
+        : "Sync now";
 
   return (
     <Tooltip>

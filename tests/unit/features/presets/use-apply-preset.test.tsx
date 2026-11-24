@@ -17,13 +17,16 @@ import { resolvePreset } from "@/features/presets/types";
 import type { ApplyPresetInput } from "@/features/presets/use-apply-preset";
 import type { IssueWithTriage } from "@/features/inbox/use-issues";
 
-const { toastMock, toastError, toastSuccess, showUndoToast, pushUndo } = vi.hoisted(() => ({
-  toastMock: vi.fn(),
-  toastError: vi.fn(),
-  toastSuccess: vi.fn(),
-  showUndoToast: vi.fn(),
-  pushUndo: vi.fn(),
-}));
+const { toastMock, toastError, toastSuccess, showUndoToast, pushUndo, pushLive, removeLive } =
+  vi.hoisted(() => ({
+    toastMock: vi.fn(),
+    toastError: vi.fn(),
+    toastSuccess: vi.fn(),
+    showUndoToast: vi.fn(),
+    pushUndo: vi.fn(),
+    pushLive: vi.fn(),
+    removeLive: vi.fn(),
+  }));
 
 vi.mock("sonner", () => ({
   toast: Object.assign(toastMock, { error: toastError, success: toastSuccess }),
@@ -31,8 +34,13 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/features/triage/use-undo", () => ({
   showUndoToast,
-  useUndoStore: (selector: (state: { push: typeof pushUndo }) => unknown) =>
-    selector({ push: pushUndo }),
+  useUndoStore: (
+    selector: (state: {
+      push: typeof pushUndo;
+      pushLive: typeof pushLive;
+      removeLive: typeof removeLive;
+    }) => unknown
+  ) => selector({ push: pushUndo, pushLive, removeLive }),
 }));
 
 /** The issue the preset is applied to: it already has `bug` and P2. */
@@ -69,6 +77,7 @@ describe("useApplyPreset", () => {
     queryClient.setQueryData(["issue", "issue-1"], ISSUE);
     global.fetch = vi.fn();
     vi.clearAllMocks();
+    pushLive.mockReturnValue("live-1");
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -126,6 +135,7 @@ describe("useApplyPreset", () => {
     });
     expect(showUndoToast).not.toHaveBeenCalled();
     expect(pushUndo).not.toHaveBeenCalled();
+    expect(pushLive).not.toHaveBeenCalled();
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 
@@ -151,9 +161,16 @@ describe("useApplyPreset", () => {
     const [description, onUndo] = showUndoToast.mock.calls[0] as [string, () => void];
     expect(description).toBe('Applied "Confirmed bug"');
     expect(pushUndo).not.toHaveBeenCalled();
+    expect(pushLive).toHaveBeenCalledWith({
+      issueId: "issue-1",
+      payload: PREVIEW.payload,
+      previousPayload: expect.objectContaining({ priority: 2 }),
+      description,
+    });
 
     // Firing the undo re-PATCHes the inverse: priority back to P2, `confirmed`
     // removed, and `bug` — which the issue already had — left alone.
+    removeLive.mockReturnValue({ issueId: "issue-1" });
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ ok: true }),

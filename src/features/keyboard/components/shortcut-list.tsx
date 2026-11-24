@@ -6,11 +6,10 @@
  * The app and the landing page show the same bindings, so both read them from
  * {@link shortcuts} instead of keeping their own list.
  */
-import { Kbd } from "@/features/keyboard/components/kbd";
+import { ShortcutKbd } from "@/features/keyboard/components/shortcut-kbd";
 import {
   categoryLabels,
   categoryOrder,
-  formatKey,
   shortcuts,
   type Shortcut,
 } from "@/features/keyboard/shortcut-registry";
@@ -73,7 +72,7 @@ export function ShortcutList({ categories, className }: ShortcutListProps) {
             {shortcut.description}
           </dt>
           <dd className="shrink-0 pt-0.5">
-            <Kbd>{formatKey(shortcut)}</Kbd>
+            <ShortcutKbd id={shortcut.id} />
           </dd>
         </div>
       ))}
@@ -86,7 +85,7 @@ function ShortcutRow({ shortcut }: { shortcut: Shortcut }) {
   return (
     <li className="flex items-center justify-between gap-4">
       <span className="text-sm text-muted-foreground">{shortcut.description}</span>
-      <Kbd>{formatKey(shortcut)}</Kbd>
+      <ShortcutKbd id={shortcut.id} />
     </li>
   );
 }

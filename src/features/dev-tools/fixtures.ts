@@ -154,16 +154,20 @@ const MAX_LABELS_LIST = Array.from({ length: MAX_LABELS }, (_, index) =>
 function issue(
   overrides: Partial<FixtureIssue> & { id: string; number: number; title: string; repo: string }
 ): FixtureIssue {
+  const provider = overrides.provider ?? "github";
   return {
     repoId: "r1",
-    provider: "github",
+    provider,
     body: null,
     author: "chiranjeevi",
     authorAvatar: null,
     state: "open",
     labels: [],
     assignees: [],
-    url: "https://github.com/example/example/issues/1",
+    url:
+      provider === "gitlab"
+        ? `https://gitlab.com/${overrides.repo}/-/issues/${overrides.number}`
+        : `https://github.com/${overrides.repo}/issues/${overrides.number}`,
     providerIssueId: "1",
     createdAt: hoursAgo(48),
     updatedAt: hoursAgo(2),

@@ -515,8 +515,9 @@ export function Composer({ issue, className }: ComposerProps) {
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     // An IME uses Enter to confirm composition. Sending there would publish a
-    // half-finished sentence.
-    if (event.nativeEvent.isComposing) return;
+    // half-finished sentence. Safari reports the committing Enter with
+    // `isComposing` false and `keyCode` 229, so both signals have to hold.
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       handleSend();

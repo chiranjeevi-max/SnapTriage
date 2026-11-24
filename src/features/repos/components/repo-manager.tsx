@@ -98,7 +98,7 @@ export function RepoManager() {
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
-          ) : connectedError ? (
+          ) : connectedError && connected.length === 0 ? (
             <EmptyState
               icon={<Plug className="h-5 w-5" />}
               title="Could not load repositories"

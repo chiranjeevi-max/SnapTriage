@@ -21,8 +21,9 @@ interface KeyboardState {
    * Whether the reading pane shows its issue.
    *
    * Separate from the selection so closing the pane keeps the queue cursor.
-   * Moving the cursor, selecting a row, or pressing Enter reopens it; closing
-   * only changes this flag.
+   * `j`/`k`, selecting a row, or pressing Enter reopens it; repositioning after
+   * a filter or sort, and the advance after triage, move the cursor without
+   * reopening. Closing only changes this flag.
    */
   detailOpen: boolean;
   overlayOpen: boolean;

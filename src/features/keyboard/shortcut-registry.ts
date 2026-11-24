@@ -20,17 +20,62 @@ export interface Shortcut {
 }
 
 const OVERRIDE_STORAGE_KEY = "snaptriage:shortcut-overrides";
+const EMPTY_OVERRIDES: Record<string, string> = {};
+
+let overrideRaw: string | null = null;
+let overrideSnapshot: Record<string, string> = EMPTY_OVERRIDES;
+let overrideDirty = true;
+const overrideListeners = new Set<() => void>();
+
+function parseOverrides(raw: string | null): Record<string, string> {
+  if (!raw) return EMPTY_OVERRIDES;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, string>)
+      : EMPTY_OVERRIDES;
+  } catch {
+    return EMPTY_OVERRIDES;
+  }
+}
+
+/**
+ * The current override map, stable between localStorage changes.
+ *
+ * `useSyncExternalStore` needs a cached snapshot; this returns the same object
+ * until the raw value changes. On the server it returns the empty map, so the
+ * first client render matches the server markup and the real overrides arrive
+ * after hydration.
+ */
+export function getShortcutOverridesSnapshot(): Record<string, string> {
+  if (typeof window === "undefined") return EMPTY_OVERRIDES;
+  const raw = window.localStorage.getItem(OVERRIDE_STORAGE_KEY);
+  if (overrideDirty || raw !== overrideRaw) {
+    overrideRaw = raw;
+    overrideSnapshot = parseOverrides(raw);
+    overrideDirty = false;
+  }
+  return overrideSnapshot;
+}
+
+/** The server snapshot: no storage exists, so no overrides. */
+export function getServerShortcutOverridesSnapshot(): Record<string, string> {
+  return EMPTY_OVERRIDES;
+}
+
+/** Subscribes to same-tab override changes. */
+export function subscribeToShortcutOverrides(listener: () => void): () => void {
+  overrideListeners.add(listener);
+  return () => overrideListeners.delete(listener);
+}
+
+function notifyShortcutOverridesChanged(): void {
+  overrideDirty = true;
+  for (const listener of overrideListeners) listener();
+}
 
 function readOverrides(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(OVERRIDE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
+  return getShortcutOverridesSnapshot();
 }
 
 /** Returns the effective key for a shortcut, including any user override. */
@@ -42,15 +87,16 @@ export function getShortcutKey(shortcut: Shortcut): string {
 /** Persists an override for a shortcut key. */
 export function setShortcutOverride(id: string, key: string): void {
   if (typeof window === "undefined") return;
-  const overrides = readOverrides();
-  overrides[id] = key;
+  const overrides = { ...readOverrides(), [id]: key };
   window.localStorage.setItem(OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+  notifyShortcutOverridesChanged();
 }
 
 /** Removes all user keyboard shortcut overrides. */
 export function resetShortcutOverrides(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(OVERRIDE_STORAGE_KEY);
+  notifyShortcutOverridesChanged();
 }
 
 /** Complete list of registered shortcuts, ordered by category then key. */
@@ -112,11 +158,12 @@ export const categoryLabels: Record<Shortcut["category"], string> = {
 export const categoryOrder: Shortcut["category"][] = ["navigation", "triage", "utility"];
 
 /**
- * Formats a shortcut key for display (e.g., Enter → "↵", Escape → "Esc").
+ * Formats a shortcut's effective key for display.
+ *
  * @param shortcut - The shortcut definition.
+ * @param key - The effective key, after any override.
  */
-export function formatKey(shortcut: Shortcut): string {
-  const key = getShortcutKey(shortcut);
+export function formatKeyValue(shortcut: Shortcut, key: string): string {
   if (key === "Enter") return "↵";
   if (key === "Escape") return "Esc";
   if (shortcut.shift) {
@@ -126,14 +173,11 @@ export function formatKey(shortcut: Shortcut): string {
 }
 
 /**
- * Formats one registry entry by id, including any user override.
- *
- * @param id - The shortcut id.
- * @returns The formatted key, or an empty string when the id is unknown.
+ * Formats a shortcut key for display (e.g., Enter → "↵", Escape → "Esc").
+ * @param shortcut - The shortcut definition.
  */
-export function formatShortcutById(id: string): string {
-  const shortcut = shortcuts.find((item) => item.id === id);
-  return shortcut ? formatKey(shortcut) : "";
+export function formatKey(shortcut: Shortcut): string {
+  return formatKeyValue(shortcut, getShortcutKey(shortcut));
 }
 
 /**

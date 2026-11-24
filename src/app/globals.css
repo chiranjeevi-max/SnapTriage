@@ -325,7 +325,9 @@
 /* Touch raises the controls to the 44px floor. Screen size is not the signal:
    a touchscreen laptop has a coarse pointer at desktop width. */
 @media (pointer: coarse) {
-  .app-shell button,
+  /* A switch's track is sized by its own geometry; the 44px floor stretches
+     the track and pushes the checked thumb past its edge. */
+  .app-shell button:not([role="switch"]),
   .app-shell input,
   .app-shell select,
   .app-shell textarea,
@@ -333,13 +335,20 @@
   .app-nav-link,
   .app-sidebar-footer a,
   [data-slot="dialog-content"] button,
+  [data-slot="dialog-content"] input,
+  [data-slot="dialog-content"] select,
+  [data-slot="dialog-content"] textarea,
   [data-slot="dialog-content"] a[data-slot="button"],
   [data-slot="alert-dialog-content"] button,
+  [data-slot="alert-dialog-content"] input,
+  [data-slot="alert-dialog-content"] select,
+  [data-slot="alert-dialog-content"] textarea,
   [data-slot="alert-dialog-content"] a[data-slot="button"],
+  [data-slot="command-input"],
   [data-slot="dropdown-menu-item"] {
     min-height: 44px;
   }
-  .app-shell button,
+  .app-shell button:not([role="switch"]),
   [data-slot="dialog-content"] button,
   [data-slot="alert-dialog-content"] button {
     min-width: 44px;
@@ -363,8 +372,14 @@
 .app-shell textarea:focus-visible,
 [data-slot="command-input"]:focus-visible,
 [data-slot="dialog-content"] button:focus-visible,
+[data-slot="dialog-content"] input:focus-visible,
+[data-slot="dialog-content"] select:focus-visible,
+[data-slot="dialog-content"] textarea:focus-visible,
 [data-slot="dialog-content"] a[data-slot="button"]:focus-visible,
 [data-slot="alert-dialog-content"] button:focus-visible,
+[data-slot="alert-dialog-content"] input:focus-visible,
+[data-slot="alert-dialog-content"] select:focus-visible,
+[data-slot="alert-dialog-content"] textarea:focus-visible,
 [data-slot="alert-dialog-content"] a[data-slot="button"]:focus-visible,
 [data-slot="dropdown-menu-item"]:focus-visible,
 [role="menuitem"]:focus-visible {

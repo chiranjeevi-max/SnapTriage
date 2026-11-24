@@ -396,12 +396,46 @@ describe("Composer", () => {
     renderComposer();
     await waitFor(() => expect(textarea()).toBeDefined());
     fireEvent.change(textarea(), { target: { value: TYPED } });
+    // Make sure the guard, not a still-loading draft, is what withholds the send.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false)
+    );
 
     fireEvent.keyDown(textarea(), { key: "Enter", ctrlKey: true, isComposing: true });
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(sends).toBe(0);
 
     fireEvent.keyDown(textarea(), { key: "Enter", ctrlKey: true, isComposing: false });
+    await waitFor(() => expect(sends).toBe(1));
+  });
+
+  it("treats keyCode 229 as composition, as Safari reports the committing Enter", async () => {
+    const base = global.fetch;
+    let sends = 0;
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/replies") && init?.method === "POST") sends += 1;
+      return base(input, init);
+    }) as unknown as typeof fetch;
+
+    renderComposer();
+    await waitFor(() => expect(textarea()).toBeDefined());
+    fireEvent.change(textarea(), { target: { value: TYPED } });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false)
+    );
+
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, "keyCode", { get: () => 229 });
+    fireEvent(textarea(), event);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(sends).toBe(0);
+
+    fireEvent.keyDown(textarea(), { key: "Enter", ctrlKey: true });
     await waitFor(() => expect(sends).toBe(1));
   });
 

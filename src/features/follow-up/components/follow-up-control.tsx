@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatRelativeTime } from "@/lib/utils";
-import { Kbd, useKeyboardStore, formatShortcutById } from "@/features/keyboard";
+import { ShortcutKbd, useKeyboardStore } from "@/features/keyboard";
 import { describeFollowUpReason } from "@/features/follow-up/detection";
 import { useFollowUpAction, useFollowUps } from "@/features/follow-up/use-follow-ups";
 
@@ -41,9 +41,16 @@ const STATE_LABEL: Record<"waiting" | "reviewed" | "stopped", string> = {
 /**
  * Arms a follow-up for the selected issue, or shows the one already there.
  *
- * @param props - `issueId` of the issue in the detail pane.
+ * @param props - `issueId` of the issue in the detail pane, and whether the
+ *                `w` hint applies (a pinned follow-up has no queue row).
  */
-export function FollowUpControl({ issueId }: { issueId: string }) {
+export function FollowUpControl({
+  issueId,
+  showShortcut = true,
+}: {
+  issueId: string;
+  showShortcut?: boolean;
+}) {
   const { data, isPending, isError } = useFollowUps();
   const action = useFollowUpAction(issueId);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -143,7 +150,7 @@ export function FollowUpControl({ issueId }: { issueId: string }) {
         </TooltipTrigger>
         <TooltipContent side="bottom" className="flex items-center gap-1.5">
           <span>{state ? "Follow-up details" : "Wait for a reply"}</span>
-          <Kbd>{formatShortcutById("follow-up")}</Kbd>
+          {showShortcut && <ShortcutKbd id="follow-up" />}
         </TooltipContent>
       </Tooltip>
 

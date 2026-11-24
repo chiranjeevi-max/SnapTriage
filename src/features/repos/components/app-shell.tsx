@@ -90,7 +90,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {/* One line, both ends visible. The full path is in the
                       title and on /repos; wrapping a 78-character slug into
                       five lines made the sidebar unreadable. */}
-                  <span className="min-w-0 font-mono leading-relaxed" title={repo.fullName}>
+                  <span
+                    className="min-w-0 font-mono leading-relaxed"
+                    title={repo.fullName}
+                    aria-label={repo.fullName}
+                  >
                     {shortenRepoName(repo.fullName, 22)}
                   </span>
                 </div>

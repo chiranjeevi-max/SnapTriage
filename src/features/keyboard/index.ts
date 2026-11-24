@@ -9,9 +9,13 @@ export {
   shortcuts,
   matchShortcut,
   formatKey,
-  formatShortcutById,
+  formatKeyValue,
+  getShortcutOverridesSnapshot,
+  subscribeToShortcutOverrides,
   type Shortcut,
 } from "./shortcut-registry";
+export { useShortcutLabel } from "./use-shortcut-label";
+export { ShortcutKbd } from "./components/shortcut-kbd";
 export { isEditableElement } from "./is-editable-element";
 export { useKeyboardShortcuts } from "./use-keyboard-shortcuts";
 export { useKeyboardActions } from "./use-keyboard-actions";
