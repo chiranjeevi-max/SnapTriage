@@ -77,6 +77,24 @@ describe("useShortcutLabel", () => {
     expect(matchShortcut(new KeyboardEvent("keydown", { key: "d" }))?.id).toBe("dismiss");
   });
 
+  it("keeps a refused override and reset for the session", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+
+    const { result } = renderHook(() => useShortcutLabel("dismiss"));
+    expect(result.current).toBe("D");
+
+    act(() => setShortcutOverride("dismiss", "q"));
+    expect(result.current).toBe("Q");
+
+    act(() => resetShortcutOverrides());
+    expect(result.current).toBe("D");
+  });
+
   it("follows a change or clear made by another tab", () => {
     const { result } = renderHook(() => useShortcutLabel("dismiss"));
     expect(result.current).toBe("D");

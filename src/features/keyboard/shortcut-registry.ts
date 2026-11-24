@@ -25,6 +25,14 @@ const EMPTY_OVERRIDES: Record<string, string> = {};
 let overrideRaw: string | null = null;
 let overrideSnapshot: Record<string, string> = EMPTY_OVERRIDES;
 let overrideDirty = true;
+/**
+ * Overrides this tab holds that storage refused to keep.
+ *
+ * A blocked or full storage must not make a rebind silently revert; the value
+ * still applies for this session. A later successful write or reset clears
+ * this map and storage becomes authoritative again.
+ */
+let unsavedOverrides: Record<string, string> | null = null;
 const overrideListeners = new Set<() => void>();
 
 function parseOverrides(raw: string | null): Record<string, string> {
@@ -55,6 +63,9 @@ function parseOverrides(raw: string | null): Record<string, string> {
  */
 export function getShortcutOverridesSnapshot(): Record<string, string> {
   if (typeof window === "undefined") return EMPTY_OVERRIDES;
+  // A value this tab wrote but storage refused takes precedence over whatever
+  // stale value is still on disk.
+  if (unsavedOverrides) return unsavedOverrides;
   let raw: string | null;
   try {
     raw = window.localStorage.getItem(OVERRIDE_STORAGE_KEY);
@@ -115,8 +126,11 @@ export function setShortcutOverride(id: string, key: string): void {
   const overrides = { ...readOverrides(), [id]: key };
   try {
     window.localStorage.setItem(OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+    unsavedOverrides = null;
   } catch {
-    return;
+    // A write that cannot persist still applies for this session, so the
+    // keycap does not silently revert under the user.
+    unsavedOverrides = overrides;
   }
   notifyShortcutOverridesChanged();
 }
@@ -126,8 +140,10 @@ export function resetShortcutOverrides(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(OVERRIDE_STORAGE_KEY);
+    unsavedOverrides = null;
   } catch {
-    return;
+    // The reset still takes effect for this session even if storage refuses it.
+    unsavedOverrides = EMPTY_OVERRIDES;
   }
   notifyShortcutOverridesChanged();
 }
